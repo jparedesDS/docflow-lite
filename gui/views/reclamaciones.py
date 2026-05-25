@@ -1,0 +1,760 @@
+"""Vista Reclamaciones — pedidos con docs >= 15 días sin devolver."""
+
+import logging
+import threading
+
+import customtkinter as ctk
+from tkinter import messagebox
+
+from core.services import claims as claims_service
+from gui import theme
+from gui.widgets.table import DataTable
+
+logger = logging.getLogger(__name__)
+
+COLUMNS = [
+    "Pedido", "Cliente", "Docs", "Días", "Urgencia",
+    "Nivel propuesto", "Último envío", "Reclamaciones",
+]
+
+URGENCY_LABEL = {"low": "BAJA", "medium": "MEDIA", "high": "ALTA"}
+URGENCY_COLOR = {"low": theme.BLUE, "medium": theme.AMBER, "high": theme.RED}
+LEVEL_LABEL = {1: "1 · Recordatorio", 2: "2 · Formal", 3: "3 · Urgente"}
+
+
+class ReclamacionesView(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
+        self._pedidos: list[dict] = []
+        self._build_layout()
+        self._reload()
+
+    # ── Layout ────────────────────────────────────────────────────────────────
+
+    def _build_layout(self) -> None:
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=24, pady=(20, 6))
+        ctk.CTkLabel(
+            header, text="Reclamaciones", font=theme.FONT_TITLE,
+            text_color=theme.TEXT_MAIN, anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            header,
+            text="Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente.",
+            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Toolbar
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.pack(fill="x", padx=24, pady=(12, 8))
+
+        self.btn_reload = ctk.CTkButton(
+            toolbar, text="↻ Recargar", font=theme.FONT_BUTTON,
+            height=34, corner_radius=8,
+            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=self._reload,
+        )
+        self.btn_reload.pack(side="left")
+
+        self.btn_preview = ctk.CTkButton(
+            toolbar, text="👁 Preview", font=theme.FONT_BUTTON,
+            height=34, corner_radius=8,
+            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            state="disabled", command=self._open_preview,
+        )
+        self.btn_preview.pack(side="left", padx=(8, 0))
+
+        self.btn_send_selected = ctk.CTkButton(
+            toolbar, text="📤 Enviar seleccionadas", font=theme.FONT_BUTTON,
+            height=34, corner_radius=8,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            state="disabled", command=self._send_selected,
+        )
+        self.btn_send_selected.pack(side="left", padx=(8, 0))
+
+        self.btn_send_all = ctk.CTkButton(
+            toolbar, text="📤 Enviar todas", font=theme.FONT_BUTTON,
+            height=34, corner_radius=8,
+            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            state="disabled", command=self._send_all,
+        )
+        self.btn_send_all.pack(side="left", padx=(8, 0))
+
+        self.lbl_count = ctk.CTkLabel(
+            toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+        )
+        self.lbl_count.pack(side="right")
+
+        # Status line
+        self.lbl_status = ctk.CTkLabel(
+            self, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED, anchor="w",
+        )
+        self.lbl_status.pack(fill="x", padx=24)
+
+        # Tabla con selección múltiple
+        self.table = DataTable(
+            self, columns=COLUMNS,
+            on_double_click=self._on_row_double,
+            selectmode="extended",
+        )
+        self.table.pack(fill="both", expand=True, padx=24, pady=(8, 24))
+        self.table.set_columns_width({
+            "Pedido": 120, "Cliente": 220, "Docs": 60, "Días": 80,
+            "Urgencia": 100, "Nivel propuesto": 130, "Último envío": 140, "Reclamaciones": 110,
+        })
+
+        # Tags color para urgency
+        self.table.tree.tag_configure("urg_low", foreground=theme.BLUE)
+        self.table.tree.tag_configure("urg_medium", foreground=theme.AMBER)
+        self.table.tree.tag_configure("urg_high", foreground=theme.RED)
+
+        # Bind selection → habilitar botones
+        self.table.tree.bind("<<TreeviewSelect>>", self._on_select_change)
+
+    # ── Datos ─────────────────────────────────────────────────────────────────
+
+    def _reload(self) -> None:
+        self.lbl_status.configure(text="⏳  Calculando pedidos reclamables…", text_color=theme.TEXT_MUTED)
+        self.btn_reload.configure(state="disabled")
+        self.table.clear()
+
+        def worker():
+            try:
+                rows = claims_service.get_claimable_pedidos()
+                self.after(0, lambda: self._on_loaded(rows))
+            except Exception as exc:
+                logger.exception("Error cargando reclamaciones")
+                err = str(exc)
+                self.after(0, lambda: self._show_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_loaded(self, rows: list[dict]) -> None:
+        self.btn_reload.configure(state="normal")
+        self._pedidos = rows
+        self.table.clear()
+        self.btn_send_all.configure(state="normal" if rows else "disabled")
+        self._on_select_change()  # actualiza estado de los demás botones
+
+        if not rows:
+            self.lbl_status.configure(text="✓  Sin pedidos pendientes de reclamación", text_color=theme.GREEN)
+            self.lbl_count.configure(text="0 pedidos")
+            return
+
+        for p in rows:
+            level = claims_service.get_escalation_level(p)
+            urgency = p.get("urgency", "low")
+            tag = f"urg_{urgency}"
+            self.table.add_row(
+                values=[
+                    p.get("pedido", ""),
+                    p.get("cliente", "")[:60],
+                    p.get("docs_count", 0),
+                    p.get("max_dias", 0),
+                    URGENCY_LABEL.get(urgency, "—"),
+                    LEVEL_LABEL.get(level, ""),
+                    _fmt_dt(p.get("last_claimed")),
+                    p.get("claim_count", 0),
+                ],
+                iid=p["pedido"],
+                tags=(tag,),
+            )
+
+        self.lbl_count.configure(text=f"{len(rows)} pedidos")
+        self.lbl_status.configure(
+            text=f"✓  {len(rows)} pedidos. Doble-click en una fila para previsualizar y enviar.",
+            text_color=theme.TEXT_MUTED,
+        )
+
+    def _show_error(self, msg: str) -> None:
+        self.btn_reload.configure(state="normal")
+        self.lbl_status.configure(text=f"✗  {msg}", text_color=theme.RED)
+
+    def _on_row_double(self, item) -> None:
+        self._open_preview()
+
+    def _on_select_change(self, _evt=None) -> None:
+        n = len(self.table.selected_iids())
+        self.btn_preview.configure(state="normal" if n == 1 else "disabled")
+        self.btn_send_selected.configure(
+            state="normal" if n >= 1 else "disabled",
+            text=f"📤 Enviar seleccionada{'s' if n != 1 else ''} ({n})" if n else "📤 Enviar seleccionadas",
+        )
+
+    def _open_preview(self) -> None:
+        sel = self.table.selected_iids()
+        if len(sel) != 1:
+            return
+        pedido = sel[0]
+        data = next((p for p in self._pedidos if p["pedido"] == pedido), None)
+        if not data:
+            return
+        ReclamacionPreview(self, pedido_data=data, on_sent=self._reload)
+
+    def _send_selected(self) -> None:
+        sel = self.table.selected_iids()
+        if not sel:
+            return
+        self._send_bulk_confirm(sel, "seleccionada(s)")
+
+    def _send_all(self) -> None:
+        if not self._pedidos:
+            return
+        all_ids = [p["pedido"] for p in self._pedidos]
+        self._send_bulk_confirm(all_ids, "TODAS")
+
+    def _send_bulk_confirm(self, pedidos: list[str], label: str) -> None:
+        # Muestra preview agregado con niveles auto-detectados
+        lookup = {p["pedido"]: p for p in self._pedidos}
+        lines = []
+        for ped in pedidos:
+            data = lookup.get(ped)
+            if not data:
+                continue
+            lvl = claims_service.get_escalation_level(data)
+            lines.append(f"  • {ped}  →  L{lvl} ({ESCALATION_LEVEL_NAMES[lvl]})  ·  {data['docs_count']} docs  ·  {data['max_dias']}d")
+
+        body = (
+            f"Vas a enviar reclamaciones {label}:\n\n"
+            f"{chr(10).join(lines)}\n\n"
+            f"Total: {len(pedidos)} pedido(s).\n"
+            f"Nivel y destinatarios se calculan automáticamente.\n\n"
+            f"¿Confirmar envío?"
+        )
+        if not messagebox.askyesno(f"Enviar {label}", body):
+            return
+
+        self._set_buttons_busy(True)
+        self.lbl_status.configure(text=f"📤  Enviando {len(pedidos)} reclamación(es)…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                res = claims_service.send_bulk(pedidos)
+                self.after(0, lambda: self._bulk_done(res))
+            except Exception as exc:
+                logger.exception("Error en send_bulk")
+                err = str(exc)
+                self.after(0, lambda: self._bulk_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _set_buttons_busy(self, busy: bool) -> None:
+        state = "disabled" if busy else "normal"
+        for b in (self.btn_reload, self.btn_preview, self.btn_send_selected, self.btn_send_all):
+            b.configure(state=state)
+
+    def _bulk_done(self, res: dict) -> None:
+        sent = res.get("sent", [])
+        errors = res.get("errors", [])
+        sent_lines = [f"  ✓ {s['pedido']}  ·  L{s['level']}  ·  {s['docs_count']} docs" for s in sent]
+        err_lines = [f"  ✗ {e['pedido']}: {e['error']}" for e in errors]
+
+        if errors:
+            messagebox.showwarning(
+                "Envío parcial",
+                f"Enviadas: {len(sent)} / {res['total']}\n\n"
+                f"{chr(10).join(sent_lines) or '(ninguna)'}\n\n"
+                f"Errores:\n{chr(10).join(err_lines)}",
+            )
+        else:
+            messagebox.showinfo(
+                "Reclamaciones enviadas",
+                f"✓ {len(sent)} reclamaciones enviadas con éxito.\n\n{chr(10).join(sent_lines)}",
+            )
+        self._reload()
+
+    def _bulk_error(self, msg: str) -> None:
+        self._set_buttons_busy(False)
+        self.lbl_status.configure(text=f"✗  {msg}", text_color=theme.RED)
+        messagebox.showerror("Error", msg)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Preview / envío
+# ════════════════════════════════════════════════════════════════════════════
+
+class ReclamacionPreview(ctk.CTkToplevel):
+    def __init__(self, master, pedido_data: dict, on_sent=None):
+        super().__init__(master, fg_color=theme.BG_PAGE)
+        self.title(f"Reclamación — {pedido_data['pedido']}")
+        self.geometry("960x800")
+        self.minsize(820, 680)
+        self.transient(master)
+        self.grab_set()
+
+        self._pedido_data = pedido_data
+        self._preview: dict | None = None
+        self._on_sent = on_sent
+        self._level = claims_service.get_escalation_level(pedido_data)
+        self._using_saved = False  # True si los inputs vienen de saved
+        self.docs_table: DataTable | None = None
+
+        self._build_skeleton()
+        self._load()
+
+    def _build_skeleton(self) -> None:
+        # Header
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=22, pady=(18, 6))
+
+        title_row = ctk.CTkFrame(header, fg_color="transparent")
+        title_row.pack(fill="x")
+        ctk.CTkLabel(
+            title_row, text=self._pedido_data["pedido"],
+            font=(theme.FONT_FAMILY, 20, "bold"),
+            text_color=theme.TEXT_MAIN, anchor="w",
+        ).pack(side="left")
+
+        urgency = self._pedido_data.get("urgency", "low")
+        ucolor = URGENCY_COLOR.get(urgency, theme.TEXT_MUTED)
+        ctk.CTkLabel(
+            title_row, text=f"  {URGENCY_LABEL.get(urgency, '—')}  ",
+            font=(theme.FONT_FAMILY, 10, "bold"),
+            text_color="white", fg_color=ucolor, corner_radius=4,
+        ).pack(side="left", padx=10)
+
+        info = (
+            f"{self._pedido_data.get('cliente', '')}  ·  "
+            f"PO: {self._pedido_data.get('po', '') or '—'}  ·  "
+            f"{self._pedido_data.get('docs_count', 0)} docs  ·  "
+            f"Max {self._pedido_data.get('max_dias', 0)} días"
+        )
+        ctk.CTkLabel(
+            header, text=info, font=theme.FONT_BODY,
+            text_color=theme.TEXT_SUB, anchor="w", justify="left",
+        ).pack(anchor="w", pady=(4, 0))
+
+        # Nivel selector
+        level_row = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=10,
+                                  border_width=1, border_color=theme.BORDER)
+        level_row.pack(fill="x", padx=22, pady=(12, 6))
+        inner = ctk.CTkFrame(level_row, fg_color="transparent")
+        inner.pack(fill="x", padx=14, pady=10)
+
+        ctk.CTkLabel(
+            inner, text="Nivel de escalation", font=(theme.FONT_FAMILY, 10, "bold"),
+            text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(anchor="w")
+
+        self.cmb_level = ctk.CTkOptionMenu(
+            inner, values=[LEVEL_LABEL[1], LEVEL_LABEL[2], LEVEL_LABEL[3]],
+            width=240, height=34, corner_radius=8,
+            fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
+            button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
+            font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
+            command=self._on_level_changed,
+        )
+        self.cmb_level.set(LEVEL_LABEL[self._level])
+        self.cmb_level.pack(anchor="w", pady=(2, 0))
+
+        self.lbl_level_note = ctk.CTkLabel(
+            inner,
+            text=self._level_note(),
+            font=(theme.FONT_FAMILY, 11), text_color=theme.TEXT_SUB, anchor="w",
+        )
+        self.lbl_level_note.pack(anchor="w", pady=(4, 0))
+
+        # Destinatarios
+        addr = ctk.CTkFrame(self, fg_color="transparent")
+        addr.pack(fill="x", padx=22, pady=(4, 6))
+
+        # Header con label + indicador + botón "Sugeridos"
+        addr_head = ctk.CTkFrame(addr, fg_color="transparent")
+        addr_head.pack(fill="x")
+        ctk.CTkLabel(
+            addr_head, text="Destinatarios", font=(theme.FONT_FAMILY, 10, "bold"),
+            text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(side="left")
+        self.lbl_recipients_note = ctk.CTkLabel(
+            addr_head, text="", font=(theme.FONT_FAMILY, 10),
+            text_color=theme.TEXT_MUTED, anchor="w",
+        )
+        self.lbl_recipients_note.pack(side="left", padx=10)
+        self.btn_reset_recipients = ctk.CTkButton(
+            addr_head, text="↺ Sugeridos por nivel", font=(theme.FONT_FAMILY, 10),
+            height=22, width=140, corner_radius=6,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
+            command=self._apply_suggested_recipients,
+        )
+        self.btn_reset_recipients.pack(side="right")
+
+        ctk.CTkLabel(addr, text="Para (To)", font=(theme.FONT_FAMILY, 10),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", pady=(6, 0))
+        self.ent_to = ctk.CTkEntry(
+            addr, height=34, corner_radius=8,
+            fg_color=theme.BG_INPUT, border_color=theme.BORDER,
+            text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
+        )
+        self.ent_to.pack(fill="x", pady=(0, 4))
+
+        ctk.CTkLabel(addr, text="Copia (Cc)", font=(theme.FONT_FAMILY, 10),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self.ent_cc = ctk.CTkEntry(
+            addr, height=34, corner_radius=8,
+            fg_color=theme.BG_INPUT, border_color=theme.BORDER,
+            text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
+        )
+        self.ent_cc.pack(fill="x")
+
+        # Tabla docs (con header + botones Todos/Ninguno + contador)
+        docs_head = ctk.CTkFrame(self, fg_color="transparent")
+        docs_head.pack(fill="x", padx=22, pady=(14, 4))
+        ctk.CTkLabel(
+            docs_head, text="Documentos a reclamar",
+            font=(theme.FONT_FAMILY, 10, "bold"),
+            text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(side="left")
+        self.lbl_doc_counter = ctk.CTkLabel(
+            docs_head, text="", font=(theme.FONT_FAMILY, 10),
+            text_color=theme.TEXT_MUTED,
+        )
+        self.lbl_doc_counter.pack(side="left", padx=10)
+        ctk.CTkButton(
+            docs_head, text="Todos", font=(theme.FONT_FAMILY, 10), height=22, width=70, corner_radius=6,
+            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
+            border_width=1, border_color=theme.BORDER,
+            command=lambda: self._set_all_docs(True),
+        ).pack(side="right", padx=(4, 0))
+        ctk.CTkButton(
+            docs_head, text="Ninguno", font=(theme.FONT_FAMILY, 10), height=22, width=70, corner_radius=6,
+            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
+            border_width=1, border_color=theme.BORDER,
+            command=lambda: self._set_all_docs(False),
+        ).pack(side="right")
+
+        # Footer y status se packean PRIMERO con side="bottom" para garantizar
+        # que el botón Enviar quede siempre visible aunque la tabla crezca.
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=22, pady=14)
+
+        ctk.CTkButton(
+            footer, text="Cancelar", font=theme.FONT_BUTTON,
+            height=36, corner_radius=8,
+            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=self.destroy,
+        ).pack(side="right", padx=(8, 0))
+
+        self.btn_send = ctk.CTkButton(
+            footer, text="Enviar reclamación  →", font=theme.FONT_BUTTON,
+            height=36, corner_radius=8,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            state="disabled",
+            command=self._send,
+        )
+        self.btn_send.pack(side="right")
+
+        self.btn_preview = ctk.CTkButton(
+            footer, text="👁  Preview email", font=theme.FONT_BUTTON,
+            height=36, corner_radius=8,
+            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            state="disabled",
+            command=self._preview_email,
+        )
+        self.btn_preview.pack(side="left")
+
+        self.lbl_status = ctk.CTkLabel(
+            self, text="⏳  Cargando preview…", font=theme.FONT_BODY,
+            text_color=theme.TEXT_MUTED, anchor="w",
+        )
+        self.lbl_status.pack(side="bottom", fill="x", padx=22)
+
+        # Tabla expansible (toma el espacio restante en el medio)
+        self.table_host = ctk.CTkFrame(self, fg_color="transparent")
+        self.table_host.pack(side="top", fill="both", expand=True, padx=22, pady=(0, 8))
+
+    def _level_note(self) -> str:
+        notes = {
+            1: "Tono cortés — recordatorio cordial al cliente.",
+            2: "Tono firme — incluye dirección en copia (CC: Enrique Serrano).",
+            3: "Tono urgente — incluye dirección + comercial del pedido en copia.",
+        }
+        return notes.get(self._level, "")
+
+    def _on_level_changed(self, value: str) -> None:
+        for k, v in LEVEL_LABEL.items():
+            if v == value:
+                self._level = k
+                break
+        self.lbl_level_note.configure(text=self._level_note())
+        # Si no estamos usando saved, recalcular sugeridos según nuevo nivel.
+        # Si hay saved, respetar lo que el usuario tiene puesto (es su personalización).
+        if self._preview and not self._using_saved:
+            self._apply_suggested_recipients()
+
+    def _apply_suggested_recipients(self) -> None:
+        auto_to, auto_cc = claims_service.get_escalation_recipients(self._pedido_data, self._level)
+        self.ent_to.delete(0, "end"); self.ent_to.insert(0, ", ".join(auto_to))
+        self.ent_cc.delete(0, "end"); self.ent_cc.insert(0, ", ".join(auto_cc))
+        self._using_saved = False
+        self._update_recipients_note()
+
+    def _update_recipients_note(self) -> None:
+        if self._using_saved and self._preview and self._preview.get("saved_at"):
+            saved_at = self._preview["saved_at"]
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(saved_at)
+                stamp = dt.strftime("%d %b %Y")
+            except Exception:
+                stamp = saved_at[:10]
+            self.lbl_recipients_note.configure(
+                text=f"💾 Guardados del envío anterior · {stamp}",
+                text_color=theme.GREEN,
+            )
+        else:
+            self.lbl_recipients_note.configure(
+                text="💡 Sugeridos por nivel de escalation",
+                text_color=theme.TEXT_MUTED,
+            )
+
+    def _load(self) -> None:
+        pedido = self._pedido_data["pedido"]
+
+        def worker():
+            try:
+                pv = claims_service.get_pedido_preview(pedido)
+                self.after(0, lambda: self._render_preview(pv))
+            except Exception as exc:
+                logger.exception("Error en preview reclamación")
+                err = str(exc)
+                self.after(0, lambda: self._render_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _render_preview(self, pv: dict) -> None:
+        self._preview = pv
+
+        # Destinatarios: saved si existen, si no sugeridos por nivel
+        if pv.get("saved_to") is not None:
+            self.ent_to.delete(0, "end")
+            self.ent_to.insert(0, ", ".join(pv.get("saved_to") or []))
+            self.ent_cc.delete(0, "end")
+            self.ent_cc.insert(0, ", ".join(pv.get("saved_cc") or []))
+            self._using_saved = True
+            self._update_recipients_note()
+        else:
+            self._apply_suggested_recipients()
+
+        # Tabla docs con columna ✓ toggleable
+        for child in self.table_host.winfo_children():
+            child.destroy()
+        cols = ["✓", "EIPSA Doc.", "Título", "Estado", "Rev.", "Fecha envío", "Días"]
+        self.docs_table = DataTable(self.table_host, columns=cols, selectmode="none")
+        self.docs_table.pack(fill="both", expand=True)
+        self.docs_table.set_columns_width({
+            "✓": 36, "EIPSA Doc.": 130, "Título": 320, "Estado": 110,
+            "Rev.": 60, "Fecha envío": 110, "Días": 60,
+        })
+        self.docs_table.tree.column("✓", anchor="center", stretch=False)
+
+        for r in pv["table_rows"]:
+            tag = ""
+            if isinstance(r["return_days"], int):
+                if r["return_days"] >= 60: tag = "urg_high"
+                elif r["return_days"] >= 30: tag = "urg_medium"
+                elif r["return_days"] >= 15: tag = "urg_low"
+            self.docs_table.add_row(
+                values=[
+                    "☑", r["eipsa_doc_no"], r["title"], r["status"],
+                    r["revision"] or "—", r["sent_date"] or "—", r["return_days"],
+                ],
+                iid=r["eipsa_doc_no"],
+                tags=(tag,) if tag else (),
+            )
+        self.docs_table.tree.tag_configure("urg_low", foreground=theme.BLUE)
+        self.docs_table.tree.tag_configure("urg_medium", foreground=theme.AMBER)
+        self.docs_table.tree.tag_configure("urg_high", foreground=theme.RED)
+        # Click toggle en columna ✓
+        self.docs_table.tree.bind("<Button-1>", self._on_doc_click)
+
+        self._update_doc_counter()
+
+        self.lbl_status.configure(
+            text=f"✓  {pv['docs_count']} documento(s) cargados. Revisa destinatarios y selección.",
+            text_color=theme.GREEN,
+        )
+        self.btn_send.configure(state="normal")
+        self.btn_preview.configure(state="normal")
+
+    # ── Selección de docs ────────────────────────────────────────────────────
+
+    def _on_doc_click(self, event) -> str | None:
+        if not self.docs_table:
+            return None
+        tree = self.docs_table.tree
+        region = tree.identify_region(event.x, event.y)
+        col = tree.identify_column(event.x)
+        row_id = tree.identify_row(event.y)
+        if region != "cell" or col != "#1" or not row_id:
+            return None
+        values = list(tree.item(row_id, "values"))
+        values[0] = "☐" if values[0] == "☑" else "☑"
+        tree.item(row_id, values=values)
+        self._update_doc_counter()
+        return "break"
+
+    def _set_all_docs(self, included: bool) -> None:
+        if not self.docs_table:
+            return
+        tree = self.docs_table.tree
+        char = "☑" if included else "☐"
+        for iid in tree.get_children():
+            values = list(tree.item(iid, "values"))
+            values[0] = char
+            tree.item(iid, values=values)
+        self._update_doc_counter()
+
+    def _get_included_codes(self) -> list[str]:
+        if not self.docs_table:
+            return []
+        out = []
+        for iid in self.docs_table.tree.get_children():
+            values = self.docs_table.tree.item(iid, "values")
+            if values and values[0] == "☑":
+                out.append(iid)
+        return out
+
+    def _update_doc_counter(self) -> None:
+        if not self.docs_table:
+            return
+        total = len(self.docs_table.tree.get_children())
+        sel = len(self._get_included_codes())
+        color = theme.GREEN if sel == total else (theme.AMBER if sel > 0 else theme.RED)
+        self.lbl_doc_counter.configure(
+            text=f"{sel}/{total} incluidos",
+            text_color=color,
+        )
+        self.btn_send.configure(state="normal" if sel > 0 else "disabled")
+
+    def _render_error(self, msg: str) -> None:
+        self.lbl_status.configure(text=f"✗  {msg}", text_color=theme.RED)
+
+    def _preview_email(self) -> None:
+        """Genera el HTML de la reclamación con docs marcados + nivel actual, sin enviar."""
+        if not self._preview:
+            return
+        included = self._get_included_codes()
+        if not included:
+            messagebox.showwarning("Documentos", "Marca al menos un documento (columna ✓) para previsualizar.")
+            return
+
+        self.lbl_status.configure(text="⏳  Generando preview…", text_color=theme.TEXT_MUTED)
+        pedido = self._pedido_data["pedido"]
+        level = self._level
+
+        def worker():
+            try:
+                res = claims_service.generate_claim_html(
+                    pedido, level=level, include_eipsa_codes=included,
+                )
+                self.after(0, lambda: _open_html_preview(res["html"], "reclamacion"))
+                self.after(0, lambda: self.lbl_status.configure(
+                    text=f"✓  Preview L{res['level']} abierto en navegador ({res['docs_count']} docs)",
+                    text_color=theme.GREEN,
+                ))
+            except Exception as exc:
+                logger.exception("Error generando preview email")
+                err = str(exc)
+                self.after(0, lambda: self.lbl_status.configure(
+                    text=f"✗  {err}", text_color=theme.RED,
+                ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _send(self) -> None:
+        if not self._preview:
+            return
+        to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
+        cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
+        if not to:
+            messagebox.showwarning("Destinatarios", "Indica al menos un destinatario en 'To'.")
+            return
+
+        included = self._get_included_codes()
+        if not included:
+            messagebox.showwarning("Documentos", "Marca al menos un documento (columna ✓) antes de enviar.")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar reclamación",
+            f"¿Enviar reclamación de nivel {self._level} ({ESCALATION_LEVEL_NAMES[self._level]})?\n\n"
+            f"Pedido: {self._pedido_data['pedido']}\n"
+            f"Documentos a reclamar: {len(included)} de {self._preview['docs_count']}\n"
+            f"To: {', '.join(to)}\n"
+            f"Cc: {', '.join(cc) or '—'}\n\n"
+            f"Los destinatarios se guardarán para futuras reclamaciones de este pedido.",
+        )
+        if not confirm:
+            return
+
+        self.btn_send.configure(state="disabled", text="Enviando…")
+        self.lbl_status.configure(text="📤  Enviando reclamación…", text_color=theme.TEXT_MUTED)
+
+        pedido = self._pedido_data["pedido"]
+        level = self._level
+
+        def worker():
+            try:
+                res = claims_service.send_claim(
+                    pedido, to=to, cc=cc, level=level,
+                    include_eipsa_codes=included,
+                )
+                self.after(0, lambda: self._send_done(res))
+            except Exception as exc:
+                logger.exception("Error enviando reclamación")
+                err = str(exc)
+                self.after(0, lambda: self._send_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _send_done(self, res: dict) -> None:
+        path = res.get("saved_path") or "—"
+        messagebox.showinfo(
+            "Reclamación enviada",
+            f"✓ Email enviado con éxito\n\n"
+            f"Nivel: {res.get('level')} ({res.get('level_name')})\n"
+            f"Documentos: {res.get('docs_count')}\n"
+            f"Asunto: {res.get('subject')}\n"
+            f"EML guardado: {path}",
+        )
+        if self._on_sent:
+            self._on_sent()
+        self.destroy()
+
+    def _send_error(self, msg: str) -> None:
+        self.btn_send.configure(state="normal", text="Enviar reclamación  →")
+        self.lbl_status.configure(text=f"✗  {msg}", text_color=theme.RED)
+        messagebox.showerror("Error", msg)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+ESCALATION_LEVEL_NAMES = {1: "Recordatorio", 2: "Reclamación formal", 3: "Escalation urgente"}
+
+
+def _open_html_preview(html: str, kind: str) -> None:
+    """Guarda el HTML en un tmpfile y lo abre en el navegador del sistema."""
+    import tempfile
+    import webbrowser
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=f"_{kind}_preview.html", delete=False,
+    )
+    tmp.write(html)
+    tmp.close()
+    webbrowser.open(f"file://{tmp.name}")
+
+
+def _fmt_dt(iso: str | None) -> str:
+    if not iso:
+        return "—"
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(iso).strftime("%d %b %Y")
+    except Exception:
+        return iso[:10]

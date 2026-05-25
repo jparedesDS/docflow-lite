@@ -1,0 +1,29 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Datos locales del usuario
+data/*.xlsx
+data/*.xls
+data/*.csv
+
+# Estado runtime
+state/*.json
+state/*.log
+state/*.lock
+state/*.json.lock
+
+# PyInstaller
+*.spec.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
