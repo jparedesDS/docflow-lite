@@ -37,52 +37,53 @@ class DevolucionesView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 6))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
             header, text="Devoluciones", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text="Correos parseables del buzón IMAP. Doble click para previsualizar y enviar.",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            header,
+            text="Correos parseables del buzón IMAP · doble click para previsualizar y enviar",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
-        toolbar.pack(fill="x", padx=24, pady=(14, 8))
+        toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_4, theme.SPACE_2))
 
         self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻ Recargar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            toolbar, text="↻  Recargar", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
             command=self._reload,
         )
-        self.btn_reload.pack(side="left", padx=(0, 8))
+        self.btn_reload.pack(side="left", padx=(0, theme.SPACE_2))
 
         self.var_unread = ctk.BooleanVar(value=False)
         self.chk_unread = ctk.CTkCheckBox(
             toolbar, text="Solo no leídos", variable=self.var_unread,
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB,
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
             command=self._on_toggle_unread,
         )
-        self.chk_unread.pack(side="left", padx=8)
+        self.chk_unread.pack(side="left", padx=theme.SPACE_2)
 
         self.count_label = ctk.CTkLabel(
-            toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+            toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
         )
         self.count_label.pack(side="right")
 
         # Loading state
         self.status_label = ctk.CTkLabel(
-            self, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+            self, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
         )
-        self.status_label.pack(fill="x", padx=24)
+        self.status_label.pack(fill="x", padx=theme.SPACE_6)
 
         # Table
         self.table = DataTable(self, columns=COLUMNS, on_double_click=self._on_row_double)
-        self.table.pack(fill="both", expand=True, padx=24, pady=(8, 24))
+        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
             "Plataforma": 130, "Asunto": 520, "Remitente": 260, "Fecha": 140,
         })

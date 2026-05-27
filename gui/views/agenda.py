@@ -40,15 +40,15 @@ class AgendaView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 6))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
             header, text="Agenda", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text=f"Notas, reuniones y tareas — owner: {DEFAULT_OWNER}",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            header, text=f"Notas, reuniones y tareas · owner {DEFAULT_OWNER}",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Tabs
         self.tabs = ctk.CTkTabview(
@@ -60,7 +60,8 @@ class AgendaView(ctk.CTkFrame):
             segmented_button_unselected_hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_MAIN,
         )
-        self.tabs.pack(fill="both", expand=True, padx=20, pady=(12, 16))
+        self.tabs.pack(fill="both", expand=True,
+                        padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
         self.tab_tareas = self.tabs.add("Tareas")
         self.tab_notas = self.tabs.add("Notas")

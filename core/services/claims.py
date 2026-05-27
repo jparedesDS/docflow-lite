@@ -530,13 +530,18 @@ def _build_html(preview: dict, level: int) -> str:
     meta = ESCALATION_LEVELS[level]
     accent = meta["accent"]
 
-    logo_b64 = _load_logo_b64()
-    logo_html = (
-        f'<img src="data:image/png;base64,{logo_b64}" alt="EIPSA" '
-        f'style="display:block;height:28px;width:auto;" />'
-        if logo_b64
-        else '<span style="color:#FFFFFF;font-size:15px;font-weight:700;">EIPSA</span>'
-    )
+    # Logo compuesto sobre navy en backend (PIL), sin caja
+    logo_b64 = _load_logo_b64(bg_color=NAVY)
+    if logo_b64:
+        logo_html = (
+            f'<img src="data:image/png;base64,{logo_b64}" alt="EIPSA" '
+            f'style="display:block;height:34px;width:auto;border:0;outline:0;" />'
+        )
+    else:
+        logo_html = (
+            f'<span style="font-size:18px;font-weight:800;color:#FFFFFF;'
+            f'letter-spacing:1.2px;">EIPSA</span>'
+        )
 
     rows_html = ""
     for i, row in enumerate(preview["table_rows"]):

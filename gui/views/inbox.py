@@ -32,64 +32,63 @@ class InboxView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 6))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
             header, text="Bandeja AI", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text="Lectura de correos del buzón IMAP. El análisis con IA se activa al configurar ANTHROPIC_API_KEY.",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            header,
+            text="Lectura de correos del buzón IMAP · análisis con IA al configurar ANTHROPIC_API_KEY",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
-        toolbar.pack(fill="x", padx=24, pady=(12, 4))
+        toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_1))
 
         self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻ Recargar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
+            toolbar, text="↻  Recargar", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
             command=self._reload,
         )
         self.btn_reload.pack(side="left")
 
-        ctk.CTkLabel(toolbar, text="Filtro:", font=theme.FONT_BODY,
-                     text_color=theme.TEXT_MUTED).pack(side="left", padx=(16, 6))
         self.cmb_filter = ctk.CTkOptionMenu(
             toolbar, values=["Todos", "No leídos", "Leídos"],
-            width=140, height=34, corner_radius=8,
+            width=130, height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
             button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
-            font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
+            font=theme.FONT_SMALL, dropdown_font=theme.FONT_SMALL,
             command=lambda _: self._reload(),
         )
-        self.cmb_filter.pack(side="left")
+        self.cmb_filter.pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.ent_search = ctk.CTkEntry(
             toolbar, placeholder_text="Buscar en asunto / remitente",
-            height=34, corner_radius=8,
+            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
-        self.ent_search.pack(side="left", fill="x", expand=True, padx=(12, 0))
+        self.ent_search.pack(side="left", fill="x", expand=True, padx=(theme.SPACE_2, 0))
         self.ent_search.bind("<KeyRelease>", lambda e: self._debounced_filter())
 
         self.lbl_count = ctk.CTkLabel(
-            toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+            toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
         )
-        self.lbl_count.pack(side="right", padx=(12, 0))
+        self.lbl_count.pack(side="right", padx=(theme.SPACE_3, 0))
 
         # Status line
         self.lbl_status = ctk.CTkLabel(
-            self, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED, anchor="w",
+            self, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
         )
-        self.lbl_status.pack(fill="x", padx=24)
+        self.lbl_status.pack(fill="x", padx=theme.SPACE_6)
 
         # Split: lista (izq) + detalle (der)
         body = ctk.CTkFrame(self, fg_color="transparent")
-        body.pack(fill="both", expand=True, padx=24, pady=(6, 24))
+        body.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         body.grid_columnconfigure(0, weight=3, uniform="cols")
         body.grid_columnconfigure(1, weight=4, uniform="cols")
         body.grid_rowconfigure(0, weight=1)

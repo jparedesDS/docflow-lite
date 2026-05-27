@@ -14,8 +14,7 @@ logger = logging.getLogger(__name__)
 PORTFOLIO_URL = "https://jparedesds.github.io/"
 
 
-# ── Cards de navegación (sección, icono, título, descripción base) ────────────
-
+# Cards de navegación
 NAV_CARDS = [
     {"key": "documentos",    "icon": "◫",  "color": theme.BLUE,
      "title": "Documentos",      "base_desc": "Vista global con KPIs y filtros"},
@@ -27,8 +26,17 @@ NAV_CARDS = [
      "title": "Devoluciones",    "base_desc": "Procesar emails TR/GAIA/ACONEX/SENDOC"},
     {"key": "reclamaciones", "icon": "⚠",  "color": theme.RED,
      "title": "Reclamaciones",   "base_desc": "Pedidos con docs >15 días"},
-    {"key": "reportes",      "icon": "📊", "color": theme.ROSE,
+    {"key": "reportes",      "icon": "▦",  "color": theme.ROSE,
      "title": "Centro de Reportes", "base_desc": "Excels y resúmenes por email"},
+]
+
+KPI_DEFS = [
+    ("total",       "Total Docs",       theme.ACCENT),
+    ("pendientes",  "Pendientes",       theme.AMBER),
+    ("criticos",    "Críticos",         theme.RED),
+    ("reclamables", "Reclamables",      theme.ROSE),
+    ("tareas",      "Tareas pdtes.",    theme.BLUE),
+    ("inbox",       "Inbox no leídos",  theme.GREEN),
 ]
 
 
@@ -39,66 +47,45 @@ class HomeView(ctk.CTkFrame):
         self._kpi_widgets: dict[str, ctk.CTkLabel] = {}
         self._card_descs: dict[str, ctk.CTkLabel] = {}
         self._build()
-        # Cargar datos en background para no bloquear render
         self.after(50, self._reload_kpis_async)
 
+    # ── Layout ───────────────────────────────────────────────────────────────
+
     def _build(self) -> None:
-        # Scrollable para que en pantallas pequeñas no se corte
         wrapper = ctk.CTkScrollableFrame(self, fg_color="transparent")
         wrapper.pack(fill="both", expand=True)
 
-        # ── Saludo + fecha ──────────────────────────────────────────────────
+        # ─── Saludo + fecha ──────────────────────────────────────────────
         header = ctk.CTkFrame(wrapper, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 8))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_6, theme.SPACE_2))
 
         ctk.CTkLabel(
             header, text=_greeting(),
-            font=(theme.FONT_FAMILY, 26, "bold"),
+            font=theme.FONT_DISPLAY,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
 
         ctk.CTkLabel(
             header, text=_today_long(),
             font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
-        # ── KPIs en vivo ────────────────────────────────────────────────────
-        kpis_section = ctk.CTkFrame(wrapper, fg_color="transparent")
-        kpis_section.pack(fill="x", padx=24, pady=(20, 8))
+        # ─── KPIs en vivo ─────────────────────────────────────────────────
+        self._section_label(wrapper, "RESUMEN DEL DÍA", pady_top=theme.SPACE_6)
 
-        ctk.CTkLabel(
-            kpis_section, text="RESUMEN DEL DÍA",
-            font=(theme.FONT_FAMILY, 10, "bold"),
-            text_color=theme.TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(0, 8))
-
-        kpis_grid = ctk.CTkFrame(kpis_section, fg_color="transparent")
-        kpis_grid.pack(fill="x")
+        kpis_grid = ctk.CTkFrame(wrapper, fg_color="transparent")
+        kpis_grid.pack(fill="x", padx=theme.SPACE_6)
         for col in range(6):
             kpis_grid.grid_columnconfigure(col, weight=1, uniform="kpi")
 
-        for col, (key, label, color) in enumerate([
-            ("total",       "Total Docs",       theme.ACCENT),
-            ("pendientes",  "Pendientes",       theme.AMBER),
-            ("criticos",    "Críticos",         theme.RED),
-            ("reclamables", "Reclamables",      theme.ROSE),
-            ("tareas",      "Tareas pdtes.",    theme.BLUE),
-            ("inbox",       "Inbox no leídos",  theme.GREEN),
-        ]):
+        for col, (key, label, color) in enumerate(KPI_DEFS):
             self._kpi_widgets[key] = self._build_kpi_card(kpis_grid, col, label, color)
 
-        # ── Accesos rápidos ─────────────────────────────────────────────────
-        nav_section = ctk.CTkFrame(wrapper, fg_color="transparent")
-        nav_section.pack(fill="x", padx=24, pady=(24, 8))
+        # ─── Accesos rápidos ──────────────────────────────────────────────
+        self._section_label(wrapper, "ACCESOS RÁPIDOS", pady_top=theme.SPACE_6)
 
-        ctk.CTkLabel(
-            nav_section, text="ACCESOS RÁPIDOS",
-            font=(theme.FONT_FAMILY, 10, "bold"),
-            text_color=theme.TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(0, 8))
-
-        nav_grid = ctk.CTkFrame(nav_section, fg_color="transparent")
-        nav_grid.pack(fill="x")
+        nav_grid = ctk.CTkFrame(wrapper, fg_color="transparent")
+        nav_grid.pack(fill="x", padx=theme.SPACE_6)
         for col in range(3):
             nav_grid.grid_columnconfigure(col, weight=1, uniform="nav")
 
@@ -106,22 +93,21 @@ class HomeView(ctk.CTkFrame):
             row, col = divmod(i, 3)
             self._build_nav_card(nav_grid, row, col, c)
 
-        # Footer con info de versión + copyright + link al portfolio
+        # Footer con copyright + link al portfolio
         footer = ctk.CTkFrame(wrapper, fg_color="transparent")
-        footer.pack(fill="x", padx=24, pady=(28, 20))
+        footer.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_8, theme.SPACE_5))
 
         row = ctk.CTkFrame(footer, fg_color="transparent")
         row.pack(anchor="center")
 
         ctk.CTkLabel(
             row, text="DocFlow Lite v0.1  ·  hecho por  ",
-            font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED,
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
         ).pack(side="left")
 
         link = ctk.CTkLabel(
             row, text="jparedesDS",
-            font=(theme.FONT_FAMILY, 10, "bold"),
-            text_color=theme.ACCENT, cursor="hand2",
+            font=theme.FONT_TINY_BOLD, text_color=theme.ACCENT, cursor="hand2",
         )
         link.pack(side="left")
         link.bind("<Button-1>", lambda _e: webbrowser.open(PORTFOLIO_URL))
@@ -130,63 +116,96 @@ class HomeView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             row, text="  ·  © 2026  ·  Todos los derechos reservados",
-            font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED,
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
         ).pack(side="left")
+
+    def _section_label(self, parent, text: str, pady_top: int) -> None:
+        """Label de sección uppercase con letter-spacing visual."""
+        ctk.CTkLabel(
+            parent, text=text,
+            font=theme.FONT_LABEL,
+            text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(anchor="w", padx=theme.SPACE_6, pady=(pady_top, theme.SPACE_2))
+
+    # ── KPI Card ─────────────────────────────────────────────────────────────
 
     def _build_kpi_card(self, parent, col: int, label: str, color: str) -> ctk.CTkLabel:
         card = ctk.CTkFrame(
-            parent, fg_color=theme.BG_CARD, corner_radius=10,
-            border_width=1, border_color=theme.BORDER,
+            parent,
+            fg_color=theme.BG_CARD,
+            corner_radius=theme.RADIUS_LG,
+            border_width=1,
+            border_color=theme.BORDER,
         )
-        card.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 6, 0))
+        card.grid(
+            row=0, column=col, sticky="nsew",
+            padx=(0 if col == 0 else theme.SPACE_2, 0),
+            pady=0,
+        )
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=14, pady=12)
+        inner.pack(fill="both", expand=True, padx=theme.SPACE_4, pady=theme.SPACE_4)
 
+        # Etiqueta uppercase arriba
+        ctk.CTkLabel(
+            inner, text=label.upper(),
+            font=theme.FONT_LABEL,
+            text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(anchor="w")
+
+        # Valor grande
         value_lbl = ctk.CTkLabel(
-            inner, text="—", font=(theme.FONT_FAMILY, 22, "bold"),
+            inner, text="—",
+            font=(theme.FONT_FAMILY, 24, "bold"),
             text_color=color, anchor="w",
         )
-        value_lbl.pack(anchor="w")
-
-        ctk.CTkLabel(
-            inner, text=label.upper(), font=(theme.FONT_FAMILY, 9, "bold"),
-            text_color=theme.TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(4, 0))
+        value_lbl.pack(anchor="w", pady=(theme.SPACE_2, 0))
 
         return value_lbl
 
+    # ── Nav Card ─────────────────────────────────────────────────────────────
+
     def _build_nav_card(self, parent, row: int, col: int, c: dict) -> None:
         card = ctk.CTkFrame(
-            parent, fg_color=theme.BG_CARD, corner_radius=12,
-            border_width=1, border_color=theme.BORDER,
+            parent,
+            fg_color=theme.BG_CARD,
+            corner_radius=theme.RADIUS_LG,
+            border_width=1,
+            border_color=theme.BORDER,
             cursor="hand2",
         )
-        card.grid(row=row, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0), pady=(0, 8))
+        card.grid(
+            row=row, column=col, sticky="nsew",
+            padx=(0 if col == 0 else theme.SPACE_3, 0),
+            pady=(0, theme.SPACE_3),
+        )
 
         inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=18, pady=16)
+        inner.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=theme.SPACE_5)
 
-        # Icono + título en fila
-        title_row = ctk.CTkFrame(inner, fg_color="transparent")
-        title_row.pack(fill="x")
-        ctk.CTkLabel(
-            title_row, text=c["icon"],
+        # Icono en círculo soft
+        icon_row = ctk.CTkFrame(inner, fg_color="transparent")
+        icon_row.pack(fill="x")
+
+        icon_label = ctk.CTkLabel(
+            icon_row, text=c["icon"],
             font=(theme.FONT_FAMILY, 20, "bold"),
-            text_color=c["color"], anchor="w",
-        ).pack(side="left")
+            text_color=c["color"], width=32, anchor="w",
+        )
+        icon_label.pack(side="left")
+
         ctk.CTkLabel(
-            title_row, text=c["title"],
-            font=(theme.FONT_FAMILY, 14, "bold"),
+            icon_row, text=c["title"],
+            font=(theme.FONT_FAMILY, 15, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(side="left", padx=(8, 0))
+        ).pack(side="left", padx=(theme.SPACE_1, 0))
 
         desc_lbl = ctk.CTkLabel(
             inner, text=c["base_desc"],
-            font=(theme.FONT_FAMILY, 11),
+            font=theme.FONT_SMALL,
             text_color=theme.TEXT_SUB, anchor="w", justify="left", wraplength=320,
         )
-        desc_lbl.pack(anchor="w", pady=(8, 0))
+        desc_lbl.pack(anchor="w", pady=(theme.SPACE_2, 0))
         self._card_descs[c["key"]] = desc_lbl
 
         # Hover + click handlers para toda la card
@@ -199,7 +218,7 @@ class HomeView(ctk.CTkFrame):
         def _click(_evt, key=c["key"]):
             self._on_navigate(key)
 
-        for widget in (card, inner, title_row, desc_lbl):
+        for widget in (card, inner, icon_row, icon_label, desc_lbl):
             widget.bind("<Enter>", _enter)
             widget.bind("<Leave>", _leave)
             widget.bind("<Button-1>", _click)
@@ -207,8 +226,6 @@ class HomeView(ctk.CTkFrame):
     # ── Carga de datos asíncrona ─────────────────────────────────────────────
 
     def _reload_kpis_async(self) -> None:
-        """Carga todos los KPIs en background."""
-        # Set inicial "Cargando…"
         for lbl in self._kpi_widgets.values():
             lbl.configure(text="…")
 
@@ -219,7 +236,6 @@ class HomeView(ctk.CTkFrame):
                 docs = monitoring_service.get_monitoring_data()
                 kpis = monitoring_service.compute_kpis(docs)
                 results["total"] = kpis.get("total", 0)
-                # Pendientes = no aprobados (todo lo que sea ESTADOS_PENDIENTES o sin enviar)
                 results["pendientes"] = (
                     kpis.get("enviados", 0) + kpis.get("devoluciones", 0)
                     + kpis.get("sin_enviar", 0)
@@ -241,7 +257,6 @@ class HomeView(ctk.CTkFrame):
             except Exception as exc:
                 logger.warning("KPI tareas falló: %s", exc)
 
-            # Inbox unread es opcional (depende de IMAP). Si falla, no mostramos.
             try:
                 from core.services import inbox as inbox_service
                 emails = inbox_service.list_emails(filter="unread", limit=200)
@@ -258,7 +273,7 @@ class HomeView(ctk.CTkFrame):
             val = results.get(key)
             lbl.configure(text=str(val) if val is not None else "—")
 
-        # Enriquecer descripciones de cards con datos en vivo
+        # Enriquecer descripciones de cards con datos vivos
         if "tareas" in results:
             n = results["tareas"]
             self._card_descs["agenda"].configure(
@@ -282,7 +297,6 @@ class HomeView(ctk.CTkFrame):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _greeting() -> str:
-    """Saludo según la hora actual."""
     h = datetime.now().hour
     if 6 <= h < 12:
         prefix = "Buenos días"

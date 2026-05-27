@@ -33,66 +33,65 @@ class ReclamacionesView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 6))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
             header, text="Reclamaciones", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
-            text="Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente.",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            text="Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
-        toolbar.pack(fill="x", padx=24, pady=(12, 8))
+        toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_2))
+
+        # Secondary buttons (Recargar / Preview / Enviar todas)
+        _SECONDARY = dict(
+            font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+        )
 
         self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻ Recargar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._reload,
+            toolbar, text="↻  Recargar", **_SECONDARY, command=self._reload,
         )
         self.btn_reload.pack(side="left")
 
         self.btn_preview = ctk.CTkButton(
-            toolbar, text="👁 Preview", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            toolbar, text="👁  Preview", **_SECONDARY,
             state="disabled", command=self._open_preview,
         )
-        self.btn_preview.pack(side="left", padx=(8, 0))
+        self.btn_preview.pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.btn_send_selected = ctk.CTkButton(
-            toolbar, text="📤 Enviar seleccionadas", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
+            toolbar, text="Enviar seleccionadas", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            text_color="#FFFFFF",
             state="disabled", command=self._send_selected,
         )
-        self.btn_send_selected.pack(side="left", padx=(8, 0))
+        self.btn_send_selected.pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.btn_send_all = ctk.CTkButton(
-            toolbar, text="📤 Enviar todas", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            toolbar, text="Enviar todas", **_SECONDARY,
             state="disabled", command=self._send_all,
         )
-        self.btn_send_all.pack(side="left", padx=(8, 0))
+        self.btn_send_all.pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.lbl_count = ctk.CTkLabel(
-            toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+            toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
         )
         self.lbl_count.pack(side="right")
 
         # Status line
         self.lbl_status = ctk.CTkLabel(
-            self, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED, anchor="w",
+            self, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
         )
-        self.lbl_status.pack(fill="x", padx=24)
+        self.lbl_status.pack(fill="x", padx=theme.SPACE_6)
 
         # Tabla con selección múltiple
         self.table = DataTable(
@@ -100,7 +99,7 @@ class ReclamacionesView(ctk.CTkFrame):
             on_double_click=self._on_row_double,
             selectmode="extended",
         )
-        self.table.pack(fill="both", expand=True, padx=24, pady=(8, 24))
+        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
             "Pedido": 120, "Cliente": 220, "Docs": 60, "Días": 80,
             "Urgencia": 100, "Nivel propuesto": 130, "Último envío": 140, "Reclamaciones": 110,
@@ -181,7 +180,7 @@ class ReclamacionesView(ctk.CTkFrame):
         self.btn_preview.configure(state="normal" if n == 1 else "disabled")
         self.btn_send_selected.configure(
             state="normal" if n >= 1 else "disabled",
-            text=f"📤 Enviar seleccionada{'s' if n != 1 else ''} ({n})" if n else "📤 Enviar seleccionadas",
+            text=f"Enviar seleccionada{'s' if n != 1 else ''} ({n})" if n else "Enviar seleccionadas",
         )
 
     def _open_preview(self) -> None:

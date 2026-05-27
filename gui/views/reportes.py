@@ -61,21 +61,21 @@ class ReportesView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 6))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
-            header, text="Reportes", font=theme.FONT_TITLE,
+            header, text="Centro de Reportes", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text="Genera Excels, envía resúmenes por email y programa automatizaciones.",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            header, text="Excels · resúmenes por email · programación automática",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Status line global
         self.lbl_status = ctk.CTkLabel(
-            self, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED, anchor="w",
+            self, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
         )
-        self.lbl_status.pack(fill="x", padx=24, pady=(8, 0))
+        self.lbl_status.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, 0))
 
         # Tabs
         self.tabs = ctk.CTkTabview(
@@ -87,7 +87,8 @@ class ReportesView(ctk.CTkFrame):
             segmented_button_unselected_hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_MAIN,
         )
-        self.tabs.pack(fill="both", expand=True, padx=20, pady=(12, 16))
+        self.tabs.pack(fill="both", expand=True,
+                        padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
         self.tab_excels = self.tabs.add("Excels")
         self.tab_summaries = self.tabs.add("Resúmenes por email")

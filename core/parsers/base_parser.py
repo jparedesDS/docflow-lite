@@ -396,8 +396,32 @@ def compute_recipients(df) -> tuple[list[str], list[str]]:
     return sorted(to_set), sorted(cc_set)
 
 
-def _load_logo_b64() -> str | None:
-    """Intenta cargar el logo EIPSA con fondo transparente, como base64."""
+def _is_dark_color(hex_color: str) -> bool:
+    """Devuelve True si el color hex tiene luminancia baja (fondo oscuro)."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return False
+    try:
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except ValueError:
+        return False
+    # Luminancia perceptual (rec. 709)
+    lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    return lum < 128
+
+
+def _load_logo_b64(bg_color: str | None = None) -> str | None:
+    """Carga el logo EIPSA como base64 (PNG), profesional sobre cualquier fondo.
+
+    Estrategia:
+    1. Carga el PNG con alpha.
+    2. Elimina fondo blanco/casi-blanco → transparente (limpia el halo).
+    3. Si `bg_color` es oscuro: convierte la silueta del logo a BLANCO
+       (convención corporativa estándar — version 'reverse' del logo).
+       Esto garantiza máximo contraste sobre header navy/dark.
+       Si `bg_color` es claro o None: preserva los colores originales.
+    4. Compone sobre `bg_color` si se proporciona, devolviendo PNG opaco.
+    """
     import base64, os, io
     try:
         from PIL import Image
@@ -408,36 +432,50 @@ def _load_logo_b64() -> str | None:
         r"M:\Comunes\JOSE\07 LOGOTIPOS\EIPSA NEW LOGO, CORTADO.png",
         os.path.join(os.path.dirname(__file__), "..", "..", "assets", "eipsa_logo.png"),
     ]
-    TARGET_HEIGHT = 48  # px — tamaño final intrínseco
+    TARGET_HEIGHT = 80
+
+    invert_to_white = bool(bg_color and _is_dark_color(bg_color))
 
     for path in candidates:
         try:
             with open(path, "rb") as f:
                 raw = f.read()
 
-            if Image:
-                img = Image.open(io.BytesIO(raw)).convert("RGBA")
+            if Image is None:
+                return base64.b64encode(raw).decode()
 
-                # Eliminar fondo blanco/casi-blanco
-                WHITE_THRESH = 230
-                data = img.getdata()
-                new_data = [
-                    (255, 255, 255, 0) if r > WHITE_THRESH and g > WHITE_THRESH and b > WHITE_THRESH
-                    else (r, g, b, a)
-                    for r, g, b, a in data
-                ]
-                img.putdata(new_data)
+            img = Image.open(io.BytesIO(raw)).convert("RGBA")
 
-                # Redimensionar
-                ratio = TARGET_HEIGHT / img.height
-                new_size = (int(img.width * ratio), TARGET_HEIGHT)
-                img = img.resize(new_size, Image.LANCZOS)
+            # 1. Limpiar fondo blanco/casi-blanco + (opcional) invertir silueta a blanco
+            WHITE_THRESH = 230
+            data = img.getdata()
+            new_data = []
+            for r, g, b, a in data:
+                if r > WHITE_THRESH and g > WHITE_THRESH and b > WHITE_THRESH:
+                    # Fondo blanco → transparente
+                    new_data.append((255, 255, 255, 0))
+                elif invert_to_white and a > 0:
+                    # Sobre fondo oscuro: mapear cualquier color del logo a blanco
+                    # preservando el alpha del original (mantiene anti-aliasing limpio)
+                    new_data.append((255, 255, 255, a))
+                else:
+                    new_data.append((r, g, b, a))
+            img.putdata(new_data)
 
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                raw = buf.getvalue()
+            # 2. Redimensionar manteniendo proporción
+            ratio = TARGET_HEIGHT / img.height
+            new_size = (max(1, int(img.width * ratio)), TARGET_HEIGHT)
+            img = img.resize(new_size, Image.LANCZOS)
 
-            return base64.b64encode(raw).decode()
+            # 3. Composite sobre color del header (sin alpha)
+            if bg_color:
+                bg = Image.new("RGB", img.size, bg_color)
+                bg.paste(img, mask=img.split()[3])
+                img = bg
+
+            buf = io.BytesIO()
+            img.save(buf, format="PNG", optimize=True)
+            return base64.b64encode(buf.getvalue()).decode()
         except Exception:
             continue
     return None
@@ -466,16 +504,18 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
         "May","mayo").replace("June","junio").replace("July","julio").replace("August","agosto").replace(
         "September","septiembre").replace("October","octubre").replace("November","noviembre").replace("December","diciembre")
 
-    # ── Logo ──
-    logo_b64 = _load_logo_b64()
+    # ── Logo: compuesto sobre el navy del header en backend (PIL), sin caja ──
+    logo_b64 = _load_logo_b64(bg_color=NAVY)
     if logo_b64:
         logo_html = (
-            f'<img src="data:image/png;base64,{logo_b64}" '
-            f'alt="DocFlow" style="display:block;height:24px;width:auto;" />'
+            f'<img src="data:image/png;base64,{logo_b64}" alt="EIPSA" '
+            f'style="display:block;height:34px;width:auto;border:0;outline:0;" />'
         )
     else:
+        # Fallback texto si no hay logo disponible
         logo_html = (
-            f'<span style="font-size:18px;font-weight:900;color:#FFFFFF;letter-spacing:1px;">DocFlow</span>'
+            f'<span style="font-size:18px;font-weight:800;color:#FFFFFF;'
+            f'letter-spacing:1.2px;">EIPSA</span>'
         )
 
     # ── Info del pedido: tarjetas en grid 3 columnas ──

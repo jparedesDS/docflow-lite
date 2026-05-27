@@ -54,101 +54,105 @@ class DocumentosView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=24, pady=(20, 4))
+        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
         ctk.CTkLabel(
             header, text="Documentos", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
-            header, text="Vista de monitorización — data_erp.xlsx + consulta_erp.xlsx.",
-            font=theme.FONT_BODY, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(2, 0))
+            header, text="Vista de monitorización · data_erp + consulta_erp",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # KPIs
         self.kpi_row = ctk.CTkFrame(self, fg_color="transparent")
-        self.kpi_row.pack(fill="x", padx=24, pady=(14, 8))
+        self.kpi_row.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_4, theme.SPACE_2))
         self._build_kpi_cards()
 
-        # Filtros
-        filters = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=10, border_width=1, border_color=theme.BORDER)
-        filters.pack(fill="x", padx=24, pady=(8, 8))
+        # Filtros (caja minimal, sin background card)
+        filters = ctk.CTkFrame(self, fg_color="transparent")
+        filters.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_2))
 
-        inner = ctk.CTkFrame(filters, fg_color="transparent")
-        inner.pack(fill="x", padx=12, pady=12)
-
-        self.ent_q = self._make_entry(inner, "Buscar (Nº Doc, Título, Cliente…)")
-        self.ent_q.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.ent_q = self._make_entry(filters, "Buscar (Nº Doc, Título, Cliente…)")
+        self.ent_q.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
         self.ent_q.bind("<KeyRelease>", lambda e: self._debounced_search())
 
-        self.ent_pedido = self._make_entry(inner, "Nº Pedido", width=140)
-        self.ent_pedido.pack(side="left", padx=(0, 6))
+        self.ent_pedido = self._make_entry(filters, "Nº Pedido", width=130)
+        self.ent_pedido.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_pedido.bind("<KeyRelease>", lambda e: self._debounced_search())
 
-        self.ent_cliente = self._make_entry(inner, "Cliente", width=140)
-        self.ent_cliente.pack(side="left", padx=(0, 6))
+        self.ent_cliente = self._make_entry(filters, "Cliente", width=130)
+        self.ent_cliente.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_cliente.bind("<KeyRelease>", lambda e: self._debounced_search())
 
-        self.ent_resp = self._make_entry(inner, "Responsable (JP)", width=150)
-        self.ent_resp.pack(side="left", padx=(0, 6))
+        self.ent_resp = self._make_entry(filters, "Responsable (JP)", width=140)
+        self.ent_resp.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_resp.bind("<KeyRelease>", lambda e: self._debounced_search())
 
         ctk.CTkButton(
-            inner, text="✕", width=36, height=34, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_SUB, font=theme.FONT_BUTTON,
+            filters, text="Limpiar", width=70,
+            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_SUB, font=theme.FONT_SMALL_BOLD,
+            border_width=1, border_color=theme.BORDER,
             command=self._clear_filters,
-        ).pack(side="left", padx=(0, 6))
+        ).pack(side="left", padx=(0, theme.SPACE_2))
 
         ctk.CTkButton(
-            inner, text="↻", width=36, height=34, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
+            filters, text="↻", width=36,
+            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_SUB, font=theme.FONT_BUTTON,
+            border_width=1, border_color=theme.BORDER,
             command=self._hard_refresh,
         ).pack(side="left")
 
         # Status + paginación
         bar = ctk.CTkFrame(self, fg_color="transparent")
-        bar.pack(fill="x", padx=24, pady=(6, 4))
+        bar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_1))
 
         self.lbl_status = ctk.CTkLabel(
-            bar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED, anchor="w",
+            bar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
         )
         self.lbl_status.pack(side="left")
 
-        # Pager (right side)
         pager = ctk.CTkFrame(bar, fg_color="transparent")
         pager.pack(side="right")
         self.btn_prev = ctk.CTkButton(
-            pager, text="‹", width=32, height=28, corner_radius=6,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER, text_color=theme.TEXT_SUB,
-            font=theme.FONT_BUTTON, command=lambda: self._goto_page(self._page - 1),
+            pager, text="‹", width=30,
+            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
+            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
+            font=theme.FONT_BUTTON, border_width=1, border_color=theme.BORDER,
+            command=lambda: self._goto_page(self._page - 1),
         )
-        self.btn_prev.pack(side="left", padx=2)
+        self.btn_prev.pack(side="left", padx=theme.SPACE_1)
 
         self.lbl_page = ctk.CTkLabel(
-            pager, text="—", font=theme.FONT_BODY, text_color=theme.TEXT_SUB, width=110,
+            pager, text="—", font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, width=100,
         )
-        self.lbl_page.pack(side="left", padx=4)
+        self.lbl_page.pack(side="left", padx=theme.SPACE_1)
 
         self.btn_next = ctk.CTkButton(
-            pager, text="›", width=32, height=28, corner_radius=6,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER, text_color=theme.TEXT_SUB,
-            font=theme.FONT_BUTTON, command=lambda: self._goto_page(self._page + 1),
+            pager, text="›", width=30,
+            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
+            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
+            font=theme.FONT_BUTTON, border_width=1, border_color=theme.BORDER,
+            command=lambda: self._goto_page(self._page + 1),
         )
-        self.btn_next.pack(side="left", padx=2)
+        self.btn_next.pack(side="left", padx=theme.SPACE_1)
 
         # Table
         self.table = DataTable(self, columns=VISIBLE_COLUMNS, on_double_click=self._on_row_double)
-        self.table.pack(fill="both", expand=True, padx=24, pady=(4, 24))
+        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self._setup_table_columns()
         self._setup_row_tags()
-        # Click en cabecera → ordenar
         for col in VISIBLE_COLUMNS:
             self.table.tree.heading(col, text=col, command=lambda c=col: self._on_sort(c))
 
     def _make_entry(self, parent, placeholder: str, width: int | None = None) -> ctk.CTkEntry:
         kwargs = dict(
-            placeholder_text=placeholder, height=34, corner_radius=8,
+            placeholder_text=placeholder,
+            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
             fg_color=theme.BG_INPUT, border_color=theme.BORDER,
             text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
         )
@@ -160,25 +164,28 @@ class DocumentosView(ctk.CTkFrame):
         self.kpi_widgets: dict[str, dict] = {}
         for col, (key, label, color) in enumerate(KPI_DEFS):
             card = ctk.CTkFrame(
-                self.kpi_row, fg_color=theme.BG_CARD, corner_radius=10,
-                border_width=1, border_color=theme.BORDER, height=70, cursor="hand2",
+                self.kpi_row, fg_color=theme.BG_CARD,
+                corner_radius=theme.RADIUS_MD,
+                border_width=1, border_color=theme.BORDER,
+                height=72, cursor="hand2",
             )
-            card.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 6, 0))
+            card.grid(row=0, column=col, sticky="nsew",
+                      padx=(0 if col == 0 else theme.SPACE_2, 0))
             card.grid_propagate(False)
 
             inner = ctk.CTkFrame(card, fg_color="transparent")
-            inner.pack(fill="both", expand=True, padx=12, pady=10)
+            inner.pack(fill="both", expand=True, padx=theme.SPACE_3, pady=theme.SPACE_3)
 
             lbl_label = ctk.CTkLabel(
-                inner, text=label.upper(), font=(theme.FONT_FAMILY, 9, "bold"),
+                inner, text=label.upper(), font=theme.FONT_LABEL,
                 text_color=theme.TEXT_MUTED, anchor="w",
             )
             lbl_label.pack(anchor="w")
             lbl_value = ctk.CTkLabel(
-                inner, text="—", font=(theme.FONT_FAMILY, 18, "bold"),
+                inner, text="—", font=(theme.FONT_FAMILY, 20, "bold"),
                 text_color=color, anchor="w",
             )
-            lbl_value.pack(anchor="w", pady=(2, 0))
+            lbl_value.pack(anchor="w", pady=(theme.SPACE_1, 0))
 
             for w in (card, inner, lbl_label, lbl_value):
                 w.bind("<Button-1>", lambda e, k=key: self._toggle_kpi(k))

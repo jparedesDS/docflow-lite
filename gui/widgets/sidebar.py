@@ -1,4 +1,4 @@
-"""Sidebar de navegación — frame fijo a la izquierda con botones de sección."""
+"""Sidebar de navegación premium — indicador vertical de item activo + hover sutil."""
 
 import webbrowser
 
@@ -10,14 +10,14 @@ PORTFOLIO_URL = "https://jparedesds.github.io/"
 
 
 class Sidebar(ctk.CTkFrame):
-    """Sidebar con header, lista de botones, toggle de tema y footer.
+    """Sidebar con header, lista de items (barra activa lateral), toggle tema y footer.
 
     Cada item es un dict con: key, label, icon (opcional).
     `on_select(key)` se invoca al hacer click.
     `on_toggle_theme()` (opcional) se invoca al pulsar el toggle de tema.
     """
 
-    WIDTH = 220
+    WIDTH = 232
 
     def __init__(
         self, master, items: list[dict], on_select,
@@ -35,53 +35,39 @@ class Sidebar(ctk.CTkFrame):
 
         self._on_select = on_select
         self._on_toggle_theme = on_toggle_theme
-        self._buttons: dict[str, ctk.CTkButton] = {}
+        self._items: dict[str, dict] = {}
         self._active_key: str | None = None
 
-        # ── Brand header ────────────────────────────────────────────────────
-        header = ctk.CTkFrame(self, fg_color="transparent", height=64)
-        header.pack(fill="x", padx=18, pady=(18, 8))
-        header.pack_propagate(False)
+        # ── Brand header ──────────────────────────────────────────────────
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=theme.SPACE_5, pady=(theme.SPACE_5, theme.SPACE_2))
 
         ctk.CTkLabel(
             header,
             text="◆  DocFlow",
-            font=(theme.FONT_FAMILY, 18, "bold"),
+            font=(theme.FONT_FAMILY, 17, "bold"),
             text_color=theme.TEXT_MAIN,
             anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
             header,
             text="Lite",
-            font=(theme.FONT_FAMILY, 11),
+            font=(theme.FONT_FAMILY, 10, "bold"),
             text_color=theme.ACCENT,
             anchor="w",
         ).pack(anchor="w")
 
-        # Separador
+        # Separador sutil
         sep = ctk.CTkFrame(self, fg_color=theme.BORDER, height=1)
-        sep.pack(fill="x", padx=14, pady=(4, 14))
+        sep.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_3, theme.SPACE_3))
 
-        # ── Botones ─────────────────────────────────────────────────────────
+        # ── Items con barra de activo ─────────────────────────────────────
         for item in items:
-            btn = ctk.CTkButton(
-                self,
-                text=f"  {item.get('icon', '')}   {item['label']}",
-                anchor="w",
-                font=theme.FONT_BUTTON,
-                height=42,
-                corner_radius=10,
-                fg_color="transparent",
-                hover_color=theme.BG_INPUT,
-                text_color=theme.TEXT_SUB,
-                command=lambda k=item["key"]: self._handle_click(k),
-            )
-            btn.pack(fill="x", padx=12, pady=2)
-            self._buttons[item["key"]] = btn
+            self._build_nav_item(item)
 
-        # ── Footer (anclado abajo) ──────────────────────────────────────────
+        # ── Footer (anclado abajo) ────────────────────────────────────────
         footer_box = ctk.CTkFrame(self, fg_color="transparent")
-        footer_box.pack(side="bottom", fill="x", padx=12, pady=14)
+        footer_box.pack(side="bottom", fill="x", padx=theme.SPACE_3, pady=theme.SPACE_4)
 
         # Toggle de tema
         if on_toggle_theme is not None:
@@ -90,16 +76,17 @@ class Sidebar(ctk.CTkFrame):
             ctk.CTkButton(
                 footer_box, text=toggle_text, anchor="w",
                 font=(theme.FONT_FAMILY, 11),
-                height=32, corner_radius=8,
+                height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
                 fg_color="transparent", hover_color=theme.BG_INPUT,
-                text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
+                text_color=theme.TEXT_SUB,
+                border_width=1, border_color=theme.BORDER,
                 command=on_toggle_theme,
-            ).pack(fill="x", pady=(0, 8))
+            ).pack(fill="x", padx=theme.SPACE_2, pady=(0, theme.SPACE_2))
 
-        # Footer text con link al portfolio (jparedesDS clicable)
+        # Footer text con link al portfolio
         if footer:
             credit_row = ctk.CTkFrame(footer_box, fg_color="transparent")
-            credit_row.pack(anchor="w", padx=6)
+            credit_row.pack(anchor="w", padx=theme.SPACE_3, pady=(theme.SPACE_1, 0))
 
             ctk.CTkLabel(
                 credit_row, text="© 2026  ",
@@ -116,6 +103,42 @@ class Sidebar(ctk.CTkFrame):
             link.bind("<Enter>", lambda _e: link.configure(text_color=theme.ACCENT_HOVER))
             link.bind("<Leave>", lambda _e: link.configure(text_color=theme.ACCENT))
 
+    # ── Construcción de cada item ─────────────────────────────────────────
+
+    def _build_nav_item(self, item: dict) -> None:
+        """Cada item es un frame con: barra activa (3px) + botón.
+
+        La barra se hace visible cuando el item está activo.
+        """
+        key = item["key"]
+
+        # Container con la barra lateral + botón
+        row = ctk.CTkFrame(self, fg_color="transparent", height=theme.HEIGHT_BUTTON + 4)
+        row.pack(fill="x", padx=(0, theme.SPACE_2), pady=1)
+        row.pack_propagate(False)
+
+        # Barra vertical de indicador activo (3px ancho)
+        bar = ctk.CTkFrame(row, width=3, fg_color="transparent", corner_radius=0)
+        bar.pack(side="left", fill="y")
+        bar.pack_propagate(False)
+
+        # Botón principal
+        btn = ctk.CTkButton(
+            row,
+            text=f"  {item.get('icon', '')}   {item['label']}",
+            anchor="w",
+            font=theme.FONT_BUTTON,
+            height=theme.HEIGHT_BUTTON,
+            corner_radius=theme.RADIUS_MD,
+            fg_color="transparent",
+            hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_SUB,
+            command=lambda k=key: self._handle_click(k),
+        )
+        btn.pack(side="left", fill="both", expand=True, padx=(theme.SPACE_1, 0))
+
+        self._items[key] = {"row": row, "bar": bar, "btn": btn}
+
     def _handle_click(self, key: str) -> None:
         self.set_active(key)
         self._on_select(key)
@@ -124,8 +147,18 @@ class Sidebar(ctk.CTkFrame):
         if self._active_key == key:
             return
         self._active_key = key
-        for k, btn in self._buttons.items():
+        for k, item in self._items.items():
             if k == key:
-                btn.configure(fg_color=theme.ACCENT, text_color="white", hover_color=theme.ACCENT_HOVER)
+                item["bar"].configure(fg_color=theme.ACCENT)
+                item["btn"].configure(
+                    fg_color=theme.ACCENT_SOFT,
+                    text_color=theme.TEXT_MAIN,
+                    hover_color=theme.ACCENT_SOFT,
+                )
             else:
-                btn.configure(fg_color="transparent", text_color=theme.TEXT_SUB, hover_color=theme.BG_INPUT)
+                item["bar"].configure(fg_color="transparent")
+                item["btn"].configure(
+                    fg_color="transparent",
+                    text_color=theme.TEXT_SUB,
+                    hover_color=theme.BG_INPUT,
+                )
