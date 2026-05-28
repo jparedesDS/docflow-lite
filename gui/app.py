@@ -26,12 +26,14 @@ class DocFlowLiteApp(ctk.CTk):
         {"key": "reportes",      "label": "Centro de Reportes","icon": "📊"},
     ]
 
-    def __init__(self):
+    def __init__(self, current_user: dict | None = None):
         # Aplicar tema según preferencia persistida
         from core.preferences import get_theme
         mode = get_theme()
         ctk.set_appearance_mode(mode)
         ctk.set_default_color_theme("dark-blue" if mode == "dark" else "blue")
+
+        self.current_user = current_user or {}
 
         super().__init__(fg_color=theme.BG_PAGE)
         self.title(self.TITLE)
@@ -70,12 +72,15 @@ class DocFlowLiteApp(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Sidebar
+        nombre = self.current_user.get("nombre") or "Usuario"
+        initials = self.current_user.get("initials") or "—"
         self.sidebar = Sidebar(
             self,
             items=self.NAV_ITEMS,
             on_select=self.navigate,
             on_toggle_theme=self._toggle_theme,
-            footer="© 2026 Jose Paredes",
+            current_user_label=f"{nombre} ({initials})",
+            on_logout=self._logout,
         )
         self.sidebar.grid(row=0, column=0, sticky="ns")
 
@@ -211,3 +216,16 @@ class DocFlowLiteApp(ctk.CTk):
         except Exception:
             pass
         os._exit(0)
+
+    # ── Logout ────────────────────────────────────────────────────────────────
+
+    def _logout(self) -> None:
+        """Cierra sesión: reinicia la app para volver a la pantalla de login."""
+        from tkinter import messagebox
+        if not messagebox.askyesno(
+            "Cerrar sesión",
+            "¿Cerrar sesión y volver al login?",
+            parent=self,
+        ):
+            return
+        self._restart_app()
