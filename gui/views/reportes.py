@@ -93,10 +93,12 @@ class ReportesView(ctk.CTkFrame):
         self.tab_excels = self.tabs.add("Excels")
         self.tab_summaries = self.tabs.add("Resúmenes por email")
         self.tab_scheduled = self.tabs.add("Programados")
+        self.tab_data = self.tabs.add("Fuente de datos")
 
         self._build_tab_excels(self.tab_excels)
         self._build_tab_summaries(self.tab_summaries)
         self._build_tab_scheduled(self.tab_scheduled)
+        self._build_tab_data(self.tab_data)
 
     # ════════════════════════════════════════════════════════════════════════
     #  TAB 1: EXCELS
@@ -526,6 +528,226 @@ class ReportesView(ctk.CTkFrame):
     def _open_edit_dialog(self, sched: dict) -> None:
         EditScheduleDialog(self, sched=sched, on_save=self._reload_schedules)
 
+    # ════════════════════════════════════════════════════════════════════════
+    #  TAB 4: FUENTE DE DATOS
+    # ════════════════════════════════════════════════════════════════════════
+
+    def _build_tab_data(self, parent) -> None:
+        # Aviso
+        info = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD,
+                            border_width=1, border_color=theme.BORDER)
+        info.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_3))
+        ctk.CTkLabel(
+            info,
+            text=("ℹ  Estos archivos alimentan Documentos, Reclamaciones y todos los reportes. "
+                  "Importa una copia local o vincula una ruta de red para que se actualice automáticamente."),
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+            anchor="w", justify="left", wraplength=820,
+        ).pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
+
+        # Container con scroll
+        self.data_scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.data_scroll.pack(fill="both", expand=True)
+
+        self._data_cards: dict[str, dict] = {}
+        self._reload_data_cards()
+
+    def _reload_data_cards(self) -> None:
+        for w in self.data_scroll.winfo_children():
+            w.destroy()
+        self._data_cards.clear()
+        try:
+            from core import data_source
+            statuses = data_source.get_all_status()
+        except Exception as exc:
+            logger.exception("Error data_source.get_all_status")
+            ctk.CTkLabel(
+                self.data_scroll, text=f"Error cargando estado: {exc}",
+                font=theme.FONT_SMALL, text_color=theme.RED,
+            ).pack(pady=theme.SPACE_3)
+            return
+        for st in statuses:
+            self._data_cards[st["kind"]] = self._render_data_card(st)
+
+    def _render_data_card(self, st: dict) -> dict:
+        kind = st["kind"]
+        card = ctk.CTkFrame(
+            self.data_scroll, fg_color=theme.BG_CARD,
+            corner_radius=theme.RADIUS_LG,
+            border_width=1, border_color=theme.BORDER,
+        )
+        card.pack(fill="x", pady=(0, theme.SPACE_3))
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=theme.SPACE_4)
+
+        # Header: icono + título + badge de modo
+        title_row = ctk.CTkFrame(inner, fg_color="transparent")
+        title_row.pack(fill="x")
+
+        ctk.CTkLabel(
+            title_row, text="◫", font=(theme.FONT_FAMILY, 18, "bold"),
+            text_color=theme.BLUE, width=28,
+        ).pack(side="left")
+
+        ctk.CTkLabel(
+            title_row, text=st["label"],
+            font=(theme.FONT_FAMILY, 14, "bold"),
+            text_color=theme.TEXT_MAIN, anchor="w",
+        ).pack(side="left", padx=(theme.SPACE_1, theme.SPACE_2))
+
+        # Badge de estado
+        mode = st["mode"]
+        if not st["exists"]:
+            badge_text, badge_color = "● No encontrado", theme.RED
+        elif mode == "linked":
+            badge_text, badge_color = "● Vinculado", theme.BLUE
+        elif mode == "linked_broken":
+            badge_text, badge_color = "● Vínculo roto", theme.RED
+        else:
+            badge_text, badge_color = "● Local", theme.GREEN
+
+        ctk.CTkLabel(
+            title_row, text=badge_text,
+            font=theme.FONT_SMALL_BOLD, text_color=badge_color,
+        ).pack(side="left")
+
+        # Path actual
+        path_lbl = ctk.CTkLabel(
+            inner, text=st["path"] or "(sin configurar)",
+            font=theme.FONT_MONO, text_color=theme.TEXT_SUB,
+            anchor="w", justify="left", wraplength=820,
+        )
+        path_lbl.pack(anchor="w", fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
+
+        # Tamaño + fecha modificación
+        if st["exists"]:
+            from datetime import datetime
+            try:
+                dt = datetime.fromisoformat(st["modified"])
+                mod_label = dt.strftime("%d %b %Y · %H:%M")
+            except Exception:
+                mod_label = st.get("modified", "—")
+            meta = f"{_fmt_size_bytes(st['size'])}  ·  modificado {mod_label}"
+        else:
+            meta = "Archivo no disponible"
+
+        ctk.CTkLabel(
+            inner, text=meta,
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(anchor="w", pady=(0, theme.SPACE_3))
+
+        # Acciones
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+        actions.pack(fill="x")
+
+        ctk.CTkButton(
+            actions, text="📥  Importar archivo…", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            text_color="#FFFFFF",
+            command=lambda k=kind: self._import_file(k),
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            actions, text="🔗  Vincular ruta…", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=lambda k=kind: self._link_path(k),
+        ).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        if st["mode"] in ("linked", "linked_broken"):
+            ctk.CTkButton(
+                actions, text="Quitar vínculo", font=theme.FONT_SMALL_BOLD,
+                height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+                fg_color="transparent", hover_color=theme.BG_INPUT,
+                text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
+                command=lambda k=kind: self._clear_link(k),
+            ).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        if st["exists"]:
+            ctk.CTkButton(
+                actions, text="Abrir carpeta", font=theme.FONT_SMALL_BOLD,
+                height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+                fg_color="transparent", hover_color=theme.BG_INPUT,
+                text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
+                command=lambda p=st["path"]: _open_path(str(Path(p).parent)),
+            ).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        return {"card": card}
+
+    # ── Acciones del tab Datos ───────────────────────────────────────────────
+
+    def _import_file(self, kind: str) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title=f"Importar {kind}.xlsx",
+            filetypes=[("Excel", "*.xlsx *.xlsm *.xls"), ("Todos", "*.*")],
+        )
+        if not path:
+            return
+        from core import data_source
+        from core.services import monitoring as monitoring_service
+        try:
+            target = data_source.import_file(kind, path)
+            monitoring_service.invalidate_cache()
+            self.lbl_status.configure(
+                text=f"✓  {data_source.label(kind)} importado · {target}",
+                text_color=theme.GREEN,
+            )
+            messagebox.showinfo(
+                "Importado",
+                f"✓ Archivo importado correctamente.\n\n"
+                f"Origen:  {path}\n"
+                f"Destino: {target}",
+                parent=self,
+            )
+        except Exception as exc:
+            logger.exception("Error importando %s", kind)
+            messagebox.showerror("Error", str(exc), parent=self)
+        self._reload_data_cards()
+
+    def _link_path(self, kind: str) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title=f"Vincular {kind}.xlsx (ruta externa)",
+            filetypes=[("Excel", "*.xlsx *.xlsm *.xls"), ("Todos", "*.*")],
+        )
+        if not path:
+            return
+        from core import data_source
+        from core.services import monitoring as monitoring_service
+        try:
+            data_source.set_linked_path(kind, path)
+            monitoring_service.invalidate_cache()
+            self.lbl_status.configure(
+                text=f"✓  {data_source.label(kind)} vinculado · {path}",
+                text_color=theme.GREEN,
+            )
+        except Exception as exc:
+            logger.exception("Error vinculando %s", kind)
+            messagebox.showerror("Error", str(exc), parent=self)
+        self._reload_data_cards()
+
+    def _clear_link(self, kind: str) -> None:
+        from core import data_source
+        from core.services import monitoring as monitoring_service
+        if not messagebox.askyesno(
+            "Quitar vínculo",
+            f"¿Quitar el vínculo de {data_source.label(kind)}?\n\n"
+            "La app volverá a usar la copia local (si existe).",
+            parent=self,
+        ):
+            return
+        data_source.clear_link(kind)
+        monitoring_service.invalidate_cache()
+        self.lbl_status.configure(
+            text=f"✓  Vínculo de {data_source.label(kind)} eliminado",
+            text_color=theme.TEXT_MUTED,
+        )
+        self._reload_data_cards()
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Diálogos
@@ -948,12 +1170,21 @@ class EditScheduleDialog(ctk.CTkToplevel):
 
 def _fmt_size(path: str) -> str:
     try:
-        size = os.path.getsize(path)
+        return _fmt_size_bytes(os.path.getsize(path))
+    except Exception:
+        return ""
+
+
+def _fmt_size_bytes(size: int | float) -> str:
+    try:
+        size = int(size)
         if size < 1024:
             return f"{size} B"
         if size < 1024 ** 2:
             return f"{size / 1024:.1f} KB"
-        return f"{size / 1024 ** 2:.1f} MB"
+        if size < 1024 ** 3:
+            return f"{size / 1024 ** 2:.1f} MB"
+        return f"{size / 1024 ** 3:.1f} GB"
     except Exception:
         return ""
 

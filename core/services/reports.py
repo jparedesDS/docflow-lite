@@ -114,6 +114,13 @@ def generate_monitoring_excel(sections: dict) -> bytes:
     sin_enviar = [_normalize_pending(d) for d in sin_enviar]
     devoluciones = [_add_notas(d) for d in devoluciones]
 
+    # Normalizar Estado vacío → "Sin Enviar" en TODAS las hojas restantes.
+    # No tocamos Días Devolución porque enviados/devoluciones SÍ tienen valor
+    # calculado y CRÍTICOS / SIN ENVIAR ya pasaron por _normalize_pending.
+    all_docs = [_normalize_estado(d) for d in all_docs]
+    enviados = [_normalize_estado(d) for d in enviados]
+    devoluciones = [_normalize_estado(d) for d in devoluciones]
+
     wb = Workbook()
     wb.remove(wb.active)
 
@@ -287,16 +294,29 @@ def _dias_dev(doc: dict) -> int | None:
         return None
 
 
+def _normalize_estado(doc: dict) -> dict:
+    """Rellena Estado='Sin Enviar' si está vacío. No toca el resto de campos.
+
+    Se aplica a todas las hojas (ALL DOC., ENVIADOS, DEVOLUCIONES, etc.) para
+    que ningún documento aparezca con la celda Estado vacía en el Excel.
+    """
+    estado_raw = str(doc.get("Estado") or "").strip()
+    if not estado_raw or estado_raw.lower() == "nan":
+        d = dict(doc)
+        d["Estado"] = "Sin Enviar"
+        return d
+    return doc
+
+
 def _normalize_pending(doc: dict) -> dict:
-    """Para docs Sin Enviar: rellena Estado='Sin Enviar' y Días Devolución=0 si vacíos.
+    """Para docs Sin Enviar: rellena Estado='Sin Enviar' y Días Devolución=0.
 
     Aplica a las hojas CRÍTICOS, CRÍTICOS +15d y SIN ENVIAR para evitar celdas
     vacías cuando un doc todavía no se ha enviado al cliente.
     """
-    d = dict(doc)
-    estado_raw = str(d.get("Estado") or "").strip()
-    if not estado_raw or estado_raw.lower() == "nan":
-        d["Estado"] = "Sin Enviar"
+    d = _normalize_estado(doc)
+    if d is doc:  # _normalize_estado no clonó (estado ya tenía valor)
+        d = dict(doc)
     dd = d.get("Días Devolución", "")
     if dd in (None, "") or str(dd).strip().lower() == "nan":
         d["Días Devolución"] = 0

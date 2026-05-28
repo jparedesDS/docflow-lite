@@ -144,10 +144,16 @@ def get_monitoring_data(
 
 
 def _build_merged_dataset() -> list[dict]:
-    data_df = _read_excel(DATA_ERP_PATH)
+    # Resolver paths efectivos (preferencias > default). Importar lazy para
+    # evitar import circular en arranque temprano.
+    from core import data_source
+    data_path = data_source.get_effective_path("data_erp")
+    consulta_path = data_source.get_effective_path("consulta_erp")
+
+    data_df = _read_excel(data_path)
     if data_df.empty:
         return []
-    consulta_df = _read_excel(CONSULTA_ERP_PATH)
+    consulta_df = _read_excel(consulta_path)
 
     # Merge con consulta_erp
     if not consulta_df.empty and "Nº Pedido" in consulta_df.columns:
@@ -430,7 +436,11 @@ def get_monitoring_report_sections() -> dict:
 
 
 def file_status() -> dict:
+    """Estado de los Excels (paths efectivos)."""
+    from core import data_source
+    data_path = data_source.get_effective_path("data_erp")
+    consulta_path = data_source.get_effective_path("consulta_erp")
     return {
-        "data_erp": {"path": DATA_ERP_PATH, "exists": os.path.exists(DATA_ERP_PATH)},
-        "consulta_erp": {"path": CONSULTA_ERP_PATH, "exists": os.path.exists(CONSULTA_ERP_PATH)},
+        "data_erp": {"path": data_path, "exists": os.path.exists(data_path)},
+        "consulta_erp": {"path": consulta_path, "exists": os.path.exists(consulta_path)},
     }

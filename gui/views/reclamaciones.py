@@ -82,6 +82,11 @@ class ReclamacionesView(ctk.CTkFrame):
         )
         self.btn_send_all.pack(side="left", padx=(theme.SPACE_2, 0))
 
+        ctk.CTkButton(
+            toolbar, text="📒  Comm. Matrix", **_SECONDARY,
+            command=self._open_matrix,
+        ).pack(side="left", padx=(theme.SPACE_2, 0))
+
         self.lbl_count = ctk.CTkLabel(
             toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
         )
@@ -174,6 +179,9 @@ class ReclamacionesView(ctk.CTkFrame):
 
     def _on_row_double(self, item) -> None:
         self._open_preview()
+
+    def _open_matrix(self) -> None:
+        CommMatrixWindow(self)
 
     def _on_select_change(self, _evt=None) -> None:
         n = len(self.table.selected_iids())
@@ -494,7 +502,19 @@ class ReclamacionPreview(ctk.CTkToplevel):
         self._update_recipients_note()
 
     def _update_recipients_note(self) -> None:
-        if self._using_saved and self._preview and self._preview.get("saved_at"):
+        if self._using_saved == "matrix" and self._preview:
+            ts = self._preview.get("matrix_updated_at") or ""
+            try:
+                from datetime import datetime
+                stamp = datetime.fromisoformat(ts).strftime("%d %b %Y") if ts else ""
+            except Exception:
+                stamp = ts[:10]
+            tail = f" · {stamp}" if stamp else ""
+            self.lbl_recipients_note.configure(
+                text=f"📒 Communication Matrix{tail}",
+                text_color=theme.ACCENT,
+            )
+        elif self._using_saved and self._preview and self._preview.get("saved_at"):
             saved_at = self._preview["saved_at"]
             try:
                 from datetime import datetime
@@ -529,8 +549,15 @@ class ReclamacionPreview(ctk.CTkToplevel):
     def _render_preview(self, pv: dict) -> None:
         self._preview = pv
 
-        # Destinatarios: saved si existen, si no sugeridos por nivel
-        if pv.get("saved_to") is not None:
+        # Destinatarios: prioridad matrix > saved > sugeridos por nivel
+        if pv.get("matrix_to") is not None or pv.get("matrix_cc") is not None:
+            self.ent_to.delete(0, "end")
+            self.ent_to.insert(0, ", ".join(pv.get("matrix_to") or []))
+            self.ent_cc.delete(0, "end")
+            self.ent_cc.insert(0, ", ".join(pv.get("matrix_cc") or []))
+            self._using_saved = "matrix"
+            self._update_recipients_note()
+        elif pv.get("saved_to") is not None:
             self.ent_to.delete(0, "end")
             self.ent_to.insert(0, ", ".join(pv.get("saved_to") or []))
             self.ent_cc.delete(0, "end")
@@ -732,7 +759,351 @@ class ReclamacionPreview(ctk.CTkToplevel):
         messagebox.showerror("Error", msg)
 
 
+# ════════════════════════════════════════════════════════════════════════════
+#  Communication Matrix — gestión de contactos por pedido
+# ════════════════════════════════════════════════════════════════════════════
+
+class CommMatrixWindow(ctk.CTkToplevel):
+    """Lista de pedidos en la matrix con sus contactos TO/CC.
+
+    Permite importar masivamente desde un .txt y editar/borrar por pedido.
+    """
+
+    def __init__(self, master):
+        super().__init__(master, fg_color=theme.BG_PAGE)
+        self.title("Communication Matrix · Reclamaciones")
+        self.geometry("920x720")
+        self.minsize(760, 560)
+        self.transient(master)
+        self.grab_set()
+
+        self._build_layout()
+        self._reload_list()
+
+    def _build_layout(self) -> None:
+        # Header
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.pack(fill="x", padx=theme.SPACE_5, pady=(theme.SPACE_5, theme.SPACE_1))
+        ctk.CTkLabel(
+            header, text="Communication Matrix",
+            font=theme.FONT_TITLE, text_color=theme.TEXT_MAIN, anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            header,
+            text="Destinatarios oficiales por pedido · prioridad sobre el último envío y los sugeridos por nivel",
+            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
+        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+
+        # Toolbar
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.pack(fill="x", padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_2))
+
+        ctk.CTkButton(
+            toolbar, text="📥  Importar .txt", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            text_color="#FFFFFF",
+            command=self._import_txt,
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            toolbar, text="+  Nuevo pedido", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=lambda: self._open_editor(None),
+        ).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        self.lbl_count = ctk.CTkLabel(
+            toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+        )
+        self.lbl_count.pack(side="right")
+
+        # Status
+        self.lbl_status = ctk.CTkLabel(
+            self, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
+        )
+        self.lbl_status.pack(fill="x", padx=theme.SPACE_5)
+
+        # Footer
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
+        ctk.CTkButton(
+            footer, text="Cerrar", font=theme.FONT_BUTTON,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=self.destroy,
+        ).pack(side="right")
+
+        # Lista scrollable
+        self.list_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.list_scroll.pack(side="top", fill="both", expand=True,
+                               padx=theme.SPACE_5, pady=(theme.SPACE_2, theme.SPACE_2))
+
+    # ── Importar .txt ────────────────────────────────────────────────────────
+
+    def _import_txt(self) -> None:
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(
+            parent=self, title="Importar communication matrix desde .txt",
+            filetypes=[("Texto", "*.txt"), ("Todos", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # Fallback latin-1 si el .txt no es UTF-8
+            with open(path, "r", encoding="latin-1") as f:
+                content = f.read()
+        except Exception as exc:
+            messagebox.showerror("Error", f"No se pudo leer el archivo:\n{exc}", parent=self)
+            return
+
+        from core.services import comm_matrix
+        try:
+            res = comm_matrix.import_from_txt(content)
+        except Exception as exc:
+            logger.exception("Error parseando .txt")
+            messagebox.showerror("Error", str(exc), parent=self)
+            return
+
+        lines = [
+            f"✓  {res['imported']} pedido(s) en la matrix",
+            f"     · {res['created']} nuevo(s)  ·  {res['updated']} actualizado(s)",
+        ]
+        if res["duplicates_in_input"]:
+            lines.append(f"⚠  Duplicados en el .txt (último prevalece): {', '.join(res['duplicates_in_input'])}")
+        if res["skipped"]:
+            lines.append(f"⚠  Saltados (sin emails): {', '.join(res['skipped'])}")
+
+        messagebox.showinfo("Importación completada", "\n".join(lines), parent=self)
+        self._reload_list()
+
+    # ── Lista ────────────────────────────────────────────────────────────────
+
+    def _reload_list(self) -> None:
+        for w in self.list_scroll.winfo_children():
+            w.destroy()
+
+        from core.services import comm_matrix
+        pedidos = comm_matrix.list_pedidos()
+        self.lbl_count.configure(text=f"{len(pedidos)} pedido(s)")
+
+        if not pedidos:
+            ctk.CTkLabel(
+                self.list_scroll,
+                text="No hay pedidos en la matrix. Importa un .txt o añade uno manualmente.",
+                font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
+            ).pack(pady=theme.SPACE_8)
+            return
+
+        for p in pedidos:
+            self._render_row(p)
+
+    def _render_row(self, p: dict) -> None:
+        row = ctk.CTkFrame(
+            self.list_scroll, fg_color=theme.BG_CARD,
+            corner_radius=theme.RADIUS_MD,
+            border_width=1, border_color=theme.BORDER,
+        )
+        row.pack(fill="x", pady=(0, theme.SPACE_2))
+
+        inner = ctk.CTkFrame(row, fg_color="transparent")
+        inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+
+        # Pedido (a la izquierda)
+        ctk.CTkLabel(
+            inner, text=p["pedido"],
+            font=(theme.FONT_FAMILY, 13, "bold"),
+            text_color=theme.ACCENT, width=110, anchor="w",
+        ).pack(side="left")
+
+        # Contador TO/CC
+        counts = f"{len(p['to'])} TO  ·  {len(p['cc'])} CC"
+        ctk.CTkLabel(
+            inner, text=counts,
+            font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+            width=110, anchor="w",
+        ).pack(side="left")
+
+        # IMPORTANTE: packeamos los botones (side="right") ANTES del preview
+        # expandible. Si no, el preview con expand=True consume todo el espacio
+        # y los botones quedan fuera del viewport.
+        ctk.CTkButton(
+            inner, text="🗑", width=32,
+            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
+            fg_color="transparent", hover_color=theme.DELETE_HOVER,
+            text_color=theme.TEXT_MUTED, font=theme.FONT_BUTTON,
+            command=lambda ped=p["pedido"]: self._delete(ped),
+        ).pack(side="right", padx=theme.SPACE_1)
+
+        ctk.CTkButton(
+            inner, text="Editar", width=70,
+            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            font=theme.FONT_SMALL_BOLD,
+            command=lambda ped=p["pedido"]: self._open_editor(ped),
+        ).pack(side="right", padx=theme.SPACE_1)
+
+        # Vista compacta de TO + CC (primeros 2 + "…") — al final, llena el resto
+        preview_emails = (p["to"][:2] + p["cc"][:2])
+        if not preview_emails:
+            preview_text = "(sin contactos)"
+        else:
+            preview_text = ", ".join(preview_emails)
+            remaining = (len(p["to"]) + len(p["cc"])) - len(preview_emails)
+            if remaining > 0:
+                preview_text += f"  +{remaining} más"
+        ctk.CTkLabel(
+            inner, text=preview_text,
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+            anchor="w", justify="left",
+        ).pack(side="left", fill="x", expand=True, padx=(theme.SPACE_2, theme.SPACE_2))
+
+    def _open_editor(self, pedido: str | None) -> None:
+        CommMatrixEditor(self, pedido=pedido, on_save=self._reload_list)
+
+    def _delete(self, pedido: str) -> None:
+        if not messagebox.askyesno(
+            "Borrar contactos",
+            f"¿Borrar la entrada de {pedido} de la matrix?",
+            parent=self,
+        ):
+            return
+        from core.services import comm_matrix
+        comm_matrix.remove(pedido)
+        self.lbl_status.configure(text=f"Eliminado {pedido}", text_color=theme.TEXT_MUTED)
+        self._reload_list()
+
+
+class CommMatrixEditor(ctk.CTkToplevel):
+    """Editor de contactos de un pedido (TO + CC). Acepta uno por línea o separados por coma."""
+
+    def __init__(self, master, pedido: str | None, on_save=None):
+        super().__init__(master, fg_color=theme.BG_PAGE)
+        self.title("Editar pedido — Communication Matrix")
+        self.geometry("640x620")
+        self.minsize(520, 480)
+        self.transient(master)
+        self.grab_set()
+
+        self._on_save = on_save
+        self._is_new = pedido is None
+        existing = None
+        if pedido:
+            from core.services import comm_matrix
+            existing = comm_matrix.get_contacts(pedido)
+
+        # Header
+        ctk.CTkLabel(
+            self,
+            text=("Nuevo pedido" if self._is_new else f"Editar {pedido}"),
+            font=theme.FONT_HEADING, text_color=theme.TEXT_MAIN, anchor="w",
+        ).pack(anchor="w", padx=theme.SPACE_5, pady=(theme.SPACE_5, theme.SPACE_1))
+
+        # Footer (side=bottom primero)
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
+        ctk.CTkButton(
+            footer, text="Cancelar", font=theme.FONT_BUTTON,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color="transparent", hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+            command=self.destroy,
+        ).pack(side="right", padx=(theme.SPACE_2, 0))
+        ctk.CTkButton(
+            footer, text="Guardar", font=theme.FONT_BUTTON,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
+            text_color="#FFFFFF",
+            command=self._save,
+        ).pack(side="right")
+
+        # Body
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(side="top", fill="both", expand=True,
+                   padx=theme.SPACE_5, pady=(theme.SPACE_3, 0))
+
+        # Pedido
+        ctk.CTkLabel(body, text="PEDIDO *", font=theme.FONT_LABEL,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self.ent_pedido = ctk.CTkEntry(
+            body, placeholder_text="P-26/029",
+            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.BG_INPUT, border_color=theme.BORDER,
+            text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
+        )
+        if pedido:
+            self.ent_pedido.insert(0, pedido)
+            self.ent_pedido.configure(state="disabled")
+        self.ent_pedido.pack(fill="x", pady=(theme.SPACE_1, theme.SPACE_3))
+
+        # TO
+        ctk.CTkLabel(body, text="TO (uno por línea o separados por coma / ;)",
+                     font=theme.FONT_LABEL, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self.txt_to = ctk.CTkTextbox(
+            body, height=140, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.BG_INPUT, border_color=theme.BORDER, border_width=1,
+            text_color=theme.TEXT_MAIN, font=theme.FONT_MONO,
+        )
+        if existing:
+            self.txt_to.insert("1.0", "\n".join(existing.get("to") or []))
+        self.txt_to.pack(fill="x", pady=(theme.SPACE_1, theme.SPACE_3))
+
+        # CC
+        ctk.CTkLabel(body, text="CC (uno por línea o separados por coma / ;)",
+                     font=theme.FONT_LABEL, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self.txt_cc = ctk.CTkTextbox(
+            body, height=140, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.BG_INPUT, border_color=theme.BORDER, border_width=1,
+            text_color=theme.TEXT_MAIN, font=theme.FONT_MONO,
+        )
+        if existing:
+            self.txt_cc.insert("1.0", "\n".join(existing.get("cc") or []))
+        self.txt_cc.pack(fill="x", pady=(theme.SPACE_1, 0))
+
+        self.lbl_error = ctk.CTkLabel(
+            body, text="", font=theme.FONT_SMALL, text_color=theme.RED,
+            anchor="w", justify="left", wraplength=560,
+        )
+        self.lbl_error.pack(anchor="w", pady=(theme.SPACE_2, 0))
+
+    def _save(self) -> None:
+        import re as _re
+        pedido = self.ent_pedido.get().strip().upper()
+        if not _re.match(r"^P-\d{2}/\d{3}$", pedido):
+            self.lbl_error.configure(text="Formato de pedido inválido (esperado P-XX/YYY).")
+            return
+        to = _split_emails(self.txt_to.get("1.0", "end"))
+        cc = _split_emails(self.txt_cc.get("1.0", "end"))
+        if not to and not cc:
+            self.lbl_error.configure(text="Indica al menos un email en TO o CC.")
+            return
+
+        from core.services import comm_matrix
+        try:
+            comm_matrix.set_contacts(pedido, to, cc)
+        except Exception as exc:
+            self.lbl_error.configure(text=str(exc))
+            return
+
+        if self._on_save:
+            self._on_save()
+        self.destroy()
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _split_emails(raw: str) -> list[str]:
+    """Acepta emails separados por línea, coma o punto y coma. Elimina espacios."""
+    import re as _re
+    parts = _re.split(r"[,\n;]+", raw or "")
+    return [p.strip() for p in parts if p.strip()]
+
 
 ESCALATION_LEVEL_NAMES = {1: "Recordatorio", 2: "Reclamación formal", 3: "Escalation urgente"}
 

@@ -233,6 +233,9 @@ def get_pedido_preview(pedido: str) -> dict:
     table_rows.sort(key=lambda x: -(x["return_days"] if isinstance(x["return_days"], int) else 0))
 
     saved = get_saved_recipients(pedido)
+    # Communication matrix (segunda prioridad después de explícitos)
+    from core.services import comm_matrix
+    matrix = comm_matrix.get_contacts(pedido)
     return {
         "pedido": pedido,
         "po": po,
@@ -244,6 +247,9 @@ def get_pedido_preview(pedido: str) -> dict:
         "saved_to": saved["to"] if saved else None,
         "saved_cc": saved["cc"] if saved else None,
         "saved_at": saved["updatedAt"] if saved else None,
+        "matrix_to": matrix["to"] if matrix else None,
+        "matrix_cc": matrix["cc"] if matrix else None,
+        "matrix_updated_at": matrix["updatedAt"] if matrix else None,
     }
 
 
@@ -359,7 +365,15 @@ def send_claim(
     if level is None:
         level = get_escalation_level(pedido_data)
 
-    # Fallback de destinatarios: explícitos > guardados > auto-detectados
+    # Fallback de destinatarios: explícitos > matrix > saved > auto-detectados
+    if to is None or cc is None:
+        from core.services import comm_matrix
+        matrix = comm_matrix.get_contacts(pedido)
+        if matrix:
+            if to is None and matrix.get("to"):
+                to = list(matrix["to"])
+            if cc is None and matrix.get("cc"):
+                cc = list(matrix["cc"])
     if to is None or cc is None:
         saved = get_saved_recipients(pedido)
         if saved:
