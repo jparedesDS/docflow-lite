@@ -182,6 +182,99 @@ def _build_eml(subject: str, to: list[str], cc: list[str], html_body: str) -> st
     return "\n".join(headers) + html_body
 
 
+# ── Devolución manual (sin email IMAP de origen) ──────────────────────────────
+
+def _parse_fecha_to_deadline(fecha_str: str | None) -> datetime:
+    """Parsea cualquier formato de fecha común y devuelve fecha+15 días."""
+    if not fecha_str:
+        return datetime.now() + timedelta(days=15)
+    s = str(fecha_str).strip()
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d-%m-%y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(s, fmt) + timedelta(days=15)
+        except ValueError:
+            continue
+    return datetime.now() + timedelta(days=15)
+
+
+def generate_manual_notification_html(info_dict: dict, docs: list[dict]) -> dict:
+    """Genera el HTML de una devolución manual (sin email IMAP de origen).
+
+    Args:
+        info_dict: claves Nº Pedido / Cliente / Material / Supp. / PO / Fecha
+        docs: lista de dicts con Doc. Cliente, Título, Rev., Estado, Fecha
+
+    Returns:
+        {html, subject, documents_count}
+    """
+    df = pd.DataFrame(docs)
+    if df.empty:
+        raise ValueError("Debes añadir al menos un documento")
+
+    fecha = info_dict.get("Fecha", "")
+    deadline = _parse_fecha_to_deadline(fecha)
+
+    # Asegurar que info_dict tiene los campos canónicos (rellenar vacíos por defecto)
+    info = {
+        "Nº Pedido": info_dict.get("Nº Pedido", ""),
+        "Cliente":   info_dict.get("Cliente", ""),
+        "Material":  info_dict.get("Material", ""),
+        "Supp.":     info_dict.get("Supp.") or "S00",
+        "PO":        info_dict.get("PO", ""),
+        "Fecha":     str(fecha)[:10] if fecha else "",
+    }
+
+    html = build_notification_html(info, df, deadline)
+    subject = f"DEV: {info['Nº Pedido']}" if info["Nº Pedido"] else "DEV: (sin pedido)"
+    return {"html": html, "subject": subject, "documents_count": len(df)}
+
+
+def send_manual_notification(
+    info_dict: dict, docs: list[dict],
+    to: list[str], cc: list[str] | None = None,
+) -> dict:
+    """Envía una devolución manual usando la misma plantilla que las automáticas."""
+    cc = cc or []
+    if not to:
+        raise ValueError("Indica al menos un destinatario en 'To'")
+
+    res = generate_manual_notification_html(info_dict, docs)
+    html = res["html"]
+    subject = res["subject"]
+
+    send_result = smtp_service.send_html_email(to, cc, subject, html)
+
+    # Guardado opcional en carpeta del pedido
+    saved_path = None
+    save_error = None
+    try:
+        pedido = str(info_dict.get("Nº Pedido", "") or "").strip()
+        if pedido:
+            target = _find_devoluciones_folder(pedido)
+            if target:
+                pedido_norm = pedido.replace("/", "-").replace("\\", "-")
+                date_str = datetime.now().strftime("%Y-%m-%d")
+                filename = f"{date_str}_{pedido_norm}_DEV_MANUAL.eml"
+                (target / filename).write_text(
+                    _build_eml(subject, to, cc, html),
+                    encoding="utf-8",
+                )
+                saved_path = str(target / filename)
+    except Exception as exc:
+        save_error = str(exc)
+        logger.warning("Fallo guardando EML manual: %s", exc)
+
+    return {
+        "success": True,
+        "email_sent": send_result,
+        "documents_count": res["documents_count"],
+        "subject": subject,
+        "saved_path": saved_path,
+        "save_error": save_error,
+        "manual": True,
+    }
+
+
 # ── Generación de HTML (preview sin enviar) ──────────────────────────────────
 
 def generate_notification_html(
