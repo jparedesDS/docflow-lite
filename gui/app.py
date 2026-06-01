@@ -18,6 +18,7 @@ class DocFlowLiteApp(ctk.CTk):
 
     NAV_ITEMS = [
         {"key": "home",          "label": "Inicio",            "icon": "⌂"},
+        {"key": "apertura",      "label": "Apertura pedidos",  "icon": "✚"},
         {"key": "agenda",        "label": "Agenda",            "icon": "▣"},
         {"key": "inbox",         "label": "Bandeja AI",        "icon": "✦"},
         {"key": "documentos",    "label": "Documentos",        "icon": "◫"},
@@ -28,10 +29,11 @@ class DocFlowLiteApp(ctk.CTk):
 
     def __init__(self, current_user: dict | None = None):
         # Aplicar tema según preferencia persistida
-        from core.preferences import get_theme
+        from core.preferences import base_mode, get_theme
         mode = get_theme()
-        ctk.set_appearance_mode(mode)
-        ctk.set_default_color_theme("dark-blue" if mode == "dark" else "blue")
+        base = base_mode(mode)  # 'light' | 'dark' — para CustomTkinter
+        ctk.set_appearance_mode(base)
+        ctk.set_default_color_theme("dark-blue" if base == "dark" else "blue")
 
         self.current_user = current_user or {}
 
@@ -61,6 +63,8 @@ class DocFlowLiteApp(ctk.CTk):
         self.bind_all("<KeyPress-I>", self._kb_inbox)
         self.bind_all("<KeyPress-p>", self._kb_reportes)
         self.bind_all("<KeyPress-P>", self._kb_reportes)
+        self.bind_all("<KeyPress-n>", self._kb_apertura)
+        self.bind_all("<KeyPress-N>", self._kb_apertura)
 
         startup_warnings()
 
@@ -130,6 +134,9 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "reportes":
             from gui.views.reportes import ReportesView
             view = ReportesView(self.content)
+        elif key == "apertura":
+            from gui.views.apertura import AperturaView
+            view = AperturaView(self.content)
         else:
             return None
         self._views[key] = view
@@ -175,47 +182,112 @@ class DocFlowLiteApp(ctk.CTk):
         if not self._focus_is_entry():
             self.navigate("reportes")
 
-    # ── Toggle Light / Dark ──────────────────────────────────────────────────
+    def _kb_apertura(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("apertura")
+
+    # ── Theme picker ─────────────────────────────────────────────────────────
 
     def _toggle_theme(self) -> None:
-        """Cambia el tema persistido y reinicia la app para aplicar."""
+        """Abre un picker con 4 opciones de tema. Reinicia al elegir."""
+        from gui.widgets.theme_picker import ThemePickerDialog
+        ThemePickerDialog(self, on_apply=self._apply_theme)
+
+    def _apply_theme(self, new_mode: str) -> None:
         from tkinter import messagebox
 
         from core.preferences import get_theme, set_theme
 
         current = get_theme()
-        new_mode = "light" if current == "dark" else "dark"
-        new_label = "claro" if new_mode == "light" else "oscuro"
-
-        ok = messagebox.askyesno(
-            "Cambiar tema",
-            f"DocFlow Lite se reiniciará para aplicar el modo {new_label}.\n\n"
-            "Las ventanas abiertas se cerrarán. ¿Continuar?",
-            parent=self,
-        )
-        if not ok:
+        logger.info("Apply theme requested: current=%s new=%s", current, new_mode)
+        if new_mode == current:
+            logger.info("Theme unchanged, skipping restart")
             return
 
         try:
             set_theme(new_mode)
+            # Re-leer para confirmar persistencia
+            saved = get_theme()
+            logger.info("Theme saved: requested=%s on_disk=%s", new_mode, saved)
+            if saved != new_mode:
+                messagebox.showerror(
+                    "Error",
+                    f"El tema se intentó guardar como {new_mode!r} "
+                    f"pero en disco quedó como {saved!r}.",
+                    parent=self,
+                )
+                return
         except Exception as exc:
-            messagebox.showerror("Error", f"No se pudo guardar la preferencia:\n{exc}", parent=self)
+            logger.exception("set_theme failed")
+            messagebox.showerror(
+                "Error", f"No se pudo guardar la preferencia:\n{exc}", parent=self,
+            )
             return
 
         self._restart_app()
 
     @staticmethod
     def _restart_app() -> None:
+        """Relanza el proceso Python y termina el actual.
+
+        Estrategia:
+          1. Intenta `os.execv` (reemplaza el proceso actual — más confiable
+             en Windows GUI porque hereda el handle del Tk y no hay race).
+          2. Si falla, fallback a subprocess.Popen + sys.exit (no os._exit,
+             que abortaría sin destruir Tk correctamente).
+        """
         import os
         import subprocess
         import sys
+        from tkinter import messagebox
 
         python = sys.executable
+        script = os.path.abspath(sys.argv[0]) if sys.argv else ""
+        args = [python, script, *sys.argv[1:]] if script else [python]
+        logger.info("Restarting via execv: args=%s", args)
+
+        # Antes de exec — flush logs y avisos
         try:
-            subprocess.Popen([python, *sys.argv])
+            for handler in logging.getLogger().handlers:
+                handler.flush()
         except Exception:
             pass
-        os._exit(0)
+
+        # En Windows pythonw.exe evita el flash de consola al reiniciar
+        if sys.platform == "win32":
+            pythonw = python.replace("python.exe", "pythonw.exe")
+            if os.path.exists(pythonw):
+                args[0] = pythonw
+
+        try:
+            # Intento 1: execv — reemplaza el proceso actual
+            os.execv(args[0], args)
+        except OSError as exc:
+            logger.warning("execv failed (%s), fallback a subprocess.Popen", exc)
+        except Exception as exc:
+            logger.exception("execv raised: %s", exc)
+
+        # Intento 2: subprocess.Popen + sys.exit
+        try:
+            creationflags = 0
+            if sys.platform == "win32":
+                # CREATE_NEW_CONSOLE (no DETACHED — DETACHED hace que el GUI
+                # tarde en mostrarse o no aparezca en algunos setups)
+                creationflags = 0x00000010  # CREATE_NEW_CONSOLE
+                if args[0].endswith("pythonw.exe"):
+                    creationflags = 0  # GUI sin consola
+            subprocess.Popen(args, cwd=os.getcwd(), creationflags=creationflags)
+        except Exception as exc:
+            logger.exception("Failed to spawn restarted process")
+            messagebox.showerror(
+                "Error de reinicio",
+                f"No se pudo relanzar DocFlow Lite:\n{exc}\n\n"
+                "Ciérralo manualmente y vuelve a abrirlo.",
+            )
+            return
+
+        # sys.exit en lugar de os._exit para que Tk se destruya limpiamente
+        sys.exit(0)
 
     # ── Logout ────────────────────────────────────────────────────────────────
 

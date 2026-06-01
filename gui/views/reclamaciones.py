@@ -38,11 +38,12 @@ class ReclamacionesView(ctk.CTkFrame):
             header, text="Reclamaciones", font=theme.FONT_TITLE,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
-        ctk.CTkLabel(
+        self.lbl_header_sub = ctk.CTkLabel(
             header,
             text="Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente",
             font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        )
+        self.lbl_header_sub.pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -55,6 +56,30 @@ class ReclamacionesView(ctk.CTkFrame):
             fg_color="transparent", hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
         )
+
+        # Filtro: días mínimos desde envío
+        ctk.CTkLabel(
+            toolbar, text="Días ≥", font=theme.FONT_SMALL,
+            text_color=theme.TEXT_SUB,
+        ).pack(side="left", padx=(0, theme.SPACE_1))
+
+        self._min_days = claims_service.DEFAULT_MIN_DAYS  # 15 por defecto
+        self.var_min_days = ctk.StringVar(value=str(self._min_days))
+        self.entry_min_days = ctk.CTkEntry(
+            toolbar, textvariable=self.var_min_days, width=56,
+            height=theme.HEIGHT_BUTTON, font=theme.FONT_SMALL_BOLD,
+            fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
+            border_color=theme.BORDER, border_width=1,
+            corner_radius=theme.RADIUS_MD, justify="center",
+        )
+        self.entry_min_days.pack(side="left", padx=(0, theme.SPACE_1))
+        self.entry_min_days.bind("<Return>", lambda _e: self._reload())
+        self.entry_min_days.bind("<FocusOut>", lambda _e: self._reload())
+
+        ctk.CTkButton(
+            toolbar, text="Todos", width=60, **_SECONDARY,
+            command=self._show_all,
+        ).pack(side="left", padx=(0, theme.SPACE_2))
 
         self.btn_reload = ctk.CTkButton(
             toolbar, text="↻  Recargar", **_SECONDARY, command=self._reload,
@@ -120,14 +145,42 @@ class ReclamacionesView(ctk.CTkFrame):
 
     # ── Datos ─────────────────────────────────────────────────────────────────
 
+    def _read_min_days(self) -> int:
+        """Lee el entry y normaliza a int >= 0; en error vuelve al default."""
+        raw = (self.var_min_days.get() or "").strip()
+        try:
+            n = int(raw)
+            return max(0, n)
+        except ValueError:
+            self.var_min_days.set(str(claims_service.DEFAULT_MIN_DAYS))
+            return claims_service.DEFAULT_MIN_DAYS
+
+    def _show_all(self) -> None:
+        """Atajo: pone 0 (todos los enviados pendientes) y recarga."""
+        self.var_min_days.set("0")
+        self._reload()
+
     def _reload(self) -> None:
+        self._min_days = self._read_min_days()
+        # Actualiza el subtítulo según el filtro activo
+        if self._min_days <= 0:
+            sub = "Todos los documentos enviados pendientes de devolución"
+        else:
+            sub = (
+                f"Pedidos con documentos enviados hace ≥ {self._min_days} días "
+                "sin respuesta del cliente"
+            )
+        self.lbl_header_sub.configure(text=sub)
+
         self.lbl_status.configure(text="⏳  Calculando pedidos reclamables…", text_color=theme.TEXT_MUTED)
         self.btn_reload.configure(state="disabled")
         self.table.clear()
 
+        min_days = self._min_days
+
         def worker():
             try:
-                rows = claims_service.get_claimable_pedidos()
+                rows = claims_service.get_claimable_pedidos(min_days=min_days)
                 self.after(0, lambda: self._on_loaded(rows))
             except Exception as exc:
                 logger.exception("Error cargando reclamaciones")
@@ -199,7 +252,10 @@ class ReclamacionesView(ctk.CTkFrame):
         data = next((p for p in self._pedidos if p["pedido"] == pedido), None)
         if not data:
             return
-        ReclamacionPreview(self, pedido_data=data, on_sent=self._reload)
+        ReclamacionPreview(
+            self, pedido_data=data, on_sent=self._reload,
+            min_days=self._min_days,
+        )
 
     def _send_selected(self) -> None:
         sel = self.table.selected_iids()
@@ -237,9 +293,11 @@ class ReclamacionesView(ctk.CTkFrame):
         self._set_buttons_busy(True)
         self.lbl_status.configure(text=f"📤  Enviando {len(pedidos)} reclamación(es)…", text_color=theme.TEXT_MUTED)
 
+        min_days = self._min_days
+
         def worker():
             try:
-                res = claims_service.send_bulk(pedidos)
+                res = claims_service.send_bulk(pedidos, min_days=min_days)
                 self.after(0, lambda: self._bulk_done(res))
             except Exception as exc:
                 logger.exception("Error en send_bulk")
@@ -284,7 +342,8 @@ class ReclamacionesView(ctk.CTkFrame):
 # ════════════════════════════════════════════════════════════════════════════
 
 class ReclamacionPreview(ctk.CTkToplevel):
-    def __init__(self, master, pedido_data: dict, on_sent=None):
+    def __init__(self, master, pedido_data: dict, on_sent=None,
+                 min_days: int = claims_service.DEFAULT_MIN_DAYS):
         super().__init__(master, fg_color=theme.BG_PAGE)
         self.title(f"Reclamación — {pedido_data['pedido']}")
         self.geometry("960x800")
@@ -295,6 +354,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         self._pedido_data = pedido_data
         self._preview: dict | None = None
         self._on_sent = on_sent
+        self._min_days = min_days
         self._level = claims_service.get_escalation_level(pedido_data)
         self._using_saved = False  # True si los inputs vienen de saved
         self.docs_table: DataTable | None = None
@@ -535,9 +595,11 @@ class ReclamacionPreview(ctk.CTkToplevel):
     def _load(self) -> None:
         pedido = self._pedido_data["pedido"]
 
+        min_days = self._min_days
+
         def worker():
             try:
-                pv = claims_service.get_pedido_preview(pedido)
+                pv = claims_service.get_pedido_preview(pedido, min_days=min_days)
                 self.after(0, lambda: self._render_preview(pv))
             except Exception as exc:
                 logger.exception("Error en preview reclamación")
@@ -674,10 +736,13 @@ class ReclamacionPreview(ctk.CTkToplevel):
         pedido = self._pedido_data["pedido"]
         level = self._level
 
+        min_days = self._min_days
+
         def worker():
             try:
                 res = claims_service.generate_claim_html(
                     pedido, level=level, include_eipsa_codes=included,
+                    min_days=min_days,
                 )
                 self.after(0, lambda: _open_html_preview(res["html"], "reclamacion"))
                 self.after(0, lambda: self.lbl_status.configure(
@@ -725,11 +790,14 @@ class ReclamacionPreview(ctk.CTkToplevel):
         pedido = self._pedido_data["pedido"]
         level = self._level
 
+        min_days = self._min_days
+
         def worker():
             try:
                 res = claims_service.send_claim(
                     pedido, to=to, cc=cc, level=level,
                     include_eipsa_codes=included,
+                    min_days=min_days,
                 )
                 self.after(0, lambda: self._send_done(res))
             except Exception as exc:

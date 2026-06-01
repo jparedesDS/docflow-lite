@@ -15,10 +15,30 @@ logger = logging.getLogger(__name__)
 PREFS_FILE = str(state_dir() / "preferences.json")
 
 _DEFAULTS: dict = {
-    "theme": "dark",  # "light" | "dark"
+    "theme": "dark",  # "light" | "dark" | "light-coral" | "dark-coral"
 }
 
-_VALID_THEMES = {"light", "dark"}
+# 4 modos disponibles:
+#   light        — Linear/Vercel claro (indigo)
+#   dark         — Linear/Vercel oscuro (indigo)
+#   light-coral  — Cream + coral, estilo terminal (monospace)
+#   dark-coral   — Warm dark + coral, estilo terminal (monospace)
+_VALID_THEMES = {"light", "dark", "light-coral", "dark-coral"}
+
+# Migración de nombres antiguos → nuevos
+_THEME_ALIASES = {
+    "light-claude": "light-coral",
+    "dark-claude":  "dark-coral",
+}
+
+
+def is_coral_theme(value: str) -> bool:
+    return value in ("light-coral", "dark-coral")
+
+
+def base_mode(value: str) -> str:
+    """Devuelve 'light' o 'dark' para mapear a CustomTkinter.appearance_mode."""
+    return "light" if value.startswith("light") else "dark"
 
 
 def _load() -> dict:
@@ -45,12 +65,21 @@ def set_value(key: str, value) -> None:
 
 
 def get_theme() -> str:
-    """Devuelve 'light' o 'dark'. Cualquier valor inválido se trata como 'dark'."""
+    """Devuelve uno de los 4 modos válidos. Migra alias antiguos transparentemente."""
     t = get("theme", "dark")
+    # Migración suave: si encontramos un nombre antiguo, lo remapeamos y guardamos
+    if t in _THEME_ALIASES:
+        t = _THEME_ALIASES[t]
+        try:
+            set_value("theme", t)
+        except Exception:
+            pass
     return t if t in _VALID_THEMES else "dark"
 
 
 def set_theme(value: str) -> None:
+    # Acepta alias antiguos para llamadas externas
+    value = _THEME_ALIASES.get(value, value)
     if value not in _VALID_THEMES:
         raise ValueError(f"Theme inválido: {value}")
     set_value("theme", value)

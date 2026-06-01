@@ -16,6 +16,8 @@ PORTFOLIO_URL = "https://jparedesds.github.io/"
 
 # Cards de navegación
 NAV_CARDS = [
+    {"key": "apertura",      "icon": "✚",  "color": theme.ACCENT,
+     "title": "Apertura pedidos","base_desc": "Crea carpetas, Planning y VDDL"},
     {"key": "documentos",    "icon": "◫",  "color": theme.BLUE,
      "title": "Documentos",      "base_desc": "Vista global con KPIs y filtros"},
     {"key": "agenda",        "icon": "▣",  "color": theme.AMBER,

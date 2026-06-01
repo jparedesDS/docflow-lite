@@ -699,7 +699,7 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
               Document Control
             </p>
             <p style="margin:3px 0 0;font-size:11px;color:#90A4AE;">
-              DocFlow &nbsp;·&nbsp; © 2026 <a href="https://jparedesds.github.io/" style="color:#90A4AE;text-decoration:underline;">jparedesDS</a> &nbsp;·&nbsp; Todos los derechos reservados
+              DocFlow &nbsp;·&nbsp; © 2026 jparedesDS &nbsp;·&nbsp; Todos los derechos reservados
             </p>
           </td>
           <td style="text-align:right;vertical-align:middle;">

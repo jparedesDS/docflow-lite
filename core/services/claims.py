@@ -69,13 +69,52 @@ def _clean(value) -> str:
 _REVISION_KEYS = ("Nº Revisión", "Nº Rev.", "Nº Rev", "Revisión", "Rev.", "Rev", "Revision")
 
 
+def _format_revision(value) -> str:
+    """Normaliza un valor de revisión: 3.0 → '3', 'A' → 'A', '' → ''.
+
+    Pandas tiende a leer columnas numéricas como float64 — así un '3' del
+    Excel llega como `3.0`. Convertimos a int cuando el float representa
+    un entero exacto, y dejamos el resto tal cual (letras, dobles A.1, …).
+    """
+    if value is None:
+        return ""
+    # Caso 1: ya es int
+    if isinstance(value, bool):  # bool es subclase de int — descartar
+        return _clean(value)
+    if isinstance(value, int):
+        return str(value)
+    # Caso 2: float entero (3.0 → 3)
+    if isinstance(value, float):
+        if value != value:  # NaN
+            return ""
+        if value.is_integer():
+            return str(int(value))
+        # Float no entero: '3.5' como string limpio
+        return f"{value:g}"
+    # Caso 3: string — pero puede ser "3.0" si pandas ya stringified
+    s = _clean(value)
+    if not s:
+        return ""
+    # Intenta parsear "3.0", "3,0" como float y normalizar
+    try:
+        f = float(s.replace(",", "."))
+        if f.is_integer():
+            return str(int(f))
+    except ValueError:
+        pass
+    return s
+
+
 def _resolve_revision(doc: dict) -> str:
     """Busca el número de revisión probando varios nombres de columna."""
     for k in _REVISION_KEYS:
         if k in doc:
-            v = _clean(doc.get(k))
-            if v:
-                return v
+            raw = doc.get(k)
+            if raw is None:
+                continue
+            formatted = _format_revision(raw)
+            if formatted:
+                return formatted
     return ""
 
 
@@ -120,8 +159,14 @@ def forget_recipients(pedido: str) -> None:
 
 # ── API pública ───────────────────────────────────────────────────────────────
 
-def get_claimable_docs() -> list[dict]:
-    """Docs con Estado='Enviado' y Días Devolución >= 15."""
+DEFAULT_MIN_DAYS = 15
+
+
+def get_claimable_docs(min_days: int = DEFAULT_MIN_DAYS) -> list[dict]:
+    """Docs con Estado='Enviado' y Días Devolución ≥ `min_days`.
+
+    `min_days=0` devuelve todos los enviados pendientes (sin filtro).
+    """
     docs = monitoring.get_monitoring_data()
     result = []
     for doc in docs:
@@ -129,16 +174,16 @@ def get_claimable_docs() -> list[dict]:
         if estado != "enviado":
             continue
         try:
-            if int(float(doc.get("Días Devolución", 0) or 0)) >= 15:
+            if int(float(doc.get("Días Devolución", 0) or 0)) >= min_days:
                 result.append(doc)
         except (ValueError, TypeError):
             pass
     return result
 
 
-def get_claimable_pedidos() -> list[dict]:
+def get_claimable_pedidos(min_days: int = DEFAULT_MIN_DAYS) -> list[dict]:
     """Pedidos con docs reclamables, ordenados por urgencia (max_dias desc)."""
-    docs = get_claimable_docs()
+    docs = get_claimable_docs(min_days=min_days)
     log = _load_log()
 
     groups: dict[str, list[dict]] = {}
@@ -186,9 +231,9 @@ def get_claimable_pedidos() -> list[dict]:
     return result
 
 
-def get_pedido_preview(pedido: str) -> dict:
+def get_pedido_preview(pedido: str, min_days: int = DEFAULT_MIN_DAYS) -> dict:
     """Datos completos para preview del email."""
-    docs = get_claimable_docs()
+    docs = get_claimable_docs(min_days=min_days)
     pedido_docs = [
         d for d in docs
         if _normalize_pedido(str(d.get("Nº Pedido", "") or "")) == pedido
@@ -316,12 +361,13 @@ def generate_claim_html(
     pedido: str,
     level: int | None = None,
     include_eipsa_codes: list[str] | None = None,
+    min_days: int = DEFAULT_MIN_DAYS,
 ) -> dict:
     """Genera el HTML que se enviaría como reclamación, sin enviar.
 
     Devuelve dict con `html`, `subject`, `level`, `docs_count` para preview.
     """
-    pedidos = get_claimable_pedidos()
+    pedidos = get_claimable_pedidos(min_days=min_days)
     pedido_data = next((p for p in pedidos if p["pedido"] == pedido), None)
     if not pedido_data:
         raise ValueError(f"Pedido {pedido} no encontrado o no reclamable")
@@ -329,7 +375,7 @@ def generate_claim_html(
     if level is None:
         level = get_escalation_level(pedido_data)
 
-    preview = get_pedido_preview(pedido)
+    preview = get_pedido_preview(pedido, min_days=min_days)
     if include_eipsa_codes is not None:
         wanted = {str(c) for c in include_eipsa_codes}
         filtered = [r for r in preview["table_rows"] if r["eipsa_doc_no"] in wanted]
@@ -356,8 +402,9 @@ def send_claim(
     level: int | None = None,
     include_eipsa_codes: list[str] | None = None,
     persist_recipients: bool = True,
+    min_days: int = DEFAULT_MIN_DAYS,
 ) -> dict:
-    pedidos = get_claimable_pedidos()
+    pedidos = get_claimable_pedidos(min_days=min_days)
     pedido_data = next((p for p in pedidos if p["pedido"] == pedido), None)
     if not pedido_data:
         raise ValueError(f"Pedido {pedido} no encontrado o no reclamable")
@@ -391,7 +438,7 @@ def send_claim(
     if not to:
         raise ValueError("Lista 'to' vacía")
 
-    preview = get_pedido_preview(pedido)
+    preview = get_pedido_preview(pedido, min_days=min_days)
     if include_eipsa_codes is not None:
         wanted = {str(c) for c in include_eipsa_codes}
         filtered = [r for r in preview["table_rows"] if r["eipsa_doc_no"] in wanted]
@@ -409,21 +456,32 @@ def send_claim(
     if persist_recipients:
         save_recipients(pedido, to, cc)
 
-    # Guardado opcional en carpeta de pedido
+    # Archivado .eml en la carpeta del pedido (01 RECLAMACIONES dentro de
+    # 2-Tecnico/00 DOCUMENTACIÓN). Reusamos las bytes EXACTAS enviadas vía
+    # SMTP — así el .eml conserva Date, Message-ID y MIME structure correctos.
     saved_path = None
     save_error = None
     try:
         folder = _find_reclamaciones_folder(pedido)
         if folder:
             pedido_norm = pedido.replace("/", "-").replace("\\", "-")
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            filename = f"{date_str}_{pedido_norm}_RECLAM_L{level}.eml"
-            eml_content = _build_eml(subject, to, cc, html)
-            (folder / filename).write_text(eml_content, encoding="utf-8")
-            saved_path = str(folder / filename)
+            ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            filename = f"{ts}_{pedido_norm}_RECLAM_L{level}.eml"
+            raw_bytes = result.get("raw")
+            target = folder / filename
+            if raw_bytes:
+                target.write_bytes(raw_bytes)
+            else:
+                # Fallback defensivo si el SMTP no devolvió raw
+                target.write_text(_build_eml(subject, to, cc, html), encoding="utf-8")
+            saved_path = str(target)
+            logger.info("Reclamación archivada en %s", saved_path)
     except Exception as exc:
         save_error = str(exc)
-        logger.warning("Fallo guardando EML: %s", exc)
+        logger.warning("Fallo archivando .eml en carpeta del pedido: %s", exc)
+
+    # No exponer las bytes raw en el dict final — son grandes y ya están en disco
+    email_sent_clean = {k: v for k, v in result.items() if k != "raw"}
 
     return {
         "success": True,
@@ -435,26 +493,26 @@ def send_claim(
         "docs_count": preview["docs_count"],
         "saved_path": saved_path,
         "save_error": save_error,
-        "email_sent": result,
+        "email_sent": email_sent_clean,
     }
 
 
-def send_bulk(pedidos: list[str]) -> dict:
+def send_bulk(pedidos: list[str], min_days: int = DEFAULT_MIN_DAYS) -> dict:
     """Envía reclamaciones para varios pedidos con nivel/destinatarios auto-detectados.
 
     Devuelve un resumen agregado con éxitos y errores por pedido.
     """
-    claimable = {p["pedido"]: p for p in get_claimable_pedidos()}
+    claimable = {p["pedido"]: p for p in get_claimable_pedidos(min_days=min_days)}
     sent: list[dict] = []
     errors: list[dict] = []
 
     for pedido in pedidos:
         data = claimable.get(pedido)
         if not data:
-            errors.append({"pedido": pedido, "error": "No reclamable (no docs ≥ 15 días)"})
+            errors.append({"pedido": pedido, "error": f"No reclamable (no docs ≥ {min_days} días)"})
             continue
         try:
-            res = send_claim(pedido, to=None, cc=None, level=None)
+            res = send_claim(pedido, to=None, cc=None, level=None, min_days=min_days)
             sent.append({
                 "pedido": pedido,
                 "level": res["level"],
@@ -498,24 +556,54 @@ def _log_claim(pedido: str, level: int, to: list, cc: list, docs_count: int) -> 
 
 
 def _find_reclamaciones_folder(pedido: str) -> Path | None:
-    if not PEDIDOS_BASE_PATH:
-        return None
-    base = Path(PEDIDOS_BASE_PATH)
+    """Localiza (o crea) la carpeta `01 RECLAMACIONES` del pedido.
+
+    Estructura objetivo:
+        M:\\base de datos de pedidos\\Año YYYY\\YYYY Pedidos\\
+            <P-XX-XXX … >\\2-Tecnico\\00 DOCUMENTACIÓN\\01 RECLAMACIONES
+
+    Reusa los helpers de `apertura` que ya saben localizar el pedido por
+    prefijo (`P-XX-XXX`) ignorando si la carpeta lleva `-S00` o no.
+
+    Si la carpeta `01 RECLAMACIONES` no existe pero el resto del path sí,
+    la crea para que el archivado funcione la primera vez.
+    """
+    from core.services import apertura
+
+    # Resolver base — la env var manda; si no, default M:\base de datos de pedidos
+    base = Path(PEDIDOS_BASE_PATH) if PEDIDOS_BASE_PATH else apertura.DEFAULT_BASE_DIR
     if not base.exists():
+        logger.info("Base de pedidos no accesible (%s)", base)
         return None
-    pedido_norm = pedido.replace("/", "-").replace("\\", "-").upper()
+
+    # Año del pedido: P-26/050 → 2026
     try:
-        for entry in base.rglob(f"*{pedido_norm}*"):
-            if entry.is_dir():
-                target = entry / "03 RECLAMACIONES"
-                if target.is_dir():
-                    return target
-                target = entry / "02 DEVOLUCIONES"
-                if target.is_dir():
-                    return target
+        folder_id, _ = apertura.parse_pedido(pedido)
+    except ValueError:
+        logger.warning("Pedido no parseable: %r", pedido)
+        return None
+    m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
+    if not m:
+        return None
+    año = 2000 + int(m.group(1))
+
+    pedido_dir = apertura.find_existing_pedido_dir(folder_id, año, base_dir=base)
+    if pedido_dir is None:
+        logger.info("Pedido %s no encontrado bajo %s", folder_id, base)
+        return None
+
+    tecnico = apertura.find_tecnico_dir(pedido_dir)
+    if tecnico is None:
+        logger.info("2-Tecnico no existe en %s", pedido_dir)
+        return None
+
+    target = tecnico / "00 DOCUMENTACIÓN" / "01 RECLAMACIONES"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
     except (OSError, PermissionError) as exc:
-        logger.warning("No se pudo recorrer %s: %s", base, exc)
-    return None
+        logger.warning("No se pudo crear %s: %s", target, exc)
+        return None
+    return target
 
 
 def _build_eml(subject: str, to: list[str], cc: list[str], html_body: str) -> str:
@@ -531,11 +619,9 @@ def _build_eml(subject: str, to: list[str], cc: list[str], html_body: str) -> st
 
 
 def _subject_for(pedido: str, po: str, level: int) -> str:
-    if level == 1:
-        return f"REMINDER: {pedido} / PO: {po} // DOC. UNDER REVIEW"
-    if level == 2:
-        return f"FORMAL CLAIM: {pedido} / PO: {po} // DOCUMENTS PENDING REVIEW"
-    return f"URGENT ESCALATION: {pedido} / PO: {po} // IMMEDIATE ACTION REQUIRED"
+    """Subject único para todos los niveles — el nivel se refleja en el cuerpo
+    del email (banner + tono del HTML), no en el subject."""
+    return f"{pedido} / PO: {po} // DOCUMENTS PENDING REVIEW"
 
 
 # ── HTML profesional (mismas plantillas que DocFlow grande) ───────────────────
@@ -703,7 +789,7 @@ def _build_html(preview: dict, level: int) -> str:
         </p>
       </td>
       <td style="text-align:right;vertical-align:middle;">
-        <p style="margin:0;font-size:10px;color:#B0BEC5;">DocFlow &nbsp;·&nbsp; © 2026 <a href="https://jparedesds.github.io/" style="color:#90A4AE;text-decoration:underline;">jparedesDS</a> &nbsp;·&nbsp; {today}</p>
+        <p style="margin:0;font-size:10px;color:#B0BEC5;">DocFlow &nbsp;·&nbsp; © 2026 jparedesDS &nbsp;·&nbsp; {today}</p>
       </td>
     </tr></table>
   </td></tr>

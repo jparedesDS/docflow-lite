@@ -258,7 +258,7 @@ def _email_shell(title: str, subtitle: str, content: str) -> str:
       <tr><td style="height:3px;background:#4F46E5;font-size:1px;">&nbsp;</td></tr>
       <tr><td style="background:#f8fafc;padding:18px 32px;">
         <p style="margin:0;font-size:12px;font-weight:700;color:#1A1D27;">DocFlow</p>
-        <p style="margin:3px 0 0;font-size:11px;color:#94a3b8;">© 2026 <a href="https://jparedesds.github.io/" style="color:#94a3b8;text-decoration:underline;">jparedesDS</a> &middot; Todos los derechos reservados</p>
+        <p style="margin:3px 0 0;font-size:11px;color:#94a3b8;">© 2026 jparedesDS &middot; Todos los derechos reservados</p>
       </td></tr>
     </table>
   </td></tr>

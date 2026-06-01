@@ -151,23 +151,51 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
 # ── Guardado opcional en carpeta de pedido ────────────────────────────────────
 
 def _find_devoluciones_folder(pedido: str) -> Path | None:
-    """Busca `<PEDIDOS_BASE_PATH>/**/<pedido>/02 DEVOLUCIONES`. Devuelve None si no hay base path o no se encuentra."""
-    if not PEDIDOS_BASE_PATH:
-        return None
-    base = Path(PEDIDOS_BASE_PATH)
+    """Localiza (o crea) la carpeta `02 DEVOLUCIONES` del pedido.
+
+    Estructura objetivo:
+        M:\\base de datos de pedidos\\Año YYYY\\YYYY Pedidos\\
+            <P-XX-XXX ...>\\2-Tecnico\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES
+
+    Reusa los helpers de `apertura` que ya saben localizar el pedido por
+    prefijo (`P-XX-XXX`) tolerando `-S00` o no, y detectar `2-Tecnico` en
+    sus variantes. Si `02 DEVOLUCIONES` no existe pero el resto del path
+    sí, la crea para que el archivado funcione la primera vez.
+    """
+    from core.services import apertura
+
+    base = Path(PEDIDOS_BASE_PATH) if PEDIDOS_BASE_PATH else apertura.DEFAULT_BASE_DIR
     if not base.exists():
+        logger.info("Base de pedidos no accesible (%s)", base)
         return None
 
-    pedido_norm = pedido.replace("/", "-").replace("\\", "-").upper()
     try:
-        for entry in base.rglob(f"*{pedido_norm}*"):
-            if entry.is_dir():
-                target = entry / "02 DEVOLUCIONES"
-                if target.is_dir():
-                    return target
+        folder_id, _ = apertura.parse_pedido(pedido)
+    except ValueError:
+        logger.warning("Pedido no parseable: %r", pedido)
+        return None
+    m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
+    if not m:
+        return None
+    año = 2000 + int(m.group(1))
+
+    pedido_dir = apertura.find_existing_pedido_dir(folder_id, año, base_dir=base)
+    if pedido_dir is None:
+        logger.info("Pedido %s no encontrado bajo %s", folder_id, base)
+        return None
+
+    tecnico = apertura.find_tecnico_dir(pedido_dir)
+    if tecnico is None:
+        logger.info("2-Tecnico no existe en %s", pedido_dir)
+        return None
+
+    target = tecnico / "00 DOCUMENTACIÓN" / "02 DEVOLUCIONES"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
     except (OSError, PermissionError) as exc:
-        logger.warning("No se pudo recorrer %s: %s", base, exc)
-    return None
+        logger.warning("No se pudo crear %s: %s", target, exc)
+        return None
+    return target
 
 
 def _build_eml(subject: str, to: list[str], cc: list[str], html_body: str) -> str:
@@ -244,7 +272,9 @@ def send_manual_notification(
 
     send_result = smtp_service.send_html_email(to, cc, subject, html)
 
-    # Guardado opcional en carpeta del pedido
+    # Archivado .eml en la carpeta 02 DEVOLUCIONES del pedido. Reusamos las
+    # bytes EXACTAS enviadas vía SMTP — así Date, Message-ID y MIME structure
+    # son idénticos al correo entregado.
     saved_path = None
     save_error = None
     try:
@@ -253,20 +283,24 @@ def send_manual_notification(
             target = _find_devoluciones_folder(pedido)
             if target:
                 pedido_norm = pedido.replace("/", "-").replace("\\", "-")
-                date_str = datetime.now().strftime("%Y-%m-%d")
-                filename = f"{date_str}_{pedido_norm}_DEV_MANUAL.eml"
-                (target / filename).write_text(
-                    _build_eml(subject, to, cc, html),
-                    encoding="utf-8",
-                )
-                saved_path = str(target / filename)
+                ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                filename = f"{ts}_{pedido_norm}_DEV_MANUAL.eml"
+                dest = target / filename
+                raw = send_result.get("raw")
+                if raw:
+                    dest.write_bytes(raw)
+                else:
+                    dest.write_text(_build_eml(subject, to, cc, html), encoding="utf-8")
+                saved_path = str(dest)
+                logger.info("Devolución manual archivada en %s", saved_path)
     except Exception as exc:
         save_error = str(exc)
         logger.warning("Fallo guardando EML manual: %s", exc)
 
+    send_result_clean = {k: v for k, v in send_result.items() if k != "raw"}
     return {
         "success": True,
-        "email_sent": send_result,
+        "email_sent": send_result_clean,
         "documents_count": res["documents_count"],
         "subject": subject,
         "saved_path": saved_path,
@@ -378,7 +412,8 @@ def process_and_notify(
     imap_service.mark_as_read(uid, folder)
     _save_processed(uid)
 
-    # Guardado opcional en carpeta de red
+    # Archivado .eml en la carpeta 02 DEVOLUCIONES del pedido (bytes reales
+    # del MIME enviado, no un .eml reconstruido — preserva Date/Message-ID).
     saved_path = None
     save_error = None
     try:
@@ -387,20 +422,26 @@ def process_and_notify(
             target = _find_devoluciones_folder(pedido)
             if target:
                 pedido_norm = pedido.replace("/", "-").replace("\\", "-")
-                date_str = datetime.now().strftime("%Y-%m-%d")
-                filename = f"{date_str}_{pedido_norm}_DEV.eml"
-                (target / filename).write_text(
-                    _build_eml(subject, to, cc, html_body),
-                    encoding="utf-8",
-                )
-                saved_path = str(target / filename)
+                ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+                filename = f"{ts}_{pedido_norm}_DEV.eml"
+                dest = target / filename
+                raw = send_result.get("raw")
+                if raw:
+                    dest.write_bytes(raw)
+                else:
+                    dest.write_text(_build_eml(subject, to, cc, html_body), encoding="utf-8")
+                saved_path = str(dest)
+                logger.info("Devolución archivada en %s", saved_path)
     except Exception as exc:
         save_error = str(exc)
         logger.warning("Fallo guardando EML en carpeta de pedido: %s", exc)
 
+    # No exponer las bytes raw (grandes) en el dict de retorno
+    send_result_clean = {k: v for k, v in send_result.items() if k != "raw"}
+
     return {
         "success": True,
-        "email_sent": send_result,
+        "email_sent": send_result_clean,
         "documents_count": len(df),
         "subject": subject,
         "saved_path": saved_path,
