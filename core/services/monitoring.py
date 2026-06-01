@@ -155,14 +155,38 @@ def _build_merged_dataset() -> list[dict]:
         return []
     consulta_df = _read_excel(consulta_path)
 
-    # Merge con consulta_erp
+    # Merge con consulta_erp. Normalizamos Nº Pedido en ambos lados a string
+    # uppercase + strip para tolerar variaciones de case (P-25/017-S00 vs
+    # P-25/017-s00) y espacios accidentales.
     if not consulta_df.empty and "Nº Pedido" in consulta_df.columns:
         lookup_cols = ["Nº Pedido"]
         for col in ("Responsable", "Nº Oferta", "Fecha Pedido", "Fecha Prevista"):
             if col in consulta_df.columns:
                 lookup_cols.append(col)
-        lookup = consulta_df[lookup_cols].drop_duplicates(subset=["Nº Pedido"])
-        data_df = data_df.merge(lookup, on="Nº Pedido", how="left", suffixes=("", "_consulta"))
+        lookup = consulta_df[lookup_cols].drop_duplicates(subset=["Nº Pedido"]).copy()
+
+        # Clave normalizada para el join (no se queda en el resultado)
+        data_df["_pedido_key"] = data_df["Nº Pedido"].astype(str).str.strip().str.upper()
+        lookup["_pedido_key"] = lookup["Nº Pedido"].astype(str).str.strip().str.upper()
+        lookup_no_pedido = lookup.drop(columns=["Nº Pedido"])
+        data_df = data_df.merge(
+            lookup_no_pedido, on="_pedido_key", how="left", suffixes=("", "_consulta"),
+        )
+        data_df.drop(columns=["_pedido_key"], inplace=True)
+
+        # Aviso si el merge no produjo ningún match — suele significar que
+        # consulta_erp es de un período distinto al de data_erp (o ruta vieja).
+        for c in ("Responsable", "Nº Oferta"):
+            if c in data_df.columns:
+                n_filled = data_df[c].notna().sum()
+                if n_filled == 0:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "Merge con consulta_erp: columna %r quedó 100%% vacía. "
+                        "Revisa que consulta_erp.xlsx cubra el rango de pedidos de "
+                        "data_erp.xlsx (Centro de Reportes → Fuente de datos).", c,
+                    )
+                    break  # un solo warning basta
         for col in ("Fecha Pedido", "Fecha Prevista"):
             col_c = col + "_consulta"
             if col_c in data_df.columns:
