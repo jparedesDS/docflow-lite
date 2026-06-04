@@ -377,6 +377,128 @@ def find_tecnico_dir(pedido_dir: Path) -> Path | None:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# Pedidos de Almacén (PA)
+# ════════════════════════════════════════════════════════════════════════════
+#
+# Los PA viven en una carpeta hermana de los pedidos normales:
+#   M:\base de datos de pedidos\Año YYYY\YYYY Pedidos Almacen\
+#       PA-26-076 - MOEVE - BRIDAS + PLACA
+# y tienen la MISMA estructura interna que un pedido normal: subcarpeta
+# '2-Tecnico' dentro de la cual cuelga '00 DOCUMENTACIÓN' (y dentro
+# '02 DEVOLUCIONES'). Lo único que cambia frente a un pedido normal es la
+# carpeta padre del año ('YYYY Pedidos Almacen') y el prefijo del código (PA-).
+
+# Tolerante: acepta PA-26-076, PA-26/076, pa 26 076…
+_PA_FLEX_RE = re.compile(r"^\s*PA-?(\d{2})[\-/\s](\d{3})\s*$", re.IGNORECASE)
+
+# Match del comienzo del nombre de carpeta de un PA:
+#   'PA-26-076 - MOEVE - BRIDAS + PLACA'
+_PA_DIR_RE = re.compile(
+    r"^PA-(\d{2})-(\d{3})\s*[\-–—]\s*(.+)$",
+    re.IGNORECASE,
+)
+
+
+def is_pa_pedido(raw: str) -> bool:
+    """True si `raw` tiene forma de Pedido de Almacén (PA-XX-XXX)."""
+    return bool(_PA_FLEX_RE.match((raw or "").strip()))
+
+
+def parse_pa_pedido(raw: str) -> str:
+    """Normaliza un PA a 'PA-XX-XXX'. Lanza ValueError si no encaja."""
+    m = _PA_FLEX_RE.match((raw or "").strip())
+    if not m:
+        raise ValueError(
+            f"Pedido de almacén inválido: {raw!r}. Esperado PA-XX-XXX (p.ej. PA-26-076)."
+        )
+    return f"PA-{m.group(1)}-{m.group(2)}"
+
+
+def find_existing_pa_dir(
+    pedido: str,
+    año: int,
+    base_dir: Path = DEFAULT_BASE_DIR,
+) -> Path | None:
+    """Busca la carpeta de un PA bajo `Año YYYY\\YYYY Pedidos Almacen\\`.
+
+    Empareja por prefijo `PA-XX-XXX`. Si hay varias coincidencias devuelve la
+    primera lexicográficamente.
+    """
+    folder_id = parse_pa_pedido(pedido)
+    año_dir = Path(base_dir) / f"Año {año}" / f"{año} Pedidos Almacen"
+    if not año_dir.exists():
+        return None
+
+    candidates = []
+    for entry in año_dir.iterdir():
+        if not entry.is_dir():
+            continue
+        m = _PA_DIR_RE.match(entry.name)
+        if m and f"PA-{m.group(1)}-{m.group(2)}".upper() == folder_id.upper():
+            candidates.append(entry)
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.name)
+    return candidates[0]
+
+
+def find_documentacion_dir(
+    pedido: str,
+    base_dir: Path = DEFAULT_BASE_DIR,
+    *,
+    create: bool = True,
+) -> Path | None:
+    """Devuelve la carpeta `00 DOCUMENTACIÓN` del pedido (normal o PA).
+
+    Ambos tipos comparten la MISMA estructura interna:
+        <carpeta pedido>\\2-Tecnico\\00 DOCUMENTACIÓN
+    Lo único que cambia es dónde vive la carpeta del pedido:
+      - Normal `P-XX-XXX`  → `…\\YYYY Pedidos\\<P-...>`
+      - Almacén `PA-XX-XXX` → `…\\YYYY Pedidos Almacen\\<PA-...>`
+
+    Requiere que `2-Tecnico` exista (no lo crea, para no alterar la carpeta del
+    pedido). Crea `00 DOCUMENTACIÓN` dentro de él si `create=True`.
+    Devuelve None si no se localiza la carpeta del pedido o su `2-Tecnico`.
+    """
+    base = Path(base_dir)
+    if not base.exists():
+        return None
+
+    # Localiza la carpeta raíz del pedido según su tipo
+    if is_pa_pedido(pedido):
+        folder_id = parse_pa_pedido(pedido)
+        año = 2000 + int(folder_id.split("-")[1])
+        pedido_dir = find_existing_pa_dir(folder_id, año, base_dir=base)
+    else:
+        try:
+            folder_id, _ = parse_pedido(pedido)
+        except ValueError:
+            return None
+        m = _PEDIDO_FOLDER_RE.match(folder_id)
+        if not m:
+            return None
+        año = 2000 + int(m.group(1))
+        pedido_dir = find_existing_pedido_dir(folder_id, año, base_dir=base)
+
+    if pedido_dir is None:
+        return None
+
+    # 2-Tecnico (común a ambos tipos)
+    tecnico = find_tecnico_dir(pedido_dir)
+    if tecnico is None:
+        return None
+
+    doc_dir = tecnico / "00 DOCUMENTACIÓN"
+    if create:
+        try:
+            doc_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError):
+            return None
+    return doc_dir
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # Modelos
 # ════════════════════════════════════════════════════════════════════════════
 

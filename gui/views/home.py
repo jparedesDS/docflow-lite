@@ -158,7 +158,7 @@ class HomeView(ctk.CTkFrame):
         # Valor grande
         value_lbl = ctk.CTkLabel(
             inner, text="—",
-            font=(theme.FONT_FAMILY, 24, "bold"),
+            font=theme.font(24, "bold"),
             text_color=color, anchor="w",
         )
         value_lbl.pack(anchor="w", pady=(theme.SPACE_2, 0))
@@ -191,14 +191,14 @@ class HomeView(ctk.CTkFrame):
 
         icon_label = ctk.CTkLabel(
             icon_row, text=c["icon"],
-            font=(theme.FONT_FAMILY, 20, "bold"),
+            font=theme.font(20, "bold"),
             text_color=c["color"], width=32, anchor="w",
         )
         icon_label.pack(side="left")
 
         ctk.CTkLabel(
             icon_row, text=c["title"],
-            font=(theme.FONT_FAMILY, 15, "bold"),
+            font=theme.font(15, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", padx=(theme.SPACE_1, 0))
 

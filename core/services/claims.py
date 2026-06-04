@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 CLAIMS_LOG_PATH = str(state_dir() / "claims_log.json")
 CLAIM_RECIPIENTS_PATH = str(state_dir() / "claim_recipients.json")
 
-URGENCY_THRESHOLDS = {"low": 15, "medium": 30, "high": 60}
+# Umbrales por días (max_dias del pedido):
+#   recordatorio / low:  0–15 días
+#   formal / medium:     15–30 días
+#   urgente / high:      30+ días
+URGENCY_THRESHOLDS = {"low": 0, "medium": 15, "high": 30}
 
 ESCALATION_LEVELS = {
     1: {"name": "reminder", "label": "Document Review Reminder",  "accent": "#2563EB"},
@@ -319,14 +323,20 @@ def get_pedido_history(pedido: str) -> dict:
 # ── Escalation ────────────────────────────────────────────────────────────────
 
 def get_escalation_level(pedido_data: dict) -> int:
+    """Nivel propuesto en función de los días del documento más antiguo:
+        0–15 días  → 1 Recordatorio
+        15–30 días → 2 Formal
+        30+ días   → 3 Urgente
+    """
     max_dias = pedido_data.get("max_dias", 0)
-    claim_count = pedido_data.get("claim_count")
-    if claim_count is None:
-        claim_count = get_pedido_history(pedido_data.get("pedido", "")).get("count", 0)
+    try:
+        max_dias = int(float(max_dias))
+    except (ValueError, TypeError):
+        max_dias = 0
 
-    if max_dias >= 60 or claim_count >= 2:
+    if max_dias >= 30:
         return 3
-    if max_dias >= 30 or claim_count >= 1:
+    if max_dias >= 15:
         return 2
     return 1
 
@@ -558,15 +568,14 @@ def _log_claim(pedido: str, level: int, to: list, cc: list, docs_count: int) -> 
 def _find_reclamaciones_folder(pedido: str) -> Path | None:
     """Localiza (o crea) la carpeta `01 RECLAMACIONES` del pedido.
 
-    Estructura objetivo:
-        M:\\base de datos de pedidos\\Año YYYY\\YYYY Pedidos\\
-            <P-XX-XXX … >\\2-Tecnico\\00 DOCUMENTACIÓN\\01 RECLAMACIONES
+    Estructura objetivo, según el tipo de pedido:
+      · Normal  `P-XX-XXX`  →  …\\YYYY Pedidos\\<P-...>\\2-Tecnico\\00 DOCUMENTACIÓN\\01 RECLAMACIONES
+      · Almacén `PA-XX-XXX` →  …\\YYYY Pedidos Almacen\\<PA-...>\\2-Tecnico\\00 DOCUMENTACIÓN\\01 RECLAMACIONES
 
-    Reusa los helpers de `apertura` que ya saben localizar el pedido por
-    prefijo (`P-XX-XXX`) ignorando si la carpeta lleva `-S00` o no.
-
-    Si la carpeta `01 RECLAMACIONES` no existe pero el resto del path sí,
-    la crea para que el archivado funcione la primera vez.
+    Reusa `apertura.find_documentacion_dir`, que detecta P vs PA, localiza la
+    carpeta del pedido por prefijo (tolerando `-S00`), encuentra su `2-Tecnico`
+    y crea el `00 DOCUMENTACIÓN` cuando hace falta. Si no localiza la carpeta
+    del pedido o su `2-Tecnico` devuelve None.
     """
     from core.services import apertura
 
@@ -576,28 +585,12 @@ def _find_reclamaciones_folder(pedido: str) -> Path | None:
         logger.info("Base de pedidos no accesible (%s)", base)
         return None
 
-    # Año del pedido: P-26/050 → 2026
-    try:
-        folder_id, _ = apertura.parse_pedido(pedido)
-    except ValueError:
-        logger.warning("Pedido no parseable: %r", pedido)
-        return None
-    m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
-    if not m:
-        return None
-    año = 2000 + int(m.group(1))
-
-    pedido_dir = apertura.find_existing_pedido_dir(folder_id, año, base_dir=base)
-    if pedido_dir is None:
-        logger.info("Pedido %s no encontrado bajo %s", folder_id, base)
+    doc_dir = apertura.find_documentacion_dir(pedido, base_dir=base, create=True)
+    if doc_dir is None:
+        logger.info("No se localizó 00 DOCUMENTACIÓN para %r bajo %s", pedido, base)
         return None
 
-    tecnico = apertura.find_tecnico_dir(pedido_dir)
-    if tecnico is None:
-        logger.info("2-Tecnico no existe en %s", pedido_dir)
-        return None
-
-    target = tecnico / "00 DOCUMENTACIÓN" / "01 RECLAMACIONES"
+    target = doc_dir / "01 RECLAMACIONES"
     try:
         target.mkdir(parents=True, exist_ok=True)
     except (OSError, PermissionError) as exc:

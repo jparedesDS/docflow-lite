@@ -16,6 +16,30 @@ logger = logging.getLogger(__name__)
 
 COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha"]
 
+# Preview de devolución: columnas a nivel de DOCUMENTO (varían por fila) que se
+# muestran en la tabla. El resto (pedido, cliente, material, PO, transmittal…)
+# son iguales en todas las filas y se muestran en la cabecera resumen.
+DOC_TABLE_COLUMNS = [
+    "Doc. Cliente", "Doc. EIPSA", "Título",
+    "Tipo de documento", "Rev.", "Estado", "Crítico",
+]
+# Cabecera abreviada para algunas columnas (id = clave de datos, text = visible)
+DOC_HEADER_SHORT = {
+    "Tipo de documento": "Tipo",
+    "Rev.": "Rev",
+    "Crítico": "Crít.",
+}
+# Campos a nivel de PEDIDO que van a la cabecera resumen: (clave, etiqueta)
+META_FIELDS = [
+    ("Nº Pedido", "Pedido"),
+    ("Cliente", "Cliente"),
+    ("Material", "Material"),
+    ("PO", "PO"),
+    ("Responsable", "Resp."),
+    ("Nº Transmittal", "Transmittal"),
+    ("Fecha", "Recibido"),
+]
+
 # Estados válidos para edición manual desde el preview de devolución.
 # Ordenados por frecuencia de uso real del Document Controller.
 VALID_STATUSES = [
@@ -94,8 +118,13 @@ class DevolucionesView(ctk.CTkFrame):
         self.table = DataTable(self, columns=COLUMNS, on_double_click=self._on_row_double)
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
-            "Plataforma": 130, "Asunto": 520, "Remitente": 260, "Fecha": 140,
+            "Plataforma": 130, "Asunto": 520, "Remitente": 260, "Fecha": 150,
         })
+        self.table.set_columns_anchor({
+            "Plataforma": "center", "Asunto": "w",
+            "Remitente": "w", "Fecha": "center",
+        })
+        self.table.set_context_menu(self._ctx_menu)
 
     # ── Acciones ──────────────────────────────────────────────────────────────
 
@@ -159,6 +188,22 @@ class DevolucionesView(ctk.CTkFrame):
             return
         PreviewWindow(self, uid=sel, on_sent=self._reload)
 
+    # ── Menú contextual ────────────────────────────────────────────────────
+
+    def _ctx_menu(self, iid: str, col_idx: int):
+        email = next((e for e in self._emails if e.get("uid") == iid), None)
+        if not email:
+            return None
+        return [
+            ("✉  Procesar / Preview",
+             lambda: PreviewWindow(self, uid=iid, on_sent=self._reload)),
+            ("-", None),
+            ("Copiar asunto",
+             lambda: self.table.copy_to_clipboard(email.get("subject", ""))),
+            ("Copiar remitente",
+             lambda: self.table.copy_to_clipboard(email.get("from", ""))),
+        ]
+
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Preview / envío
@@ -179,16 +224,28 @@ class PreviewWindow(ctk.CTkToplevel):
         self._status_overrides: dict[str, str] = {}  # iid -> nuevo Estado
         self.docs_table: DataTable | None = None
         self._estado_col_id: str | None = None  # ej "#5"
+        self._fit_after_id = None
 
         self._build_skeleton()
         self._load()
+
+    def _debounce_fit(self) -> None:
+        """Reajusta las columnas al redimensionar la ventana (con debounce)."""
+        if self.docs_table is None:
+            return
+        if self._fit_after_id is not None:
+            try:
+                self.after_cancel(self._fit_after_id)
+            except Exception:
+                pass
+        self._fit_after_id = self.after(150, self._fit_docs_table)
 
     def _build_skeleton(self) -> None:
         # Header
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=22, pady=(18, 6))
         self.lbl_platform = ctk.CTkLabel(
-            header, text="Cargando…", font=(theme.FONT_FAMILY, 18, "bold"),
+            header, text="Cargando…", font=theme.font(18, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         )
         self.lbl_platform.pack(anchor="w")
@@ -197,6 +254,14 @@ class PreviewWindow(ctk.CTkToplevel):
             anchor="w", justify="left", wraplength=820,
         )
         self.lbl_subject.pack(anchor="w", pady=(2, 0))
+
+        # Cabecera resumen del pedido (chips con datos que se repiten en todas
+        # las filas). Se rellena en _render_preview.
+        self.meta_host = ctk.CTkFrame(
+            self, fg_color=theme.BG_CARD, corner_radius=10,
+            border_width=1, border_color=theme.BORDER,
+        )
+        self.meta_host.pack(fill="x", padx=22, pady=(10, 2))
 
         # Fields
         fields = ctk.CTkFrame(self, fg_color="transparent")
@@ -293,8 +358,16 @@ class PreviewWindow(ctk.CTkToplevel):
         self.ent_cc.insert(0, ", ".join(pv.get("suggested_cc") or []))
 
         docs = pv.get("documents") or []
-        cols = [c for c in (pv.get("columns") or (docs[0].keys() if docs else []))
-                if not str(c).startswith("_")]
+        all_cols = [c for c in (pv.get("columns") or (docs[0].keys() if docs else []))
+                    if not str(c).startswith("_")]
+
+        # Cabecera resumen del pedido (datos que se repiten en cada fila)
+        self._render_meta(docs[0] if docs else {})
+
+        # Columnas de la tabla: solo las de DOCUMENTO presentes en los datos
+        cols = [c for c in DOC_TABLE_COLUMNS if c in all_cols]
+        if not cols:  # fallback defensivo
+            cols = all_cols
 
         for child in self.table_host.winfo_children():
             child.destroy()
@@ -311,10 +384,21 @@ class PreviewWindow(ctk.CTkToplevel):
         else:
             self.docs_table = DataTable(self.table_host, columns=cols)
             self.docs_table.pack(fill="both", expand=True)
+            # Alineación: texto a la izquierda, Rev/Estado/Crítico centrados
+            self.docs_table.set_columns_anchor({
+                "Rev.": "center", "Estado": "center", "Crítico": "center",
+                "Tipo de documento": "center",
+            })
             for idx, doc in enumerate(docs):
                 values = [str(doc.get(c, "")) for c in cols]
                 tag = _status_tag(doc.get("Estado", ""))
                 self.docs_table.add_row(values=values, iid=str(idx), tags=(tag,) if tag else ())
+
+            # Cabeceras abreviadas
+            for col in cols:
+                short = DOC_HEADER_SHORT.get(col)
+                if short:
+                    self.docs_table.tree.heading(col, text=short)
 
             # Configurar tags de coloreo
             for k, color in (
@@ -333,11 +417,57 @@ class PreviewWindow(ctk.CTkToplevel):
                 self.docs_table.tree.heading("Estado", text="Estado  ✎")
                 self.docs_table.tree.bind("<Button-1>", self._on_doc_click)
 
+            # Ajustar columnas para que la tabla entre completa (sin scroll
+            # lateral). Se llama tras el layout para medir el ancho real.
+            self.after(80, self._fit_docs_table)
+            # Reajustar si se redimensiona la ventana
+            self.bind("<Configure>", lambda _e: self._debounce_fit())
+
         self.lbl_status.configure(
             text=f"✓  {len(docs)} documento(s) listos. Click en la columna Estado ✎ para editar manualmente.",
         )
         self.btn_send.configure(state="normal")
         self.btn_preview.configure(state="normal")
+
+    def _fit_docs_table(self) -> None:
+        if self.docs_table is not None:
+            self.docs_table.autofit_columns(max_per={
+                "Título": 360,
+                "Doc. Cliente": 200, "Doc. EIPSA": 180,
+            })
+
+    def _render_meta(self, doc: dict) -> None:
+        """Rellena la cabecera resumen con los datos del pedido (chips)."""
+        for child in self.meta_host.winfo_children():
+            child.destroy()
+        if not doc:
+            self.meta_host.pack_forget()
+            return
+        self.meta_host.pack(fill="x", padx=22, pady=(10, 2))
+
+        grid = ctk.CTkFrame(self.meta_host, fg_color="transparent")
+        grid.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+
+        # Reparte los campos no vacíos en filas de 4 columnas
+        items = [(lbl, str(doc.get(key, "") or "—").strip() or "—")
+                 for key, lbl in META_FIELDS]
+        ncols = 4
+        for c in range(ncols):
+            grid.grid_columnconfigure(c, weight=1, uniform="meta")
+
+        for i, (lbl, val) in enumerate(items):
+            r, c = divmod(i, ncols)
+            cell = ctk.CTkFrame(grid, fg_color="transparent")
+            cell.grid(row=r, column=c, sticky="w", padx=(0, theme.SPACE_4),
+                      pady=(0, theme.SPACE_1))
+            ctk.CTkLabel(
+                cell, text=lbl.upper(), font=theme.FONT_LABEL,
+                text_color=theme.TEXT_MUTED, anchor="w",
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                cell, text=val, font=theme.FONT_BODY_BOLD,
+                text_color=theme.TEXT_MAIN, anchor="w",
+            ).pack(anchor="w")
 
     # ── Editor de Estado por documento ────────────────────────────────────────
 
@@ -359,7 +489,7 @@ class PreviewWindow(ctk.CTkToplevel):
             self, tearoff=False,
             bg=theme.BG_CARD, fg=theme.TEXT_MAIN,
             activebackground=theme.ACCENT, activeforeground="white",
-            font=(theme.FONT_FAMILY, 11),
+            font=theme.font(11),
             borderwidth=1, relief="solid",
         )
         for estado in VALID_STATUSES:

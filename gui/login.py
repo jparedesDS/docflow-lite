@@ -63,13 +63,13 @@ class LoginWindow(ctk.CTk):
         # Brand
         ctk.CTkLabel(
             wrapper, text="◆  DocFlow",
-            font=(theme.FONT_FAMILY, 26, "bold"),
+            font=theme.font(26, "bold"),
             text_color=theme.TEXT_MAIN,
         ).pack(anchor="center", pady=(theme.SPACE_4, 0))
 
         ctk.CTkLabel(
             wrapper, text="Lite",
-            font=(theme.FONT_FAMILY, 13, "bold"),
+            font=theme.font(13, "bold"),
             text_color=theme.ACCENT,
         ).pack(anchor="center", pady=(0, theme.SPACE_6))
 

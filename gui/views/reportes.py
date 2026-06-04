@@ -124,16 +124,16 @@ class ReportesView(ctk.CTkFrame):
         title_row = ctk.CTkFrame(inner, fg_color="transparent")
         title_row.pack(fill="x")
         ctk.CTkLabel(title_row, text=report["icon"],
-                     font=(theme.FONT_FAMILY, 22), text_color=report["color"]).pack(side="left")
+                     font=theme.font(22), text_color=report["color"]).pack(side="left")
         ctk.CTkLabel(title_row, text=report["title"],
-                     font=(theme.FONT_FAMILY, 15, "bold"),
+                     font=theme.font(15, "bold"),
                      text_color=theme.TEXT_MAIN, anchor="w").pack(side="left", padx=(8, 0))
 
         ctk.CTkLabel(inner, text=report["desc"], wraplength=380,
                      font=theme.FONT_BODY, text_color=theme.TEXT_SUB,
                      justify="left", anchor="w").pack(anchor="w", pady=(8, 12), fill="x")
 
-        lbl_card = ctk.CTkLabel(inner, text="", font=(theme.FONT_FAMILY, 10),
+        lbl_card = ctk.CTkLabel(inner, text="", font=theme.font(10),
                                 text_color=theme.TEXT_MUTED, anchor="w")
         lbl_card.pack(anchor="w", pady=(0, 8))
 
@@ -257,9 +257,9 @@ class ReportesView(ctk.CTkFrame):
         title_row = ctk.CTkFrame(inner, fg_color="transparent")
         title_row.pack(fill="x")
         ctk.CTkLabel(title_row, text=icon,
-                     font=(theme.FONT_FAMILY, 22), text_color=color).pack(side="left")
+                     font=theme.font(22), text_color=color).pack(side="left")
         ctk.CTkLabel(title_row, text=title,
-                     font=(theme.FONT_FAMILY, 15, "bold"),
+                     font=theme.font(15, "bold"),
                      text_color=theme.TEXT_MAIN, anchor="w").pack(side="left", padx=(8, 0))
 
         ctk.CTkLabel(inner, text=desc, wraplength=380,
@@ -273,7 +273,7 @@ class ReportesView(ctk.CTkFrame):
             picker_row.pack(fill="x", pady=(0, 10))
             ctk.CTkLabel(
                 picker_row, text="Previsualizar para:",
-                font=(theme.FONT_FAMILY, 10, "bold"),
+                font=theme.font(10, "bold"),
                 text_color=theme.TEXT_MUTED,
             ).pack(side="left")
             preview_user_var = ctk.StringVar(value="JP")
@@ -283,7 +283,7 @@ class ReportesView(ctk.CTkFrame):
                 width=200, height=28, corner_radius=6,
                 fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
                 button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
-                font=(theme.FONT_FAMILY, 11), dropdown_font=(theme.FONT_FAMILY, 11),
+                font=theme.font(11), dropdown_font=theme.font(11),
                 command=lambda selected, var=preview_user_var: var.set(selected.split(" — ")[0]),
             )
             picker.set("JP — Jose Paredes")
@@ -418,12 +418,12 @@ class ReportesView(ctk.CTkFrame):
         title_box.pack(side="left", fill="x", expand=True)
         ctk.CTkLabel(
             title_box, text=sched["title"],
-            font=(theme.FONT_FAMILY, 13, "bold"),
+            font=theme.font(13, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
             title_box, text=sched.get("description") or "",
-            font=(theme.FONT_FAMILY, 11), text_color=theme.TEXT_SUB, anchor="w",
+            font=theme.font(11), text_color=theme.TEXT_SUB, anchor="w",
         ).pack(anchor="w")
 
         # Acciones
@@ -447,7 +447,7 @@ class ReportesView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             footer, text=f"⏰  {sched_service.format_next_run(sched)}",
-            font=(theme.FONT_FAMILY, 11),
+            font=theme.font(11),
             text_color=theme.TEXT_MAIN if enabled else theme.TEXT_MUTED,
             anchor="w",
         ).pack(side="left", padx=(56, 0))
@@ -465,7 +465,7 @@ class ReportesView(ctk.CTkFrame):
             color = theme.GREEN if status == "success" else theme.RED
             ctk.CTkLabel(
                 footer, text=f"  ·  Último: {icon} {ts_label}",
-                font=(theme.FONT_FAMILY, 11), text_color=color, anchor="w",
+                font=theme.font(11), text_color=color, anchor="w",
             ).pack(side="left")
 
         # Recipients
@@ -476,14 +476,14 @@ class ReportesView(ctk.CTkFrame):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
                 footer, text=f"  ·  {recip_text}",
-                font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED, anchor="w",
+                font=theme.font(10), text_color=theme.TEXT_MUTED, anchor="w",
             ).pack(side="left")
         elif sched["type"] == "personal":
             uf = (sched.get("options") or {}).get("user_filter", "all")
             filter_text = "Todo el equipo" if uf == "all" else f"Filtro: {uf}"
             ctk.CTkLabel(
                 footer, text=f"  ·  {filter_text}",
-                font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED, anchor="w",
+                font=theme.font(10), text_color=theme.TEXT_MUTED, anchor="w",
             ).pack(side="left")
 
         self._schedule_rows[sched["id"]] = {"card": card, "switch": sw, "var": var}
@@ -586,13 +586,13 @@ class ReportesView(ctk.CTkFrame):
         title_row.pack(fill="x")
 
         ctk.CTkLabel(
-            title_row, text="◫", font=(theme.FONT_FAMILY, 18, "bold"),
+            title_row, text="◫", font=theme.font(18, "bold"),
             text_color=theme.BLUE, width=28,
         ).pack(side="left")
 
         ctk.CTkLabel(
             title_row, text=st["label"],
-            font=(theme.FONT_FAMILY, 14, "bold"),
+            font=theme.font(14, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", padx=(theme.SPACE_1, theme.SPACE_2))
 
@@ -763,7 +763,7 @@ class SendExecutiveDialog(ctk.CTkToplevel):
         self._on_sent = on_sent
 
         ctk.CTkLabel(
-            self, text="Enviar a", font=(theme.FONT_FAMILY, 10, "bold"),
+            self, text="Enviar a", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=22, pady=(18, 4))
         self.ent_to = ctk.CTkEntry(
@@ -775,7 +775,7 @@ class SendExecutiveDialog(ctk.CTkToplevel):
         self.ent_to.pack(fill="x", padx=22, pady=(0, 8))
 
         ctk.CTkLabel(
-            self, text="Copia (Cc)", font=(theme.FONT_FAMILY, 10, "bold"),
+            self, text="Copia (Cc)", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=22, pady=(8, 4))
         self.ent_cc = ctk.CTkEntry(
@@ -788,7 +788,7 @@ class SendExecutiveDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             self, text="Sin To se usa la variable WEEKLY_EXECUTIVE_RECIPIENTS del .env.",
-            font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED,
+            font=theme.font(10), text_color=theme.TEXT_MUTED,
         ).pack(anchor="w", padx=22, pady=(4, 12))
 
         self.lbl_status = ctk.CTkLabel(self, text="", font=theme.FONT_BODY,
@@ -861,7 +861,7 @@ class SendPersonalDialog(ctk.CTkToplevel):
         self._on_sent = on_sent
 
         ctk.CTkLabel(
-            self, text="A quién enviar", font=(theme.FONT_FAMILY, 10, "bold"),
+            self, text="A quién enviar", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=22, pady=(18, 4))
 
@@ -891,7 +891,7 @@ class SendPersonalDialog(ctk.CTkToplevel):
         self.ent_filter.pack(fill="x", padx=46, pady=(0, 8))
 
         ctk.CTkLabel(
-            self, text="Copia adicional (Cc)", font=(theme.FONT_FAMILY, 10, "bold"),
+            self, text="Copia adicional (Cc)", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=22, pady=(8, 4))
         self.ent_cc = ctk.CTkEntry(
@@ -906,7 +906,7 @@ class SendPersonalDialog(ctk.CTkToplevel):
         users_label = ", ".join(sorted(USERS.keys()))
         ctk.CTkLabel(
             self, text=f"Iniciales disponibles: {users_label}",
-            font=(theme.FONT_FAMILY, 10), text_color=theme.TEXT_MUTED,
+            font=theme.font(10), text_color=theme.TEXT_MUTED,
             anchor="w", justify="left", wraplength=500,
         ).pack(anchor="w", padx=22, pady=(4, 12))
 
@@ -1005,7 +1005,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             self, text=sched["title"],
-            font=(theme.FONT_FAMILY, 16, "bold"),
+            font=theme.font(16, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w", padx=22, pady=(18, 2))
         ctk.CTkLabel(
@@ -1019,7 +1019,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
 
         # Día de la semana
         ctk.CTkLabel(self, text="Día de la semana",
-                     font=(theme.FONT_FAMILY, 10, "bold"),
+                     font=theme.font(10, "bold"),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
         day_options = list(sched_service.DAY_LABELS.values())
         current_day = sched_service.DAY_LABELS.get(schedule.get("day_of_week", "mon"), "Lunes")
@@ -1036,7 +1036,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
         time_row = ctk.CTkFrame(self, fg_color="transparent")
         time_row.pack(anchor="w", padx=22, fill="x")
         ctk.CTkLabel(time_row, text="Hora",
-                     font=(theme.FONT_FAMILY, 10, "bold"),
+                     font=theme.font(10, "bold"),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         sub = ctk.CTkFrame(time_row, fg_color="transparent")
         sub.pack(anchor="w", fill="x", pady=(2, 12))
@@ -1061,7 +1061,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
         recipients = sched.get("recipients") or {}
         if sched["type"] == "executive":
             ctk.CTkLabel(self, text="Destinatarios To",
-                         font=(theme.FONT_FAMILY, 10, "bold"),
+                         font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
             self.ent_to = ctk.CTkEntry(
                 self, height=34, corner_radius=8,
@@ -1072,7 +1072,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
             self.ent_to.pack(fill="x", padx=22, pady=(0, 8))
 
             ctk.CTkLabel(self, text="Cc",
-                         font=(theme.FONT_FAMILY, 10, "bold"),
+                         font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
             self.ent_cc = ctk.CTkEntry(
                 self, height=34, corner_radius=8,
@@ -1087,7 +1087,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
             options = sched.get("options") or {}
             uf = options.get("user_filter", "all")
             ctk.CTkLabel(self, text="Filtro de usuarios",
-                         font=(theme.FONT_FAMILY, 10, "bold"),
+                         font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
             self.ent_filter = ctk.CTkEntry(
                 self, placeholder_text="all (todo el equipo) o JP, AC, JM",
@@ -1102,7 +1102,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
             self.ent_filter.pack(fill="x", padx=22, pady=(0, 8))
 
             ctk.CTkLabel(self, text="Cc (añadido a cada email)",
-                         font=(theme.FONT_FAMILY, 10, "bold"),
+                         font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
             self.ent_cc = ctk.CTkEntry(
                 self, height=34, corner_radius=8,

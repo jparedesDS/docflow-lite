@@ -107,7 +107,7 @@ class InboxView(ctk.CTkFrame):
             "": 28, "Asunto": 340, "Remitente": 200, "Fecha": 110,
         })
         self.table.tree.column("", anchor="center", stretch=False)
-        self.table.tree.tag_configure("unread", foreground=theme.TEXT_MAIN, font=(theme.FONT_FAMILY, 11, "bold"))
+        self.table.tree.tag_configure("unread", foreground=theme.TEXT_MAIN, font=theme.font(11, "bold"))
         self.table.tree.tag_configure("read", foreground=theme.TEXT_SUB)
         self.table.tree.bind("<<TreeviewSelect>>", self._on_select)
 
@@ -125,7 +125,7 @@ class InboxView(ctk.CTkFrame):
             w.destroy()
         ctk.CTkLabel(
             self.detail, text="✉",
-            font=(theme.FONT_FAMILY, 48), text_color=theme.TEXT_MUTED,
+            font=theme.font(48), text_color=theme.TEXT_MUTED,
         ).pack(pady=(80, 8))
         ctk.CTkLabel(
             self.detail, text="Selecciona un email para leerlo",
@@ -252,7 +252,7 @@ class InboxView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             head, text=d.get("subject") or "(sin asunto)",
-            font=(theme.FONT_FAMILY, 14, "bold"),
+            font=theme.font(14, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
             justify="left", wraplength=520,
         ).pack(anchor="w")
@@ -297,7 +297,7 @@ class InboxView(ctk.CTkFrame):
         # Body
         ctk.CTkLabel(
             self.detail, text="MENSAJE",
-            font=(theme.FONT_FAMILY, 9, "bold"),
+            font=theme.font(9, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=18, pady=(10, 4))
 
@@ -326,7 +326,7 @@ class InboxView(ctk.CTkFrame):
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=1)
         ctk.CTkLabel(
-            row, text=label, font=(theme.FONT_FAMILY, 10, "bold"),
+            row, text=label, font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w", width=50,
         ).pack(side="left")
         ctk.CTkLabel(
@@ -385,7 +385,7 @@ class InboxView(ctk.CTkFrame):
             tw.geometry(f"+{x}+{y}")
             tw.configure(fg_color=theme.BG_SIDEBAR)
             ctk.CTkLabel(
-                tw, text=text, font=(theme.FONT_FAMILY, 10),
+                tw, text=text, font=theme.font(10),
                 text_color=theme.TEXT_MAIN, fg_color=theme.BG_SIDEBAR,
                 corner_radius=6,
             ).pack(padx=8, pady=4)

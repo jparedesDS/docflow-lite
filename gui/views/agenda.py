@@ -1,4 +1,4 @@
-﻿"""Vista Agenda — Notas, Reuniones y Tareas en 3 tabs internos."""
+"""Vista Agenda — Notas, Reuniones y Tareas en 3 tabs internos."""
 
 import logging
 import threading
@@ -183,7 +183,7 @@ class AgendaView(ctk.CTkFrame):
 
         # Dot de prioridad (en lugar de badge grande)
         ctk.CTkLabel(
-            row, text="●", font=(theme.FONT_FAMILY, 14, "bold"),
+            row, text="●", font=theme.font(14, "bold"),
             text_color=prio_color, width=14,
         ).pack(side="left", padx=(0, 6))
 
@@ -193,7 +193,7 @@ class AgendaView(ctk.CTkFrame):
             title_text = f"⚙ {title_text}"
         ctk.CTkLabel(
             row, text=title_text,
-            font=(theme.FONT_FAMILY, 12, "bold" if not is_done else "normal"),
+            font=theme.font(12, "bold" if not is_done else "normal"),
             text_color=theme.TEXT_MUTED if is_done else theme.TEXT_MAIN,
             anchor="w",
         ).pack(side="left", fill="x", expand=True)
@@ -203,7 +203,7 @@ class AgendaView(ctk.CTkFrame):
         if fecha:
             d_label, d_color = _fecha_status(fecha, is_done)
             ctk.CTkLabel(
-                row, text=d_label, font=(theme.FONT_FAMILY, 10),
+                row, text=d_label, font=theme.font(10),
                 text_color=d_color,
             ).pack(side="left", padx=(8, 0))
 
@@ -211,13 +211,13 @@ class AgendaView(ctk.CTkFrame):
         ctk.CTkButton(
             row, text="🗑", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: self._delete_tarea(t),
         ).pack(side="right", padx=1)
         ctk.CTkButton(
             row, text="✏", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: TareaEditor(self, tarea=t, on_save=self._reload_tareas),
         ).pack(side="right", padx=1)
 
@@ -226,7 +226,7 @@ class AgendaView(ctk.CTkFrame):
         if desc and not is_done:
             short = desc if len(desc) <= 140 else desc[:140] + "…"
             ctk.CTkLabel(
-                card, text=short, font=(theme.FONT_FAMILY, 10),
+                card, text=short, font=theme.font(10),
                 text_color=theme.TEXT_MUTED, anchor="w", justify="left",
                 wraplength=900,
             ).pack(anchor="w", padx=(40, 10), pady=(0, 6))
@@ -340,20 +340,20 @@ class AgendaView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             row, text=n.get("titulo", "(sin título)"),
-            font=(theme.FONT_FAMILY, 12, "bold"),
+            font=theme.font(12, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", fill="x", expand=True)
 
         ctk.CTkButton(
             row, text="🗑", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: self._delete_nota(n),
         ).pack(side="right", padx=1)
         ctk.CTkButton(
             row, text="✏", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: NotaEditor(self, nota=n, on_save=self._reload_notas),
         ).pack(side="right", padx=1)
 
@@ -362,7 +362,7 @@ class AgendaView(ctk.CTkFrame):
         if contenido:
             short = contenido if len(contenido) <= 220 else contenido[:220] + "…"
             ctk.CTkLabel(
-                card, text=short, font=(theme.FONT_FAMILY, 11),
+                card, text=short, font=theme.font(11),
                 text_color=theme.TEXT_SUB, anchor="w", justify="left", wraplength=900,
             ).pack(anchor="w", padx=12, pady=(0, 6))
 
@@ -436,20 +436,20 @@ class AgendaView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             row, text=r.get("titulo", "(sin título)"),
-            font=(theme.FONT_FAMILY, 12, "bold"),
+            font=theme.font(12, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", fill="x", expand=True)
 
         ctk.CTkButton(
             row, text="🗑", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: self._delete_reunion(r),
         ).pack(side="right", padx=1)
         ctk.CTkButton(
             row, text="✏", width=24, height=22, corner_radius=4,
             fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=(theme.FONT_FAMILY, 11),
+            text_color=theme.TEXT_MUTED, font=theme.font(11),
             command=lambda: ReunionEditor(self, reunion=r, on_save=self._reload_reuniones),
         ).pack(side="right", padx=1)
 
@@ -468,7 +468,7 @@ class AgendaView(ctk.CTkFrame):
         if meta_parts:
             ctk.CTkLabel(
                 card, text="   ·   ".join(meta_parts),
-                font=(theme.FONT_FAMILY, 10),
+                font=theme.font(10),
                 text_color=theme.TEXT_SUB, anchor="w",
             ).pack(anchor="w", padx=12, pady=(0, 2))
 
@@ -476,7 +476,7 @@ class AgendaView(ctk.CTkFrame):
         if desc:
             short = desc if len(desc) <= 180 else desc[:180] + "…"
             ctk.CTkLabel(
-                card, text=short, font=(theme.FONT_FAMILY, 10),
+                card, text=short, font=theme.font(10),
                 text_color=theme.TEXT_MUTED, anchor="w", justify="left", wraplength=900,
             ).pack(anchor="w", padx=12, pady=(0, 6))
 
@@ -505,7 +505,7 @@ class _BaseEditor(ctk.CTkToplevel):
 
     def _field(self, parent, label: str) -> ctk.CTkBaseClass:
         ctk.CTkLabel(
-            parent, text=label, font=(theme.FONT_FAMILY, 10, "bold"),
+            parent, text=label, font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=20, pady=(8, 2))
         ent = ctk.CTkEntry(
@@ -518,7 +518,7 @@ class _BaseEditor(ctk.CTkToplevel):
 
     def _textarea(self, parent, label: str, height: int = 90) -> ctk.CTkTextbox:
         ctk.CTkLabel(
-            parent, text=label, font=(theme.FONT_FAMILY, 10, "bold"),
+            parent, text=label, font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", padx=20, pady=(8, 2))
         txt = ctk.CTkTextbox(
@@ -559,7 +559,7 @@ class TareaEditor(_BaseEditor):
         row = ctk.CTkFrame(self, fg_color="transparent")
         row.pack(fill="x", padx=20, pady=(8, 4))
 
-        ctk.CTkLabel(row, text="Prioridad", font=(theme.FONT_FAMILY, 10, "bold"),
+        ctk.CTkLabel(row, text="Prioridad", font=theme.font(10, "bold"),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         self.cmb_prio = ctk.CTkOptionMenu(
             row, values=["baja", "media", "alta"], width=140, height=34, corner_radius=8,
@@ -571,7 +571,7 @@ class TareaEditor(_BaseEditor):
 
         self.ent_fecha = self._field(self, "Fecha límite (YYYY-MM-DD)")
 
-        ctk.CTkLabel(self, text="Estado", font=(theme.FONT_FAMILY, 10, "bold"),
+        ctk.CTkLabel(self, text="Estado", font=theme.font(10, "bold"),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=20, pady=(8, 2))
         self.cmb_estado = ctk.CTkOptionMenu(
             self, values=["pendiente", "en_progreso", "completada"], width=180, height=34, corner_radius=8,
@@ -628,7 +628,7 @@ class NotaEditor(_BaseEditor):
         self.ent_titulo = self._field(self, "Título *")
         self.txt_contenido = self._textarea(self, "Contenido", height=200)
 
-        ctk.CTkLabel(self, text="Color", font=(theme.FONT_FAMILY, 10, "bold"),
+        ctk.CTkLabel(self, text="Color", font=theme.font(10, "bold"),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=20, pady=(8, 2))
         self.cmb_color = ctk.CTkOptionMenu(
             self, values=[label for _, _, label in NOTE_COLORS], width=180, height=34, corner_radius=8,

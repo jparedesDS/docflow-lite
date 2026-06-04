@@ -50,6 +50,11 @@ _DARK = {
     "ROW_BG_EDITED":   "#1E3A5F",
     "DELETE_HOVER":    "#3B1818",
 
+    "ROW_STRIPE":      "#1F232F",  # banda alterna (zebra) — sutil sobre BG_CARD
+    "ROW_HOVER":       "#252A39",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#13151D",  # cabecera de tabla, más oscura que las filas
+    "TABLE_HEADER_FG": "#9AA3B8",
+
     "NOTE_BLUE":       "#1E3A5F",
     "NOTE_GREEN":      "#14532D",
     "NOTE_AMBER":      "#451A03",
@@ -80,6 +85,11 @@ _LIGHT = {
     "ROW_BG_WARN":     "#FEF3C7",
     "ROW_BG_EDITED":   "#DBEAFE",
     "DELETE_HOVER":    "#FECACA",
+
+    "ROW_STRIPE":      "#F4F6FA",  # banda alterna (zebra)
+    "ROW_HOVER":       "#EAEEF6",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#EDF0F5",  # cabecera de tabla
+    "TABLE_HEADER_FG": "#5B6678",
 
     "NOTE_BLUE":       "#DBEAFE",
     "NOTE_GREEN":      "#DCFCE7",
@@ -113,13 +123,18 @@ _DARK_CORAL = {
     "ROW_BG_EDITED":   "#2A3540",
     "DELETE_HOVER":    "#3B2018",
 
+    "ROW_STRIPE":      "#2C2A28",  # banda alterna (zebra)
+    "ROW_HOVER":       "#33302D",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#1A1918",  # cabecera de tabla
+    "TABLE_HEADER_FG": "#A8A29E",
+
     "NOTE_BLUE":       "#1F3140",
     "NOTE_GREEN":      "#1F3520",
     "NOTE_AMBER":      "#3D2A1A",
     "NOTE_ROSE":       "#3D1F2A",
 
-    "FONT_FAMILY":      "Cascadia Code",   # fallback chain: Cascadia → Consolas
-    "FONT_FAMILY_MONO": "Cascadia Code",
+    "FONT_FAMILY":      "Cascadia Mono",   # sin ligaduras → mejor para UI/códigos
+    "FONT_FAMILY_MONO": "Cascadia Mono",
 }
 
 # ═══ Coral Light — antique white / cream ═════════════════════════════════════
@@ -145,13 +160,18 @@ _LIGHT_CORAL = {
     "ROW_BG_EDITED":   "#E0EAF5",
     "DELETE_HOVER":    "#F5D0BD",
 
+    "ROW_STRIPE":      "#F6F4ED",  # banda alterna (zebra) cálida
+    "ROW_HOVER":       "#F0EDE3",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#EFECE2",  # cabecera de tabla
+    "TABLE_HEADER_FG": "#6B6760",
+
     "NOTE_BLUE":       "#E0EAF5",
     "NOTE_GREEN":      "#E1F0D8",
     "NOTE_AMBER":      "#FBF1D9",
     "NOTE_ROSE":       "#F8E2EA",
 
-    "FONT_FAMILY":      "Cascadia Code",
-    "FONT_FAMILY_MONO": "Cascadia Code",
+    "FONT_FAMILY":      "Cascadia Mono",   # sin ligaduras → mejor para UI/códigos
+    "FONT_FAMILY_MONO": "Cascadia Mono",
 }
 
 
@@ -188,6 +208,10 @@ ROW_BG_CRITICAL = _PALETTE["ROW_BG_CRITICAL"]
 ROW_BG_WARN     = _PALETTE["ROW_BG_WARN"]
 ROW_BG_EDITED   = _PALETTE["ROW_BG_EDITED"]
 DELETE_HOVER    = _PALETTE["DELETE_HOVER"]
+ROW_STRIPE      = _PALETTE["ROW_STRIPE"]
+ROW_HOVER       = _PALETTE["ROW_HOVER"]
+TABLE_HEADER_BG = _PALETTE["TABLE_HEADER_BG"]
+TABLE_HEADER_FG = _PALETTE["TABLE_HEADER_FG"]
 NOTE_BLUE       = _PALETTE["NOTE_BLUE"]
 NOTE_GREEN      = _PALETTE["NOTE_GREEN"]
 NOTE_AMBER      = _PALETTE["NOTE_AMBER"]
@@ -236,26 +260,61 @@ def status_color(value: str) -> str:
 
 
 # ═══ Tipografía (escala consistente) ════════════════════════════════════════
-# Los temas Claude usan la misma family para todo (look CLI/terminal mono).
-# Los temas Linear/Vercel separan sans (UI) y mono (códigos).
+# Los temas Coral usan una family monoespaciada (Cascadia Mono) en toda la UI.
+# Como las monoespaciadas son más ANCHAS por carácter que una sans (Segoe UI)
+# al mismo tamaño, aplicamos una escala de puntos reducida en esos temas para
+# que el texto encaje sin tocar la estructura.
 
 FONT_FAMILY      = _PALETTE["FONT_FAMILY"]
 FONT_FAMILY_MONO = _PALETTE["FONT_FAMILY_MONO"]
 
-FONT_DISPLAY   = (FONT_FAMILY, 28, "bold")
-FONT_TITLE     = (FONT_FAMILY, 22, "bold")
-FONT_HEADING   = (FONT_FAMILY, 18, "bold")
-FONT_SUBTITLE  = (FONT_FAMILY, 14)
-FONT_SECTION   = (FONT_FAMILY, 13, "bold")
-FONT_BODY      = (FONT_FAMILY, 12)
-FONT_BODY_BOLD = (FONT_FAMILY, 12, "bold")
-FONT_SMALL     = (FONT_FAMILY, 11)
-FONT_SMALL_BOLD = (FONT_FAMILY, 11, "bold")
-FONT_TINY      = (FONT_FAMILY, 10)
-FONT_TINY_BOLD = (FONT_FAMILY, 10, "bold")
-FONT_LABEL     = (FONT_FAMILY, 9, "bold")
-FONT_BUTTON    = (FONT_FAMILY, 12, "bold")
-FONT_MONO      = (FONT_FAMILY_MONO, 11)
+# ¿La family de UI es monoespaciada? → usar la escala reducida
+_MONO_UI = FONT_FAMILY in ("Cascadia Mono", "Cascadia Code", "Consolas", "Courier New")
+
+
+def scale_size(size: int) -> int:
+    """Reduce el tamaño de punto en temas monoespaciados (más anchos por glyph).
+
+    Sans (Segoe UI): sin cambios.
+    Mono (Cascadia Mono): ≤10 sin tocar · 11-14 −1 · 15-18 −2 · ≥19 ×0.82.
+    """
+    if not _MONO_UI:
+        return size
+    if size <= 10:
+        return size
+    if size <= 14:
+        return size - 1
+    if size <= 18:
+        return size - 2
+    return max(11, round(size * 0.82))
+
+
+def font(size: int, weight: str | None = None):
+    """Tupla de fuente UI auto-escalada. `font(12, "bold")` → (family, sz, 'bold')."""
+    s = scale_size(size)
+    return (FONT_FAMILY, s) if weight is None else (FONT_FAMILY, s, weight)
+
+
+def mfont(size: int, weight: str | None = None):
+    """Igual que `font` pero con la family monoespaciada (FONT_FAMILY_MONO)."""
+    s = scale_size(size)
+    return (FONT_FAMILY_MONO, s) if weight is None else (FONT_FAMILY_MONO, s, weight)
+
+
+FONT_DISPLAY    = font(28, "bold")
+FONT_TITLE      = font(22, "bold")
+FONT_HEADING    = font(18, "bold")
+FONT_SUBTITLE   = font(14)
+FONT_SECTION    = font(13, "bold")
+FONT_BODY       = font(12)
+FONT_BODY_BOLD  = font(12, "bold")
+FONT_SMALL      = font(11)
+FONT_SMALL_BOLD = font(11, "bold")
+FONT_TINY       = font(10)
+FONT_TINY_BOLD  = font(10, "bold")
+FONT_LABEL      = font(9, "bold")
+FONT_BUTTON     = font(12, "bold")
+FONT_MONO       = mfont(11)
 
 
 # ═══ Espaciados (grid base 4px) ═════════════════════════════════════════════

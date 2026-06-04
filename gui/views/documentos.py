@@ -5,12 +5,15 @@ y drawer de detalle al doble-click.
 """
 
 import logging
+import os
 import threading
+from datetime import datetime
 
 import customtkinter as ctk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 from core.services import monitoring as monitoring_service
+from gui import cell_format
 from gui import theme
 from gui.widgets.table import DataTable
 
@@ -18,6 +21,18 @@ logger = logging.getLogger(__name__)
 
 # Columnas visibles (mismo orden que Documents.js)
 VISIBLE_COLUMNS = list(monitoring_service.VISIBLE_COLUMNS)
+
+# Cabeceras abreviadas para las columnas de contenido corto: su texto largo
+# inflaba el ancho aunque el dato sea minúsculo (—, R, 3.0, Sí), forzando la
+# compresión del resto. Con la cabecera corta el total cabe sin comprimir.
+HEADER_DISPLAY = {
+    "Repsonsable": "Resp.",
+    "Crítico": "Crít.",
+    "Info/Review": "Info/Rev",
+    "Nº Revisión": "Rev.",
+    "Fecha Env. Doc.": "Fecha Env.",
+    "Días Devolución": "Días Dev.",
+}
 
 PAGE_SIZE = 30
 
@@ -45,6 +60,7 @@ class DocumentosView(ctk.CTkFrame):
         self._sort_asc = True
         self._active_kpi: str | None = None
         self._search_after_id = None
+        self._fit_after_id = None
 
         self._build_layout()
         self._reload()
@@ -146,8 +162,14 @@ class DocumentosView(ctk.CTkFrame):
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self._setup_table_columns()
         self._setup_row_tags()
+        self.table.set_context_menu(self._ctx_menu)
         for col in VISIBLE_COLUMNS:
-            self.table.tree.heading(col, text=col, command=lambda c=col: self._on_sort(c))
+            self.table.tree.heading(
+                col, text=HEADER_DISPLAY.get(col, col),
+                command=lambda c=col: self._on_sort(c),
+            )
+        # Reajuste de anchos al redimensionar (con debounce)
+        self.table.tree.bind("<Configure>", lambda e: self._debounce_fit())
 
     def _make_entry(self, parent, placeholder: str, width: int | None = None) -> ctk.CTkEntry:
         kwargs = dict(
@@ -182,7 +204,7 @@ class DocumentosView(ctk.CTkFrame):
             )
             lbl_label.pack(anchor="w")
             lbl_value = ctk.CTkLabel(
-                inner, text="—", font=(theme.FONT_FAMILY, 20, "bold"),
+                inner, text="—", font=theme.font(20, "bold"),
                 text_color=color, anchor="w",
             )
             lbl_value.pack(anchor="w", pady=(theme.SPACE_1, 0))
@@ -196,12 +218,6 @@ class DocumentosView(ctk.CTkFrame):
             self.kpi_row.grid_columnconfigure(col, weight=1, uniform="kpi")
 
     def _setup_table_columns(self) -> None:
-        widths = {
-            "Nº Pedido": 110, "Nº Doc. EIPSA": 180, "Título": 320, "Cliente": 160,
-            "Repsonsable": 100, "Tipo Doc.": 110, "Crítico": 70, "Info/Review": 90,
-            "Estado": 130, "Nº Revisión": 80, "Fecha Env. Doc.": 120, "Días Devolución": 90,
-        }
-        self.table.set_columns_width(widths)
         # Anchor por tipo de dato: texto → izquierda, números/fechas/badges → centro
         anchors = {
             "Nº Pedido": "w", "Nº Doc. EIPSA": "w", "Título": "w", "Cliente": "w",
@@ -210,8 +226,35 @@ class DocumentosView(ctk.CTkFrame):
             "Fecha Env. Doc.": "center", "Días Devolución": "center",
         }
         self.table.set_columns_anchor(anchors)
-        # Desactivar stretch para que aparezca scroll horizontal en lugar de comprimir
-        self.table.freeze_widths()
+
+    def _debounce_fit(self) -> None:
+        if self._fit_after_id:
+            try:
+                self.after_cancel(self._fit_after_id)
+            except Exception:
+                pass
+        self._fit_after_id = self.after(150, self._fit_columns)
+
+    def _fit_columns(self) -> None:
+        """Mide el contenido con la fuente activa y ajusta los anchos para que
+        la tabla entre completa. Se readapta a cualquier tema (la fuente mono
+        del tema Coral es más ancha, por eso no sirven anchos fijos en píxeles).
+        El Título absorbe el espacio sobrante; el resto se ciñe al contenido."""
+        self._fit_after_id = None
+        if not self.table.tree.get_children():
+            return
+        # padding bajo (las cabeceras ya van abreviadas) y topes calibrados para
+        # que la suma de las 12 columnas quepa en el ancho real sin comprimir.
+        self.table.autofit_columns(
+            min_w=46,
+            padding=14,
+            max_per={
+                "Nº Pedido": 130, "Nº Doc. EIPSA": 200, "Título": 300,
+                "Cliente": 240, "Tipo Doc.": 200, "Estado": 150,
+            },
+        )
+        # El sobrante de ancho lo absorbe solo el Título (evita huecos centrados raros)
+        self.table.set_columns_stretch({c: (c == "Título") for c in VISIBLE_COLUMNS})
 
     def _setup_row_tags(self) -> None:
         # Coloreo de filas como en Documents.js
@@ -350,7 +393,7 @@ class DocumentosView(ctk.CTkFrame):
 
         self.table.clear()
         for idx, doc in enumerate(page_rows):
-            values = [_fmt(doc.get(c, "")) for c in VISIBLE_COLUMNS]
+            values = [_fmt_cell(doc, c) for c in VISIBLE_COLUMNS]
             tags = _row_tags(doc)
             self.table.add_row(values=values, iid=f"row_{start + idx}", tags=tags)
 
@@ -362,6 +405,9 @@ class DocumentosView(ctk.CTkFrame):
         self.btn_prev.configure(state="normal" if self._page > 0 else "disabled")
         self.btn_next.configure(state="normal" if self._page < pages - 1 else "disabled")
 
+        # Reajusta los anchos al contenido de esta página (con la fuente activa)
+        self._debounce_fit()
+
     def _goto_page(self, page: int) -> None:
         self._page = page
         self._render_page()
@@ -372,12 +418,12 @@ class DocumentosView(ctk.CTkFrame):
         else:
             self._sort_col = col
             self._sort_asc = True
-        # Marca visual: añade flecha
+        # Marca visual: añade flecha (respetando la cabecera abreviada)
         for c in VISIBLE_COLUMNS:
             arrow = ""
             if c == self._sort_col:
-                arrow = "  ▲" if self._sort_asc else "  ▼"
-            self.table.tree.heading(c, text=f"{c}{arrow}")
+                arrow = " ▲" if self._sort_asc else " ▼"
+            self.table.tree.heading(c, text=f"{HEADER_DISPLAY.get(c, c)}{arrow}")
         self._page = 0
         self._apply_filters_and_render()
 
@@ -391,6 +437,61 @@ class DocumentosView(ctk.CTkFrame):
         except (ValueError, IndexError):
             return
         DocDetailWindow(self, doc=doc)
+
+    # ── Menú contextual ────────────────────────────────────────────────────
+
+    def _doc_for_iid(self, iid: str) -> dict | None:
+        if not iid or not iid.startswith("row_"):
+            return None
+        try:
+            return self._filtered[int(iid.split("_", 1)[1])]
+        except (ValueError, IndexError):
+            return None
+
+    def _ctx_menu(self, iid: str, col_idx: int):
+        doc = self._doc_for_iid(iid)
+        if doc is None:
+            return None
+        pedido = str(doc.get("Nº Pedido", "") or "")
+        items = [
+            ("👁  Ver detalle", lambda: DocDetailWindow(self, doc=doc)),
+            ("-", None),
+            ("Copiar Nº Doc. EIPSA",
+             lambda: self.table.copy_to_clipboard(doc.get("Nº Doc. EIPSA", ""))),
+            ("Copiar celda",
+             lambda: self.table.copy_to_clipboard(self.table.cell_value(iid, col_idx))),
+            ("Copiar fila",
+             lambda: self.table.copy_to_clipboard(
+                 "\t".join(str(v) for v in self.table.row_values(iid)))),
+        ]
+        if pedido:
+            items += [
+                ("-", None),
+                ("📁  Abrir carpeta del pedido",
+                 lambda: self._open_pedido_folder(pedido)),
+            ]
+        return items
+
+    def _open_pedido_folder(self, pedido: str) -> None:
+        from core.services import apertura
+        try:
+            folder_id, _ = apertura.parse_pedido(pedido)
+        except ValueError:
+            messagebox.showinfo("Carpeta", f"Pedido no reconocido: {pedido}", parent=self)
+            return
+        m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
+        año = 2000 + int(m.group(1)) if m else datetime.now().year
+        pdir = apertura.find_existing_pedido_dir(folder_id, año)
+        if pdir and pdir.exists():
+            try:
+                os.startfile(str(pdir))  # type: ignore[attr-defined]
+            except Exception as exc:
+                messagebox.showerror("Carpeta", f"No se pudo abrir:\n{exc}", parent=self)
+        else:
+            messagebox.showinfo(
+                "Carpeta", f"No se encontró la carpeta del pedido {folder_id}.",
+                parent=self,
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -414,7 +515,7 @@ class DocDetailWindow(ctk.CTkToplevel):
         header.pack(fill="x", padx=22, pady=(20, 6))
         ctk.CTkLabel(
             header, text=str(doc.get("Nº Doc. EIPSA", "—")),
-            font=(theme.FONT_FAMILY, 18, "bold"),
+            font=theme.font(18, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
@@ -429,7 +530,7 @@ class DocDetailWindow(ctk.CTkToplevel):
         badge = ctk.CTkFrame(self, fg_color=badge_color, corner_radius=6, height=28)
         badge.pack(anchor="w", padx=22, pady=(8, 8))
         ctk.CTkLabel(
-            badge, text=f"  {estado.upper()}  ", font=(theme.FONT_FAMILY, 11, "bold"),
+            badge, text=f"  {estado.upper()}  ", font=theme.font(11, "bold"),
             text_color="white",
         ).pack()
 
@@ -470,7 +571,7 @@ class DocDetailWindow(ctk.CTkToplevel):
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=14, pady=4)
         ctk.CTkLabel(
-            row, text=label, font=(theme.FONT_FAMILY, 10, "bold"),
+            row, text=label, font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w", width=160,
         ).pack(side="left")
         ctk.CTkLabel(
@@ -489,6 +590,21 @@ def _fmt(val) -> str:
     if len(s) >= 10 and s[4] == "-" and s[7] == "-" and "T" in s:
         return s.split("T")[0]
     return s[:120]
+
+
+def _fmt_cell(doc: dict, col: str) -> str:
+    """Formateo por columna: iconos de estado, barra de urgencia, marca crítico."""
+    raw = doc.get(col, "")
+    if col == "Estado":
+        return cell_format.estado_with_icon(raw)
+    if col == "Días Devolución":
+        return cell_format.urgency_bar(raw)
+    if col == "Crítico":
+        s = str(raw or "").strip().lower()
+        if s in ("sí", "si"):
+            return "Sí"
+        return "No" if s else "—"
+    return _fmt(raw)
 
 
 def _sort_key(v):
@@ -516,31 +632,44 @@ def _sort_key(v):
 
 
 def _row_tags(doc: dict) -> tuple:
+    """Tags de coloreo para una fila.
+
+    Política de contraste:
+    - Si la fila tiene tinte de fondo (crítico / warn), el fondo ya transmite
+      la urgencia → dejamos el texto neutro (sin color de estado encima) para
+      evitar combinaciones de bajo contraste (rojo sobre rojo, ámbar sobre ámbar).
+    - Si no hay tinte de fondo, el color de estado va en el texto (legible
+      sobre la banda zebra).
+    """
     tags = []
     estado = str(doc.get("Estado", "") or "").lower().strip()
     critico = str(doc.get("Crítico", "") or "").lower().strip()
     es_critico = critico in ("sí", "si")
 
+    has_bg_tint = False
     if es_critico and "aprobado" not in estado:
         tags.append("row_critico")
+        has_bg_tint = True
     else:
         try:
             dias = int(float(doc.get("Días Envío", 0) or 0))
             if dias > 14 and "aprobado" not in estado:
                 tags.append("row_warn")
+                has_bg_tint = True
         except (ValueError, TypeError):
             pass
 
-    if "aprobado" in estado:
-        tags.append("row_aprobado")
-    elif "rechazado" in estado:
-        tags.append("row_rechazado")
-    elif any(s in estado for s in ("com.", "comentado", "menores", "mayores")):
-        tags.append("row_comentado")
-    elif "enviado" in estado:
-        tags.append("row_enviado")
-    elif not estado or "sin" in estado:
-        tags.append("row_sin_enviar")
+    if not has_bg_tint:
+        if "aprobado" in estado:
+            tags.append("row_aprobado")
+        elif "rechazado" in estado:
+            tags.append("row_rechazado")
+        elif any(s in estado for s in ("com.", "comentado", "menores", "mayores")):
+            tags.append("row_comentado")
+        elif "enviado" in estado:
+            tags.append("row_enviado")
+        elif not estado or "sin" in estado:
+            tags.append("row_sin_enviar")
 
     return tuple(tags)
 

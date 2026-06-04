@@ -153,14 +153,14 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
 def _find_devoluciones_folder(pedido: str) -> Path | None:
     """Localiza (o crea) la carpeta `02 DEVOLUCIONES` del pedido.
 
-    Estructura objetivo:
-        M:\\base de datos de pedidos\\Año YYYY\\YYYY Pedidos\\
-            <P-XX-XXX ...>\\2-Tecnico\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES
+    Estructura objetivo, según el tipo de pedido:
+      · Normal  `P-XX-XXX`  →  …\\YYYY Pedidos\\<P-...>\\2-Tecnico\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES
+      · Almacén `PA-XX-XXX` →  …\\YYYY Pedidos Almacen\\<PA-...>\\00 DOCUMENTACIÓN\\02 DEVOLUCIONES
+        (estructura plana: el PA no tiene subcarpeta '2-Tecnico')
 
-    Reusa los helpers de `apertura` que ya saben localizar el pedido por
-    prefijo (`P-XX-XXX`) tolerando `-S00` o no, y detectar `2-Tecnico` en
-    sus variantes. Si `02 DEVOLUCIONES` no existe pero el resto del path
-    sí, la crea para que el archivado funcione la primera vez.
+    Reusa `apertura.find_documentacion_dir`, que detecta P vs PA, localiza la
+    carpeta por prefijo tolerando `-S00` y crea el `00 DOCUMENTACIÓN` cuando hace
+    falta (en PA). Si no encuentra la carpeta del pedido devuelve None.
     """
     from core.services import apertura
 
@@ -169,27 +169,12 @@ def _find_devoluciones_folder(pedido: str) -> Path | None:
         logger.info("Base de pedidos no accesible (%s)", base)
         return None
 
-    try:
-        folder_id, _ = apertura.parse_pedido(pedido)
-    except ValueError:
-        logger.warning("Pedido no parseable: %r", pedido)
-        return None
-    m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
-    if not m:
-        return None
-    año = 2000 + int(m.group(1))
-
-    pedido_dir = apertura.find_existing_pedido_dir(folder_id, año, base_dir=base)
-    if pedido_dir is None:
-        logger.info("Pedido %s no encontrado bajo %s", folder_id, base)
+    doc_dir = apertura.find_documentacion_dir(pedido, base_dir=base, create=True)
+    if doc_dir is None:
+        logger.info("No se localizó 00 DOCUMENTACIÓN para %r bajo %s", pedido, base)
         return None
 
-    tecnico = apertura.find_tecnico_dir(pedido_dir)
-    if tecnico is None:
-        logger.info("2-Tecnico no existe en %s", pedido_dir)
-        return None
-
-    target = tecnico / "00 DOCUMENTACIÓN" / "02 DEVOLUCIONES"
+    target = doc_dir / "02 DEVOLUCIONES"
     try:
         target.mkdir(parents=True, exist_ok=True)
     except (OSError, PermissionError) as exc:

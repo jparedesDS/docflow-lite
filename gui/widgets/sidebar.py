@@ -49,12 +49,12 @@ class Sidebar(ctk.CTkFrame):
 
         ctk.CTkLabel(
             header, text="◆  DocFlow",
-            font=(theme.FONT_FAMILY, 17, "bold"),
+            font=theme.font(17, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
         ctk.CTkLabel(
             header, text="Lite",
-            font=(theme.FONT_FAMILY, 10, "bold"),
+            font=theme.font(10, "bold"),
             text_color=theme.ACCENT, anchor="w",
         ).pack(anchor="w")
 
@@ -80,19 +80,19 @@ class Sidebar(ctk.CTkFrame):
             user_row.pack(fill="x", padx=theme.SPACE_2, pady=(0, theme.SPACE_2))
 
             ctk.CTkLabel(
-                user_row, text="●", font=(theme.FONT_FAMILY, 11, "bold"),
+                user_row, text="●", font=theme.font(11, "bold"),
                 text_color=theme.GREEN, width=14,
             ).pack(side="left")
             ctk.CTkLabel(
                 user_row, text=current_user_label,
-                font=(theme.FONT_FAMILY, 11, "bold"),
+                font=theme.font(11, "bold"),
                 text_color=theme.TEXT_MAIN, anchor="w",
             ).pack(side="left", fill="x", expand=True)
 
             if on_logout is not None:
                 ctk.CTkButton(
                     footer_box, text="Cerrar sesión", anchor="w",
-                    font=(theme.FONT_FAMILY, 11),
+                    font=theme.font(11),
                     height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
                     fg_color="transparent", hover_color=theme.BG_INPUT,
                     text_color=theme.TEXT_SUB,
@@ -106,7 +106,7 @@ class Sidebar(ctk.CTkFrame):
             toggle_text = "☀  Modo claro" if is_dark else "🌙  Modo oscuro"
             ctk.CTkButton(
                 footer_box, text=toggle_text, anchor="w",
-                font=(theme.FONT_FAMILY, 11),
+                font=theme.font(11),
                 height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
                 fg_color="transparent", hover_color=theme.BG_INPUT,
                 text_color=theme.TEXT_SUB,
@@ -125,7 +125,7 @@ class Sidebar(ctk.CTkFrame):
 
         link = ctk.CTkLabel(
             credit_row, text="jparedesDS",
-            font=(theme.FONT_FAMILY, 10, "bold"),
+            font=theme.font(10, "bold"),
             text_color=theme.ACCENT, cursor="hand2",
         )
         link.pack(side="left")

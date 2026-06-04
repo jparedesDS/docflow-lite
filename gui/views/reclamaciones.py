@@ -1,12 +1,14 @@
 """Vista Reclamaciones — pedidos con docs >= 15 días sin devolver."""
 
 import logging
+import os
 import threading
 
 import customtkinter as ctk
 from tkinter import messagebox
 
 from core.services import claims as claims_service
+from gui import cell_format
 from gui import theme
 from gui.widgets.table import DataTable
 
@@ -131,14 +133,23 @@ class ReclamacionesView(ctk.CTkFrame):
         )
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
-            "Pedido": 120, "Cliente": 220, "Docs": 60, "Días": 80,
-            "Urgencia": 100, "Nivel propuesto": 130, "Último envío": 140, "Reclamaciones": 110,
+            "Pedido": 120, "Cliente": 240, "Docs": 70, "Días": 115,
+            "Urgencia": 110, "Nivel propuesto": 150, "Último envío": 140, "Reclamaciones": 120,
+        })
+        # Texto a la izquierda, números/badges/fechas centrados
+        self.table.set_columns_anchor({
+            "Pedido": "w", "Cliente": "w",
+            "Docs": "center", "Días": "center", "Urgencia": "center",
+            "Nivel propuesto": "center", "Último envío": "center",
+            "Reclamaciones": "center",
         })
 
         # Tags color para urgency
         self.table.tree.tag_configure("urg_low", foreground=theme.BLUE)
         self.table.tree.tag_configure("urg_medium", foreground=theme.AMBER)
         self.table.tree.tag_configure("urg_high", foreground=theme.RED)
+
+        self.table.set_context_menu(self._ctx_menu)
 
         # Bind selection → habilitar botones
         self.table.tree.bind("<<TreeviewSelect>>", self._on_select_change)
@@ -210,8 +221,10 @@ class ReclamacionesView(ctk.CTkFrame):
                     p.get("pedido", ""),
                     p.get("cliente", "")[:60],
                     p.get("docs_count", 0),
-                    p.get("max_dias", 0),
-                    URGENCY_LABEL.get(urgency, "—"),
+                    cell_format.urgency_bar(p.get("max_dias", 0)),
+                    cell_format.urgency_with_icon(
+                        URGENCY_LABEL.get(urgency, "—"), urgency
+                    ),
                     LEVEL_LABEL.get(level, ""),
                     _fmt_dt(p.get("last_claimed")),
                     p.get("claim_count", 0),
@@ -232,6 +245,44 @@ class ReclamacionesView(ctk.CTkFrame):
 
     def _on_row_double(self, item) -> None:
         self._open_preview()
+
+    # ── Menú contextual ────────────────────────────────────────────────────
+
+    def _ctx_menu(self, iid: str, col_idx: int):
+        pedido = iid  # el iid de la fila ES el código de pedido
+        return [
+            ("✉  Previsualizar y enviar", self._open_preview),
+            ("-", None),
+            ("Copiar pedido", lambda: self.table.copy_to_clipboard(pedido)),
+            ("Copiar fila",
+             lambda: self.table.copy_to_clipboard(
+                 "\t".join(str(v) for v in self.table.row_values(iid)))),
+            ("-", None),
+            ("📁  Abrir carpeta del pedido",
+             lambda: self._open_pedido_folder(pedido)),
+        ]
+
+    def _open_pedido_folder(self, pedido: str) -> None:
+        from core.services import apertura
+        try:
+            folder_id, _ = apertura.parse_pedido(pedido)
+        except ValueError:
+            messagebox.showinfo("Carpeta", f"Pedido no reconocido: {pedido}", parent=self)
+            return
+        m = apertura._PEDIDO_FOLDER_RE.match(folder_id)
+        from datetime import datetime
+        año = 2000 + int(m.group(1)) if m else datetime.now().year
+        pdir = apertura.find_existing_pedido_dir(folder_id, año)
+        if pdir and pdir.exists():
+            try:
+                os.startfile(str(pdir))  # type: ignore[attr-defined]
+            except Exception as exc:
+                messagebox.showerror("Carpeta", f"No se pudo abrir:\n{exc}", parent=self)
+        else:
+            messagebox.showinfo(
+                "Carpeta", f"No se encontró la carpeta del pedido {folder_id}.",
+                parent=self,
+            )
 
     def _open_matrix(self) -> None:
         CommMatrixWindow(self)
@@ -371,7 +422,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         title_row.pack(fill="x")
         ctk.CTkLabel(
             title_row, text=self._pedido_data["pedido"],
-            font=(theme.FONT_FAMILY, 20, "bold"),
+            font=theme.font(20, "bold"),
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left")
 
@@ -379,7 +430,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         ucolor = URGENCY_COLOR.get(urgency, theme.TEXT_MUTED)
         ctk.CTkLabel(
             title_row, text=f"  {URGENCY_LABEL.get(urgency, '—')}  ",
-            font=(theme.FONT_FAMILY, 10, "bold"),
+            font=theme.font(10, "bold"),
             text_color="white", fg_color=ucolor, corner_radius=4,
         ).pack(side="left", padx=10)
 
@@ -402,7 +453,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         inner.pack(fill="x", padx=14, pady=10)
 
         ctk.CTkLabel(
-            inner, text="Nivel de escalation", font=(theme.FONT_FAMILY, 10, "bold"),
+            inner, text="Nivel de escalation", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w")
 
@@ -420,7 +471,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         self.lbl_level_note = ctk.CTkLabel(
             inner,
             text=self._level_note(),
-            font=(theme.FONT_FAMILY, 11), text_color=theme.TEXT_SUB, anchor="w",
+            font=theme.font(11), text_color=theme.TEXT_SUB, anchor="w",
         )
         self.lbl_level_note.pack(anchor="w", pady=(4, 0))
 
@@ -432,16 +483,16 @@ class ReclamacionPreview(ctk.CTkToplevel):
         addr_head = ctk.CTkFrame(addr, fg_color="transparent")
         addr_head.pack(fill="x")
         ctk.CTkLabel(
-            addr_head, text="Destinatarios", font=(theme.FONT_FAMILY, 10, "bold"),
+            addr_head, text="Destinatarios", font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(side="left")
         self.lbl_recipients_note = ctk.CTkLabel(
-            addr_head, text="", font=(theme.FONT_FAMILY, 10),
+            addr_head, text="", font=theme.font(10),
             text_color=theme.TEXT_MUTED, anchor="w",
         )
         self.lbl_recipients_note.pack(side="left", padx=10)
         self.btn_reset_recipients = ctk.CTkButton(
-            addr_head, text="↺ Sugeridos por nivel", font=(theme.FONT_FAMILY, 10),
+            addr_head, text="↺ Sugeridos por nivel", font=theme.font(10),
             height=22, width=140, corner_radius=6,
             fg_color="transparent", hover_color=theme.BG_INPUT,
             text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
@@ -449,7 +500,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         )
         self.btn_reset_recipients.pack(side="right")
 
-        ctk.CTkLabel(addr, text="Para (To)", font=(theme.FONT_FAMILY, 10),
+        ctk.CTkLabel(addr, text="Para (To)", font=theme.font(10),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", pady=(6, 0))
         self.ent_to = ctk.CTkEntry(
             addr, height=34, corner_radius=8,
@@ -458,7 +509,7 @@ class ReclamacionPreview(ctk.CTkToplevel):
         )
         self.ent_to.pack(fill="x", pady=(0, 4))
 
-        ctk.CTkLabel(addr, text="Copia (Cc)", font=(theme.FONT_FAMILY, 10),
+        ctk.CTkLabel(addr, text="Copia (Cc)", font=theme.font(10),
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         self.ent_cc = ctk.CTkEntry(
             addr, height=34, corner_radius=8,
@@ -472,22 +523,22 @@ class ReclamacionPreview(ctk.CTkToplevel):
         docs_head.pack(fill="x", padx=22, pady=(14, 4))
         ctk.CTkLabel(
             docs_head, text="Documentos a reclamar",
-            font=(theme.FONT_FAMILY, 10, "bold"),
+            font=theme.font(10, "bold"),
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(side="left")
         self.lbl_doc_counter = ctk.CTkLabel(
-            docs_head, text="", font=(theme.FONT_FAMILY, 10),
+            docs_head, text="", font=theme.font(10),
             text_color=theme.TEXT_MUTED,
         )
         self.lbl_doc_counter.pack(side="left", padx=10)
         ctk.CTkButton(
-            docs_head, text="Todos", font=(theme.FONT_FAMILY, 10), height=22, width=70, corner_radius=6,
+            docs_head, text="Todos", font=theme.font(10), height=22, width=70, corner_radius=6,
             fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
             border_width=1, border_color=theme.BORDER,
             command=lambda: self._set_all_docs(True),
         ).pack(side="right", padx=(4, 0))
         ctk.CTkButton(
-            docs_head, text="Ninguno", font=(theme.FONT_FAMILY, 10), height=22, width=70, corner_radius=6,
+            docs_head, text="Ninguno", font=theme.font(10), height=22, width=70, corner_radius=6,
             fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
             border_width=1, border_color=theme.BORDER,
             command=lambda: self._set_all_docs(False),
@@ -985,7 +1036,7 @@ class CommMatrixWindow(ctk.CTkToplevel):
         # Pedido (a la izquierda)
         ctk.CTkLabel(
             inner, text=p["pedido"],
-            font=(theme.FONT_FAMILY, 13, "bold"),
+            font=theme.font(13, "bold"),
             text_color=theme.ACCENT, width=110, anchor="w",
         ).pack(side="left")
 
