@@ -269,6 +269,13 @@ class DataTable(ctk.CTkFrame):
     def copy_to_clipboard(self, text) -> None:
         self.clipboard_clear()
         self.clipboard_append(str(text))
+        try:
+            from gui.widgets import ui
+            preview = str(text)
+            ui.toast(self, "Copiado", preview if len(preview) <= 48 else preview[:48] + "…",
+                     kind="success")
+        except Exception:
+            pass
 
     # ── Eventos ─────────────────────────────────────────────────────────────
 

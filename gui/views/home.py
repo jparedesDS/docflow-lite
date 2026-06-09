@@ -43,6 +43,8 @@ KPI_DEFS = [
 
 
 class HomeView(ctk.CTkFrame):
+    auto_refresh_safe = True  # el dashboard puede recargarse en background sin molestar
+
     def __init__(self, master, on_navigate, **kwargs):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._on_navigate = on_navigate
@@ -50,6 +52,10 @@ class HomeView(ctk.CTkFrame):
         self._card_descs: dict[str, ctk.CTkLabel] = {}
         self._build()
         self.after(50, self._reload_kpis_async)
+
+    def refresh(self) -> None:
+        """Recarga los KPIs del dashboard (usado por el auto-refresco)."""
+        self._reload_kpis_async()
 
     # ── Layout ───────────────────────────────────────────────────────────────
 

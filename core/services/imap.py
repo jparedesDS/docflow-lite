@@ -202,6 +202,65 @@ def list_unread(folder="INBOX", imap_user=None, imap_pass=None):
         conn.logout()
 
 
+_IMAP_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=300):
+    """Lista los correos recibidos en los últimos `days` días (cabeceras + flag leído).
+
+    El mes se escribe en inglés a mano porque IMAP SINCE no acepta locales.
+    """
+    from datetime import datetime, timedelta
+    d = datetime.now() - timedelta(days=max(1, days))
+    since = f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
+
+    conn = _connect(folder, imap_user, imap_pass)
+    try:
+        _, data = conn.search(None, "SINCE", since)
+        uids = data[0].split() if data and data[0] else []
+        uids = list(reversed(uids))[:limit]
+        results = []
+        for uid in uids:
+            _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER] FLAGS)")
+            if not msg_data or not msg_data[0]:
+                continue
+            raw = msg_data[0][1]
+            msg = email.message_from_bytes(raw)
+
+            flags_str = ""
+            for item in msg_data:
+                if isinstance(item, bytes):
+                    flags_str += " " + item.decode(errors="replace")
+                elif isinstance(item, tuple) and item:
+                    head = item[0]
+                    flags_str += " " + (head.decode(errors="replace")
+                                        if isinstance(head, bytes) else str(head))
+            is_read = "\\Seen" in flags_str
+
+            sender = _decode_header_value(msg.get("From", ""))
+            subject = _decode_header_value(msg.get("Subject", ""))
+            date_str = msg.get("Date", "")
+            try:
+                date_iso = parsedate_to_datetime(date_str).isoformat()
+            except Exception:
+                date_iso = date_str
+            results.append({
+                "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
+                "subject": subject,
+                "from": sender,
+                "date": date_iso,
+                "is_read": is_read,
+            })
+        return results
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn.logout()
+
+
 def fetch_email(uid, folder="INBOX", imap_user=None, imap_pass=None):
     conn = _connect(folder, imap_user, imap_pass)
     try:

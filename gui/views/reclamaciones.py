@@ -10,6 +10,7 @@ from tkinter import messagebox
 from core.services import claims as claims_service
 from gui import cell_format
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -308,14 +309,21 @@ class ReclamacionesView(ctk.CTkFrame):
             min_days=self._min_days,
         )
 
+    def _can_send(self) -> bool:
+        from core import session
+        if not session.can_manage("reclamaciones"):
+            ui.toast(self, "Solo lectura", "No tienes permiso para enviar reclamaciones.", kind="warn")
+            return False
+        return True
+
     def _send_selected(self) -> None:
         sel = self.table.selected_iids()
-        if not sel:
+        if not sel or not self._can_send():
             return
         self._send_bulk_confirm(sel, "seleccionada(s)")
 
     def _send_all(self) -> None:
-        if not self._pedidos:
+        if not self._pedidos or not self._can_send():
             return
         all_ids = [p["pedido"] for p in self._pedidos]
         self._send_bulk_confirm(all_ids, "TODAS")
@@ -376,10 +384,8 @@ class ReclamacionesView(ctk.CTkFrame):
                 f"Errores:\n{chr(10).join(err_lines)}",
             )
         else:
-            messagebox.showinfo(
-                "Reclamaciones enviadas",
-                f"✓ {len(sent)} reclamaciones enviadas con éxito.\n\n{chr(10).join(sent_lines)}",
-            )
+            ui.toast(self, "Reclamaciones enviadas",
+                     f"{len(sent)} reclamación(es) enviada(s) con éxito.", kind="success")
         self._reload()
 
     def _bulk_error(self, msg: str) -> None:
@@ -812,6 +818,10 @@ class ReclamacionPreview(ctk.CTkToplevel):
     def _send(self) -> None:
         if not self._preview:
             return
+        from core import session
+        if not session.can_manage("reclamaciones"):
+            ui.toast(self, "Solo lectura", "No tienes permiso para enviar reclamaciones.", kind="warn")
+            return
         to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
         cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
         if not to:
@@ -859,15 +869,10 @@ class ReclamacionPreview(ctk.CTkToplevel):
         threading.Thread(target=worker, daemon=True).start()
 
     def _send_done(self, res: dict) -> None:
-        path = res.get("saved_path") or "—"
-        messagebox.showinfo(
-            "Reclamación enviada",
-            f"✓ Email enviado con éxito\n\n"
-            f"Nivel: {res.get('level')} ({res.get('level_name')})\n"
-            f"Documentos: {res.get('docs_count')}\n"
-            f"Asunto: {res.get('subject')}\n"
-            f"EML guardado: {path}",
-        )
+        # Toast sobre la ventana padre (este diálogo se cierra a continuación)
+        ui.toast(self.master, "Reclamación enviada",
+                 f"Nivel {res.get('level')} ({res.get('level_name')}) · "
+                 f"{res.get('docs_count')} documento(s).", kind="success")
         if self._on_sent:
             self._on_sent()
         self.destroy()

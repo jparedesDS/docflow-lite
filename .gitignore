@@ -27,3 +27,13 @@ state/*.json.lock
 .vscode/
 .idea/
 *.swp
+
+# DocuSign private key (NUNCA commitear)
+docusign_private.pem
+*.pem
+
+# Almacén de secretos cifrado (NUNCA commitear)
+state/secrets.enc
+state/.secretkey
+state/*.enc
+state/logs/

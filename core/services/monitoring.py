@@ -16,7 +16,7 @@ from core.config import CONSULTA_ERP_PATH, DATA_ERP_PATH
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL = 60  # segundos
+CACHE_TTL = 180  # segundos (el botón ↻ de Documentos invalida la caché al instante)
 
 
 MONITORING_COLUMNS = [

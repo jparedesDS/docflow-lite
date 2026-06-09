@@ -49,10 +49,14 @@ KPI_DEFS = [
 ]
 
 
+DETAIL_W = 440  # ancho del panel lateral de detalle
+
+
 class DocumentosView(ctk.CTkFrame):
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, on_navigate=None, **kwargs):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
 
+        self._on_navigate = on_navigate
         self._all_docs: list[dict] = []
         self._filtered: list[dict] = []
         self._page = 0
@@ -61,9 +65,49 @@ class DocumentosView(ctk.CTkFrame):
         self._active_kpi: str | None = None
         self._search_after_id = None
         self._fit_after_id = None
+        self._detail_doc: dict | None = None
 
         self._build_layout()
+        self._restore_filters()
         self._reload()
+
+    auto_refresh_safe = False  # no auto-recargar mientras el usuario interactúa con la tabla
+
+    def refresh(self) -> None:
+        """Recarga datos (botón ↻ / uso programático)."""
+        self._hard_refresh()
+
+    # ── Persistencia de filtros ───────────────────────────────────────────────
+
+    _FILTER_PREF = "documentos_filtros"
+
+    def _restore_filters(self) -> None:
+        try:
+            from core import preferences as _pref
+            f = _pref.get(self._FILTER_PREF) or {}
+        except Exception:
+            f = {}
+        if not isinstance(f, dict):
+            return
+        for ent, key in ((self.ent_q, "q"), (self.ent_pedido, "pedido"),
+                         (self.ent_cliente, "cliente"), (self.ent_resp, "resp")):
+            val = str(f.get(key, "") or "")
+            if val:
+                ent.insert(0, val)
+        self._active_kpi = f.get("kpi") or None
+
+    def _save_filters(self) -> None:
+        try:
+            from core import preferences as _pref
+            _pref.set_value(self._FILTER_PREF, {
+                "q": self.ent_q.get().strip(),
+                "pedido": self.ent_pedido.get().strip(),
+                "cliente": self.ent_cliente.get().strip(),
+                "resp": self.ent_resp.get().strip(),
+                "kpi": self._active_kpi,
+            })
+        except Exception:
+            pass
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
@@ -170,6 +214,13 @@ class DocumentosView(ctk.CTkFrame):
             )
         # Reajuste de anchos al redimensionar (con debounce)
         self.table.tree.bind("<Configure>", lambda e: self._debounce_fit())
+
+        # Panel lateral de detalle — se abre solo con doble clic o
+        # clic derecho → Ver detalle (no con selección simple)
+        self.detail_panel = ctk.CTkFrame(
+            self, width=DETAIL_W, fg_color=theme.BG_CARD,
+            border_width=1, border_color=theme.BORDER, corner_radius=0)
+        self.detail_panel.pack_propagate(False)
 
     def _make_entry(self, parent, placeholder: str, width: int | None = None) -> ctk.CTkEntry:
         kwargs = dict(
@@ -308,6 +359,7 @@ class DocumentosView(ctk.CTkFrame):
     def _toggle_kpi(self, key: str) -> None:
         self._active_kpi = None if self._active_kpi == key else key
         self._page = 0
+        self._save_filters()
         self._apply_filters_and_render()
 
     # ── Filtros + render ──────────────────────────────────────────────────────
@@ -319,6 +371,7 @@ class DocumentosView(ctk.CTkFrame):
 
     def _on_filter_change(self) -> None:
         self._page = 0
+        self._save_filters()
         self._apply_filters_and_render()
 
     def _clear_filters(self) -> None:
@@ -326,6 +379,7 @@ class DocumentosView(ctk.CTkFrame):
             ent.delete(0, "end")
         self._active_kpi = None
         self._page = 0
+        self._save_filters()
         self._apply_filters_and_render()
 
     def _apply_filters_and_render(self) -> None:
@@ -372,6 +426,8 @@ class DocumentosView(ctk.CTkFrame):
         self._update_kpis(monitoring_service.compute_kpis(self._all_docs))
 
     def _render_page(self) -> None:
+        # Cerrar el panel de detalle al recargar/filtrar (evita referencias obsoletas)
+        self._hide_detail()
         total = len(self._filtered)
         if total == 0:
             self.table.clear()
@@ -428,15 +484,187 @@ class DocumentosView(ctk.CTkFrame):
         self._apply_filters_and_render()
 
     def _on_row_double(self, item) -> None:
-        sel = self.table.selected_iid()
-        if not sel or not sel.startswith("row_"):
-            return
-        try:
-            idx = int(sel.split("_", 1)[1])
-            doc = self._filtered[idx]
-        except (ValueError, IndexError):
-            return
-        DocDetailWindow(self, doc=doc)
+        doc = self._doc_for_iid(self.table.selected_iid())
+        if doc is not None:
+            self._show_detail(doc)
+
+    # ── Panel lateral de detalle ────────────────────────────────────────────
+
+    def _hide_detail(self) -> None:
+        self._detail_doc = None
+        self.detail_panel.place_forget()
+
+    def _show_detail(self, doc: dict) -> None:
+        self._detail_doc = doc
+        for w in self.detail_panel.winfo_children():
+            w.destroy()
+        self.detail_panel.place(relx=1.0, rely=0, anchor="ne", relheight=1.0)
+        self.detail_panel.lift()
+
+        estado = str(doc.get("Estado", "") or "Sin Enviar")
+        ecol = _status_color(estado)
+
+        # ── Cabecera ──────────────────────────────────────────────────────
+        head = ctk.CTkFrame(self.detail_panel, fg_color="transparent")
+        head.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_4, theme.SPACE_2))
+        top = ctk.CTkFrame(head, fg_color="transparent")
+        top.pack(fill="x")
+        title_wrap = ctk.CTkFrame(top, fg_color="transparent")
+        title_wrap.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(title_wrap, text=str(doc.get("Nº Doc. EIPSA", "—")),
+                     font=theme.font(16, "bold"), text_color=theme.TEXT_MAIN,
+                     anchor="w").pack(anchor="w")
+        ctk.CTkLabel(title_wrap, text=str(doc.get("Título", "") or "Sin título"),
+                     font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w",
+                     justify="left", wraplength=DETAIL_W - 70).pack(anchor="w", pady=(2, 0))
+        ctk.CTkButton(top, text="✕", width=26, height=26, corner_radius=theme.RADIUS_SM,
+                      fg_color="transparent", hover_color=theme.BG_INPUT,
+                      text_color=theme.TEXT_MUTED, font=theme.font(13, "bold"),
+                      command=self._hide_detail).pack(side="right")
+
+        # Badges: estado + tipo + crítico
+        badges = ctk.CTkFrame(head, fg_color="transparent")
+        badges.pack(fill="x", pady=(theme.SPACE_2, 0))
+        ctk.CTkLabel(badges, text=f"  {estado.upper()}  ", font=theme.FONT_TINY,
+                     text_color="#FFFFFF", fg_color=ecol, corner_radius=8, height=22).pack(side="left")
+        tipo = str(doc.get("Tipo Doc.", "") or "")
+        if tipo:
+            ctk.CTkLabel(badges, text=f"  {tipo}  ", font=theme.FONT_TINY,
+                         text_color=theme.TEXT_SUB, fg_color=theme.BG_INPUT,
+                         corner_radius=8, height=22).pack(side="left", padx=(theme.SPACE_1, 0))
+        crit = str(doc.get("Crítico", "") or "").strip().lower()
+        if crit in ("sí", "si"):
+            ctk.CTkLabel(badges, text="  ⚠ CRÍTICO  ", font=theme.FONT_TINY,
+                         text_color=theme.RED, fg_color=theme.BG_INPUT,
+                         corner_radius=8, height=22).pack(side="left", padx=(theme.SPACE_1, 0))
+
+        # ── Footer (Generar Reclamación) ──────────────────────────────────
+        footer = ctk.CTkFrame(self.detail_panel, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+        ctk.CTkButton(footer, text="⚠  Generar Reclamación", height=38,
+                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
+                      fg_color="transparent", hover_color=theme.BG_INPUT,
+                      text_color=theme.RED, border_width=1, border_color=theme.RED,
+                      command=lambda d=doc: self._goto_reclamacion(d)).pack(fill="x")
+
+        # ── Cuerpo scrollable ─────────────────────────────────────────────
+        body = ctk.CTkScrollableFrame(self.detail_panel, fg_color="transparent")
+        body.pack(side="top", fill="both", expand=True, padx=theme.SPACE_3, pady=(0, theme.SPACE_1))
+
+        # KPIs: Revisión · Días envío · Días dev.
+        krow = ctk.CTkFrame(body, fg_color="transparent")
+        krow.pack(fill="x", pady=(theme.SPACE_1, theme.SPACE_3))
+        for c in range(3):
+            krow.grid_columnconfigure(c, weight=1, uniform="dk")
+        kpis = [("↻", _fmt(doc.get("Nº Revisión")), "REVISIÓN", theme.ACCENT),
+                ("⧗", _fmt(doc.get("Días Envío")), "DÍAS ENVÍO", theme.GREEN),
+                ("▤", _fmt(doc.get("Días Devolución")), "DÍAS DEV.", theme.AMBER)]
+        for i, (icon, val, label, col) in enumerate(kpis):
+            self._d_kpi(krow, icon, val, label, col, i)
+
+        # Identificación
+        self._d_section(body, "Identificación")
+        self._d_grid(body, [
+            ("Nº Pedido", doc.get("Nº Pedido")), ("Cliente", doc.get("Cliente")),
+            ("Nº PO", doc.get("Nº PO")), ("Nº Oferta", doc.get("Nº Oferta")),
+            ("Material", doc.get("Material")),
+        ])
+
+        # Documento
+        self._d_section(body, "Documento")
+        self._d_grid(body, [
+            ("Tipo Doc.", doc.get("Tipo Doc.")), ("Info/Review", doc.get("Info/Review")),
+            ("Repsonsable", doc.get("Repsonsable")), ("Crítico", doc.get("Crítico")),
+            ("Nº Doc. Cliente", doc.get("Nº Doc. Cliente")),
+        ])
+
+        # Fechas
+        self._d_section(body, "Fechas")
+        self._d_dates(body, [
+            ("Pedido", doc.get("Fecha Pedido"), theme.BLUE),
+            ("Prevista", doc.get("Fecha Prevista"), theme.AMBER),
+            ("Env. Doc.", doc.get("Fecha Env. Doc."), theme.GREEN),
+        ])
+
+        # Seguimiento
+        seg = str(doc.get("Seguimiento", "") or "").strip()
+        if seg:
+            self._d_section(body, "Seguimiento")
+            sbox = ctk.CTkFrame(body, fg_color=theme.BG_PAGE, corner_radius=8,
+                                border_width=1, border_color=theme.AMBER)
+            sbox.pack(fill="x", pady=(0, theme.SPACE_2))
+            ctk.CTkLabel(sbox, text=seg, font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+                         anchor="w", justify="left", wraplength=DETAIL_W - 80).pack(
+                fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
+
+        # Historial de revisiones
+        hist = str(doc.get("Historial Rev.", "") or "").strip()
+        if hist:
+            self._d_section(body, "Historial de revisiones")
+            hbox = ctk.CTkFrame(body, fg_color=theme.BG_PAGE, corner_radius=8,
+                                border_width=1, border_color=theme.BORDER)
+            hbox.pack(fill="x", pady=(0, theme.SPACE_2))
+            ctk.CTkLabel(hbox, text=hist, font=theme.mfont(10), text_color=theme.TEXT_MUTED,
+                         anchor="w", justify="left", wraplength=DETAIL_W - 80).pack(
+                fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
+
+    def _d_kpi(self, parent, icon, value, label, color, col) -> None:
+        box = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=10,
+                           border_width=1, border_color=theme.BORDER)
+        box.grid(row=0, column=col, sticky="ew", padx=(0 if col == 0 else theme.SPACE_2, 0))
+        ctk.CTkLabel(box, text=icon, font=theme.font(13), text_color=color).pack(pady=(theme.SPACE_2, 0))
+        ctk.CTkLabel(box, text=str(value), font=theme.font(18, "bold"),
+                     text_color=color).pack()
+        ctk.CTkLabel(box, text=label, font=theme.FONT_TINY,
+                     text_color=theme.TEXT_MUTED).pack(pady=(0, theme.SPACE_2))
+
+    def _d_section(self, parent, text: str) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
+        ctk.CTkFrame(row, fg_color=theme.ACCENT, width=3, height=13, corner_radius=2).pack(
+            side="left", padx=(0, theme.SPACE_2))
+        ctk.CTkLabel(row, text=text.upper(), font=theme.FONT_LABEL,
+                     text_color=theme.TEXT_SUB).pack(side="left")
+
+    def _d_grid(self, parent, fields: list) -> None:
+        card = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=8,
+                            border_width=1, border_color=theme.BORDER)
+        card.pack(fill="x", pady=(0, theme.SPACE_2))
+        grid = ctk.CTkFrame(card, fg_color="transparent")
+        grid.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
+        for c in range(2):
+            grid.grid_columnconfigure(c, weight=1, uniform="df")
+        for i, (label, val) in enumerate(fields):
+            cell = ctk.CTkFrame(grid, fg_color="transparent")
+            cell.grid(row=i // 2, column=i % 2, sticky="ew", padx=(0, theme.SPACE_2), pady=theme.SPACE_1)
+            ctk.CTkLabel(cell, text=str(label).upper(), font=theme.FONT_TINY,
+                         text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+            ctk.CTkLabel(cell, text=_fmt(val), font=theme.FONT_SMALL_BOLD,
+                         text_color=theme.TEXT_MAIN, anchor="w", justify="left",
+                         wraplength=(DETAIL_W - 90) // 2).pack(anchor="w")
+
+    def _d_dates(self, parent, items: list) -> None:
+        card = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=8,
+                            border_width=1, border_color=theme.BORDER)
+        card.pack(fill="x", pady=(0, theme.SPACE_2))
+        for label, val, col in items:
+            row = ctk.CTkFrame(card, fg_color="transparent")
+            row.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_1)
+            ctk.CTkFrame(row, fg_color=col, width=8, height=8, corner_radius=4).pack(
+                side="left", padx=(0, theme.SPACE_2))
+            ctk.CTkLabel(row, text=label, font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+                         anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=_fmt(val), font=theme.FONT_SMALL_BOLD,
+                         text_color=theme.TEXT_MAIN, anchor="e").pack(side="right")
+
+    def _goto_reclamacion(self, doc: dict) -> None:
+        if self._on_navigate:
+            self._on_navigate("reclamaciones")
+        else:
+            messagebox.showinfo(
+                "Reclamación",
+                "Ve a la sección Reclamaciones para gestionar la reclamación de este pedido.",
+                parent=self)
 
     # ── Menú contextual ────────────────────────────────────────────────────
 
@@ -454,7 +682,7 @@ class DocumentosView(ctk.CTkFrame):
             return None
         pedido = str(doc.get("Nº Pedido", "") or "")
         items = [
-            ("👁  Ver detalle", lambda: DocDetailWindow(self, doc=doc)),
+            ("👁  Ver detalle", lambda: self._show_detail(doc)),
             ("-", None),
             ("Copiar Nº Doc. EIPSA",
              lambda: self.table.copy_to_clipboard(doc.get("Nº Doc. EIPSA", ""))),

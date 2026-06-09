@@ -21,9 +21,13 @@ class DocFlowLiteApp(ctk.CTk):
         {"key": "apertura",      "label": "Apertura pedidos",  "icon": "✚"},
         {"key": "agenda",        "label": "Agenda",            "icon": "▣"},
         {"key": "inbox",         "label": "Bandeja AI",        "icon": "✦"},
+        {"key": "ofertas",       "label": "Ofertas",           "icon": "✉"},
         {"key": "documentos",    "label": "Documentos",        "icon": "◫"},
+        {"key": "pedidos",       "label": "Pedidos",           "icon": "▦"},
         {"key": "devoluciones",  "label": "Devoluciones",      "icon": "✉"},
         {"key": "reclamaciones", "label": "Reclamaciones",     "icon": "⚠"},
+        {"key": "docusign",      "label": "Contratos & Firmas","icon": "✒"},
+        {"key": "informes",      "label": "Informes",          "icon": "▤"},
         {"key": "reportes",      "label": "Centro de Reportes","icon": "📊"},
     ]
 
@@ -37,16 +41,32 @@ class DocFlowLiteApp(ctk.CTk):
 
         self.current_user = current_user or {}
 
+        # Establecer la sesión (permisos por sección)
+        from core import session
+        session.set_user(self.current_user)
+
         super().__init__(fg_color=theme.BG_PAGE)
         self.title(self.TITLE)
-        self.geometry(f"{self.WIDTH}x{self.HEIGHT}")
+
+        # Restaurar geometría previa (tamaño/posición), validada en pantalla
+        from core import preferences as _pref
+        geo = _pref.get("window_geometry")
+        self.geometry(geo if self._geometry_ok(geo) else f"{self.WIDTH}x{self.HEIGHT}")
         self.minsize(1000, 640)
 
         self._views: dict[str, ctk.CTkFrame] = {}
         self._current: str | None = None
+        self.notifier = None  # se crea tras el layout
 
         self._build_layout()
-        self.navigate("home")
+
+        # Notificaciones in-app
+        from gui.widgets.notifier import NotificationManager
+        self.notifier = NotificationManager(self)
+
+        # Restaurar última sección abierta (si es válida y accesible)
+        last = _pref.get("last_section", "home")
+        self.navigate(last if last in self._nav_keys else "home")
 
         # Atajos teclado globales (solo si el foco no está en un Entry)
         self.bind_all("<KeyPress-h>", self._kb_home)
@@ -68,6 +88,127 @@ class DocFlowLiteApp(ctk.CTk):
 
         startup_warnings()
 
+        # Pre-calentar el dataset de monitoring en segundo plano para que
+        # Documentos / Informes / Pedidos abran al instante (la primera lectura
+        # de los Excel es lo más lento; al cachearla aquí ya está lista).
+        self.after(400, self._prewarm_data)
+        # Auto-refresco + notificaciones (primer chequeo a los 30s)
+        self._start_autorefresh()
+
+    def _prewarm_data(self) -> None:
+        import threading
+
+        def warm():
+            try:
+                from core.services import monitoring
+                monitoring.get_monitoring_data()
+            except Exception as exc:  # noqa: BLE001 — best-effort
+                logger.debug("Prewarm monitoring falló: %s", exc)
+
+        threading.Thread(target=warm, daemon=True).start()
+
+    # ── Persistencia de estado (geometría + última sección) ──────────────────
+
+    @staticmethod
+    def _geometry_ok(geo) -> bool:
+        """Valida 'WxH+X+Y' y que el tamaño sea razonable (evita ventanas rotas)."""
+        if not geo or not isinstance(geo, str):
+            return False
+        import re
+        m = re.match(r"^(\d+)x(\d+)([+\-]\d+)([+\-]\d+)$", geo)
+        if not m:
+            return False
+        w, h = int(m.group(1)), int(m.group(2))
+        return 700 <= w <= 10000 and 480 <= h <= 10000
+
+    def save_state(self) -> None:
+        """Guarda geometría y sección actual en preferences (llamado al cerrar)."""
+        from core import preferences as _pref
+        try:
+            if self.state() == "normal":  # no guardar geometría si está maximizada/iconificada
+                _pref.set_value("window_geometry", self.winfo_geometry())
+        except Exception:
+            pass
+        if self._current:
+            _pref.set_value("last_section", self._current)
+
+    # ── Manejo global de errores ──────────────────────────────────────────────
+
+    def report_callback_exception(self, exc, val, tb) -> None:  # noqa: N802 (API Tk)
+        """Captura excepciones de callbacks Tk: las registra y avisa sin cerrar la app."""
+        import traceback
+        logger.error("Excepción en callback Tk:\n%s",
+                     "".join(traceback.format_exception(exc, val, tb)))
+        try:
+            if self.notifier:
+                self.notifier.notify(
+                    "Se produjo un error", "Operación interrumpida. Detalles en el registro.",
+                    kind="error", native=False)
+        except Exception:
+            pass
+
+    # ── Auto-refresco + notificaciones ────────────────────────────────────────
+
+    def _start_autorefresh(self) -> None:
+        from core import preferences as _pref
+        self._refresh_min = int(_pref.get("autorefresh_min", 5) or 0)
+        self._notif_on = bool(_pref.get("notifications", True))
+        self._notif_baseline = None
+        self._notif_startup_done = False
+        if self._refresh_min > 0:
+            # Primer chequeo a los 30s; luego cada _refresh_min minutos
+            self.after(30_000, self._autorefresh_tick)
+
+    def _autorefresh_tick(self) -> None:
+        import threading
+
+        def work():
+            kpis = None
+            try:
+                from core.services import monitoring
+                monitoring.invalidate_cache()
+                kpis = monitoring.compute_kpis(monitoring.get_monitoring_data())
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("autorefresh: %s", exc)
+            self.after(0, lambda: self._autorefresh_done(kpis))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _autorefresh_done(self, kpis) -> None:
+        # 1) Refresca la vista actual SOLO si declara que es seguro (dashboards)
+        view = self._views.get(self._current)
+        if view is not None and getattr(view, "auto_refresh_safe", False):
+            fn = getattr(view, "refresh", None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("refresh vista %s: %s", self._current, exc)
+
+        # 2) Notificaciones por documentos críticos +15 días
+        if kpis and self._notif_on and self.notifier:
+            c = int(kpis.get("criticos_15d", 0) or 0)
+            if not self._notif_startup_done:
+                self._notif_startup_done = True
+                self._notif_baseline = c
+                if c > 0:
+                    self.notifier.notify(
+                        "Documentos críticos",
+                        f"{c} documento(s) crítico(s) llevan +15 días sin respuesta.",
+                        kind="warn")
+            elif self._notif_baseline is not None and c > self._notif_baseline:
+                self.notifier.notify(
+                    "Nuevos críticos",
+                    f"{c - self._notif_baseline} documento(s) más superan los 15 días.",
+                    kind="warn")
+                self._notif_baseline = c
+            elif self._notif_baseline is not None and c < self._notif_baseline:
+                self._notif_baseline = c
+
+        # 3) Reprograma
+        if getattr(self, "_refresh_min", 0) > 0:
+            self.after(self._refresh_min * 60_000, self._autorefresh_tick)
+
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
@@ -75,12 +216,18 @@ class DocFlowLiteApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar
+        # Sidebar — filtrado por permisos del usuario
+        from core import auth
+        items = [it for it in self.NAV_ITEMS if auth.can_view(self.current_user, it["key"])]
+        if auth.is_admin(self.current_user):
+            items.append({"key": "ajustes", "label": "Ajustes", "icon": "⚙"})
+        self._nav_keys = {it["key"] for it in items}
+
         nombre = self.current_user.get("nombre") or "Usuario"
         initials = self.current_user.get("initials") or "—"
         self.sidebar = Sidebar(
             self,
-            items=self.NAV_ITEMS,
+            items=items,
             on_select=self.navigate,
             on_toggle_theme=self._toggle_theme,
             current_user_label=f"{nombre} ({initials})",
@@ -110,6 +257,11 @@ class DocFlowLiteApp(ctk.CTk):
         view.grid(row=0, column=0, sticky="nsew")
         self._current = key
         self.sidebar.set_active(key)
+        try:
+            from core import preferences as _pref
+            _pref.set_value("last_section", key)
+        except Exception:
+            pass
 
     def _make_view(self, key: str) -> ctk.CTkFrame | None:
         # Lazy import para que un fallo en una vista no impida cargar las otras
@@ -121,7 +273,10 @@ class DocFlowLiteApp(ctk.CTk):
             view = DevolucionesView(self.content)
         elif key == "documentos":
             from gui.views.documentos import DocumentosView
-            view = DocumentosView(self.content)
+            view = DocumentosView(self.content, on_navigate=self.navigate)
+        elif key == "pedidos":
+            from gui.views.pedidos import PedidosView
+            view = PedidosView(self.content)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)
@@ -131,6 +286,18 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "inbox":
             from gui.views.inbox import InboxView
             view = InboxView(self.content)
+        elif key == "ofertas":
+            from gui.views.ofertas import OfertasView
+            view = OfertasView(self.content)
+        elif key == "docusign":
+            from gui.views.docusign import DocusignView
+            view = DocusignView(self.content)
+        elif key == "informes":
+            from gui.views.informes import InformesView
+            view = InformesView(self.content)
+        elif key == "ajustes":
+            from gui.views.ajustes import AjustesView
+            view = AjustesView(self.content, on_restart=self._restart_app)
         elif key == "reportes":
             from gui.views.reportes import ReportesView
             view = ReportesView(self.content)

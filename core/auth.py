@@ -29,11 +29,20 @@ USERS_FILE = str(state_dir() / "users.json")
 DEFAULT_PASSWORD = "Aa123456"
 PBKDF2_ITERATIONS = 200_000
 
-# Iniciales autorizadas a iniciar sesión. Subconjunto de config.USERS.
-# El resto sigue siendo válido para mappings de emails / responsables pero
-# no puede entrar en la app. Para habilitar a otro DC, añade su inicial aquí
-# y reempaqueta — los hashes se generan en el primer arranque.
-ALLOWED_LOGIN_INITIALS: set[str] = {"JP"}
+# El rol administrador (gestiona usuarios y permisos) es exclusivo de JP.
+ADMIN_INITIALS: set[str] = {"JP"}
+
+# Secciones gobernables por permisos (claves de navegación del sidebar).
+# 'home' siempre es visible; 'ajustes' es exclusivo del admin.
+SECTION_KEYS: list[str] = [
+    "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos",
+    "devoluciones", "reclamaciones", "docusign", "informes", "reportes",
+]
+PERM_LEVELS = ("none", "ver", "gestionar")
+
+
+def _all_perms(level: str) -> dict:
+    return {k: level for k in SECTION_KEYS}
 
 
 # ═══ Password hashing (PBKDF2-SHA256, stdlib) ═══════════════════════════════
@@ -82,53 +91,49 @@ def _save(data: dict) -> None:
 
 
 def _seed_if_empty() -> None:
-    """Crea un usuario por cada inicial autorizada con password por defecto.
+    """Asegura que existe el admin (JP) y migra registros antiguos.
 
-    Sólo procesa iniciales en ALLOWED_LOGIN_INITIALS (que también deben existir
-    en config.USERS). El resto de USERS no obtiene cuenta de login.
+    - Primer arranque: crea la cuenta JP (admin, gestiona todo).
+    - Arranques posteriores: NO borra cuentas (las crea el admin desde Ajustes);
+      solo garantiza que JP existe y rellena campos nuevos (permisos/is_admin).
     """
     data = _load()
-    allowed = {i.upper() for i in ALLOWED_LOGIN_INITIALS}
 
-    if data["users"]:
-        # Añadir los que falten y limpiar los que ya no estén autorizados
-        existing = {u.get("initials", "").upper() for u in data["users"]}
-        new_users = []
-        for initials, info in USERS.items():
-            ini = initials.upper()
-            if ini in existing or ini not in allowed:
-                continue
-            new_users.append(_build_seed_user(initials, info))
-        if new_users:
-            data["users"].extend(new_users)
-            logger.info("Auth: %d usuarios nuevos añadidos al seed", len(new_users))
-
-        # Filtrar a los autorizados (revoca cuentas que ya no están en la lista)
-        before = len(data["users"])
-        data["users"] = [u for u in data["users"] if u.get("initials", "").upper() in allowed]
-        if len(data["users"]) != before:
-            logger.info(
-                "Auth: revocadas %d cuentas no autorizadas",
-                before - len(data["users"]),
-            )
-
+    if not data["users"]:
+        info = USERS.get("JP", {"nombre": "Jose Paredes", "emails": ["documentacion@eipsa.es"]})
+        data["users"] = [_build_seed_user("JP", info, is_admin=True,
+                                          permisos=_all_perms("gestionar"))]
         _save(data)
+        logger.info("Auth: seed inicial — cuenta admin JP creada")
         return
 
-    # Primer arranque — crear sólo los autorizados que existan en config.USERS
-    data["users"] = [
-        _build_seed_user(k, v)
-        for k, v in USERS.items()
-        if k.upper() in allowed
-    ]
-    _save(data)
-    logger.info(
-        "Auth: seed inicial de %d usuario(s) autorizado(s) (password por defecto)",
-        len(data["users"]),
-    )
+    changed = False
+    if not any(u.get("initials", "").upper() == "JP" for u in data["users"]):
+        info = USERS.get("JP", {"nombre": "Jose Paredes", "emails": ["documentacion@eipsa.es"]})
+        data["users"].append(_build_seed_user("JP", info, is_admin=True,
+                                              permisos=_all_perms("gestionar")))
+        changed = True
+    # Migración de esquema: campos nuevos en cuentas existentes
+    for u in data["users"]:
+        ini = u.get("initials", "").upper()
+        if "is_admin" not in u:
+            u["is_admin"] = ini in {i.upper() for i in ADMIN_INITIALS}
+            changed = True
+        if "permisos" not in u or not isinstance(u.get("permisos"), dict):
+            u["permisos"] = _all_perms("gestionar" if u.get("is_admin") else "ver")
+            changed = True
+        else:
+            # añadir claves de sección que falten
+            for k in SECTION_KEYS:
+                if k not in u["permisos"]:
+                    u["permisos"][k] = "gestionar" if u.get("is_admin") else "ver"
+                    changed = True
+    if changed:
+        _save(data)
 
 
-def _build_seed_user(initials: str, info: dict) -> dict:
+def _build_seed_user(initials: str, info: dict, is_admin: bool = False,
+                     permisos: dict | None = None) -> dict:
     emails = info.get("emails") or []
     return {
         "initials": initials,
@@ -136,6 +141,8 @@ def _build_seed_user(initials: str, info: dict) -> dict:
         "email": emails[0] if emails else "",
         "password_hash": hash_password(DEFAULT_PASSWORD),
         "must_change_password": True,
+        "is_admin": is_admin,
+        "permisos": permisos or _all_perms("ver"),
         "created_at": _now(),
         "last_login": None,
     }
@@ -173,12 +180,6 @@ def login(initials: str, password: str) -> tuple[Optional[dict], Optional[str]]:
     Si OK: (user_dict, None). Si KO: (None, "mensaje de error").
     Actualiza last_login en disco al autenticar correctamente.
     """
-    # Defensa en profundidad: rechazar si las iniciales no están autorizadas,
-    # incluso si por alguna razón hubiera un hash en users.json (ej. archivo
-    # editado manualmente).
-    if initials.upper().strip() not in {i.upper() for i in ALLOWED_LOGIN_INITIALS}:
-        return None, "Usuario no autorizado."
-
     user = get_user(initials)
     if user is None:
         return None, "Usuario no encontrado. Revisa las iniciales."
@@ -219,5 +220,111 @@ def change_password(initials: str, new_password: str, current_password: Optional
             data["users"][i]["password_hash"] = hash_password(new_password)
             data["users"][i]["must_change_password"] = False
             break
+    _save(data)
+    return True, None
+
+
+# ═══ Permisos / roles ════════════════════════════════════════════════════════
+
+def is_admin(user: Optional[dict]) -> bool:
+    if not user:
+        return False
+    return user.get("initials", "").upper() in {i.upper() for i in ADMIN_INITIALS}
+
+
+def can_view(user: Optional[dict], section: str) -> bool:
+    if section in ("home", "ajustes" if is_admin(user) else "__never__"):
+        return True
+    if is_admin(user):
+        return True
+    if not user:
+        return False
+    return (user.get("permisos") or {}).get(section, "none") in ("ver", "gestionar")
+
+
+def can_manage(user: Optional[dict], section: str) -> bool:
+    if is_admin(user):
+        return True
+    if not user:
+        return False
+    return (user.get("permisos") or {}).get(section, "none") == "gestionar"
+
+
+# ═══ Gestión de cuentas (solo admin) ═════════════════════════════════════════
+
+def create_user(initials: str, nombre: str, email: str = "",
+                password: str | None = None, permisos: dict | None = None) -> tuple[bool, Optional[str]]:
+    initials = (initials or "").strip().upper()
+    if not initials:
+        return False, "Indica unas iniciales."
+    if get_user(initials):
+        return False, f"Ya existe un usuario con iniciales {initials}."
+    if password and len(password) < 6:
+        return False, "La contraseña debe tener al menos 6 caracteres."
+    data = _load()
+    perms = _all_perms("ver")
+    if isinstance(permisos, dict):
+        for k in SECTION_KEYS:
+            if permisos.get(k) in PERM_LEVELS:
+                perms[k] = permisos[k]
+    data["users"].append({
+        "initials": initials,
+        "nombre": nombre or initials,
+        "email": email or "",
+        "password_hash": hash_password(password or DEFAULT_PASSWORD),
+        "must_change_password": not password,
+        "is_admin": False,
+        "permisos": perms,
+        "created_at": _now(),
+        "last_login": None,
+    })
+    _save(data)
+    return True, None
+
+
+def update_user(initials: str, *, nombre: str | None = None, email: str | None = None,
+                permisos: dict | None = None) -> tuple[bool, Optional[str]]:
+    data = _load()
+    target = initials.upper().strip()
+    for u in data["users"]:
+        if u.get("initials", "").upper() == target:
+            if nombre is not None:
+                u["nombre"] = nombre
+            if email is not None:
+                u["email"] = email
+            if isinstance(permisos, dict):
+                base = u.get("permisos") or _all_perms("ver")
+                for k in SECTION_KEYS:
+                    if permisos.get(k) in PERM_LEVELS:
+                        base[k] = permisos[k]
+                u["permisos"] = base
+            _save(data)
+            return True, None
+    return False, "Usuario no encontrado."
+
+
+def reset_password(initials: str, new_password: str) -> tuple[bool, Optional[str]]:
+    if not new_password or len(new_password) < 6:
+        return False, "La contraseña debe tener al menos 6 caracteres."
+    data = _load()
+    target = initials.upper().strip()
+    for u in data["users"]:
+        if u.get("initials", "").upper() == target:
+            u["password_hash"] = hash_password(new_password)
+            u["must_change_password"] = True
+            _save(data)
+            return True, None
+    return False, "Usuario no encontrado."
+
+
+def delete_user(initials: str) -> tuple[bool, Optional[str]]:
+    target = initials.upper().strip()
+    if target in {i.upper() for i in ADMIN_INITIALS}:
+        return False, "No se puede eliminar la cuenta administradora."
+    data = _load()
+    before = len(data["users"])
+    data["users"] = [u for u in data["users"] if u.get("initials", "").upper() != target]
+    if len(data["users"]) == before:
+        return False, "Usuario no encontrado."
     _save(data)
     return True, None

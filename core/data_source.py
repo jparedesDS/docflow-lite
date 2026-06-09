@@ -18,7 +18,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from core.config import CONSULTA_ERP_PATH, DATA_ERP_PATH
+from core.config import CONSULTA_ERP_PATH, DATA_ERP_PATH, TAGS_PATH
 from core.preferences import get, set_value
 
 logger = logging.getLogger(__name__)
@@ -27,11 +27,13 @@ logger = logging.getLogger(__name__)
 _KINDS: dict[str, str] = {
     "data_erp":     DATA_ERP_PATH,
     "consulta_erp": CONSULTA_ERP_PATH,
+    "tags":         TAGS_PATH,
 }
 
 _LABELS = {
     "data_erp":     "data_erp.xlsx",
     "consulta_erp": "consulta_erp.xlsx",
+    "tags":         "data_tags.xlsx",
 }
 
 

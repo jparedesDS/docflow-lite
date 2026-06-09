@@ -576,6 +576,11 @@ class AperturaView(ctk.CTkFrame):
     def _on_create(self) -> None:
         if self._busy:
             return
+        from core import session
+        from gui.widgets import ui
+        if not session.can_manage("apertura"):
+            ui.toast(self, "Solo lectura", "No tienes permiso para procesar pedidos.", kind="warn")
+            return
 
         # ── Validaciones ────────────────────────────────────────────────
         try:

@@ -9,13 +9,47 @@ Flujo:
 """
 
 import logging
+import logging.handlers
 import sys
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+
+def _setup_logging() -> None:
+    """Logging a consola + fichero rotativo en state/logs/docflow.log."""
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    console = logging.StreamHandler()
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    try:
+        from core.paths import state_dir
+        logs_dir = state_dir() / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        fileh = logging.handlers.RotatingFileHandler(
+            logs_dir / "docflow.log", maxBytes=1_000_000, backupCount=5, encoding="utf-8")
+        fileh.setFormatter(fmt)
+        root.addHandler(fileh)
+    except Exception as exc:  # noqa: BLE001
+        root.warning("No se pudo crear el log de fichero: %s", exc)
+
+
+_setup_logging()
 logger = logging.getLogger("docflow-lite")
+
+
+def _install_excepthook() -> None:
+    """Registra cualquier excepción no capturada del hilo principal en el log."""
+    def _hook(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        logger.critical("Excepción no controlada", exc_info=(exc_type, exc_value, exc_tb))
+    sys.excepthook = _hook
+
+
+_install_excepthook()
 
 
 def _try_start_scheduler():
@@ -54,6 +88,10 @@ def main() -> int:
     app = DocFlowLiteApp(current_user=user)
 
     def _on_close():
+        try:
+            app.save_state()  # geometría + última sección
+        except Exception as exc:
+            logger.debug("save_state falló: %s", exc)
         if scheduler is not None:
             try:
                 scheduler.shutdown(wait=False)

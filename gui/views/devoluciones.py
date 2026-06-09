@@ -10,6 +10,7 @@ from tkinter import messagebox
 
 from core.services import transmittal
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -596,6 +597,10 @@ class PreviewWindow(ctk.CTkToplevel):
     def _send(self) -> None:
         if not self._preview:
             return
+        from core import session
+        if not session.can_manage("devoluciones"):
+            ui.toast(self, "Solo lectura", "No tienes permiso para enviar devoluciones.", kind="warn")
+            return
         to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
         cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
         if not to:
@@ -638,14 +643,8 @@ class PreviewWindow(ctk.CTkToplevel):
 
     def _send_done(self, res: dict) -> None:
         n = res.get("documents_count", 0)
-        path = res.get("saved_path") or "—"
-        messagebox.showinfo(
-            "Notificación enviada",
-            f"✓ Email enviado con éxito\n\n"
-            f"Documentos: {n}\n"
-            f"Asunto: {res.get('subject', '')}\n"
-            f"EML guardado en: {path}",
-        )
+        ui.toast(self.master, "Notificación enviada",
+                 f"{n} documento(s) · {res.get('subject', '')}", kind="success")
         if self._on_sent:
             self._on_sent()
         self.destroy()
@@ -986,6 +985,10 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         threading.Thread(target=worker, daemon=True).start()
 
     def _send(self) -> None:
+        from core import session
+        if not session.can_manage("devoluciones"):
+            ui.toast(self, "Solo lectura", "No tienes permiso para enviar devoluciones.", kind="warn")
+            return
         ok, err = self._validate()
         if not ok:
             messagebox.showwarning("Faltan datos", err, parent=self)
@@ -1031,15 +1034,8 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
 
     def _send_done(self, res: dict) -> None:
         n = res.get("documents_count", 0)
-        path = res.get("saved_path") or "—"
-        messagebox.showinfo(
-            "Devolución enviada",
-            f"✓ Email enviado con éxito\n\n"
-            f"Documentos: {n}\n"
-            f"Asunto: {res.get('subject', '')}\n"
-            f"EML guardado en: {path}",
-            parent=self,
-        )
+        ui.toast(self.master, "Devolución enviada",
+                 f"{n} documento(s) · {res.get('subject', '')}", kind="success")
         if self._on_sent:
             self._on_sent()
         self.destroy()
