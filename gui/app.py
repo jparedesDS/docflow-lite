@@ -48,10 +48,11 @@ class DocFlowLiteApp(ctk.CTk):
         super().__init__(fg_color=theme.BG_PAGE)
         self.title(self.TITLE)
 
-        # Restaurar geometría previa (tamaño/posición), validada en pantalla
+        # Restaurar geometría previa (tamaño/posición) garantizando que la
+        # ventana cae dentro de la pantalla visible (si la posición guardada
+        # apuntaba a otro monitor que ahora no existe, la recentra).
         from core import preferences as _pref
-        geo = _pref.get("window_geometry")
-        self.geometry(geo if self._geometry_ok(geo) else f"{self.WIDTH}x{self.HEIGHT}")
+        self._restore_geometry(_pref.get("window_geometry"))
         self.minsize(1000, 640)
 
         self._views: dict[str, ctk.CTkFrame] = {}
@@ -92,6 +93,8 @@ class DocFlowLiteApp(ctk.CTk):
         # Documentos / Informes / Pedidos abran al instante (la primera lectura
         # de los Excel es lo más lento; al cachearla aquí ya está lista).
         self.after(400, self._prewarm_data)
+        # Pre-construir las vistas en idle (escalonado) → primer clic instantáneo
+        self.after(2500, self._prewarm_views)
         # Auto-refresco + notificaciones (primer chequeo a los 30s)
         self._start_autorefresh()
 
@@ -104,22 +107,83 @@ class DocFlowLiteApp(ctk.CTk):
                 monitoring.get_monitoring_data()
             except Exception as exc:  # noqa: BLE001 — best-effort
                 logger.debug("Prewarm monitoring falló: %s", exc)
+            # consulta_erp + data_tags (Pedidos: detalle instantáneo)
+            try:
+                from core.services import erp
+                erp.consulta()
+                if erp.tags_available():
+                    erp.get_tags()
+            except Exception as exc:  # noqa: BLE001 — best-effort
+                logger.debug("Prewarm erp/tags falló: %s", exc)
 
         threading.Thread(target=warm, daemon=True).start()
 
+    # Orden de pre-construcción: solo vistas pesadas de UI/disco. Se excluyen a
+    # propósito las que disparan red al construirse (devoluciones, reclamaciones,
+    # ofertas, inbox, docusign): su UI es barata y no queremos conexiones IMAP/API
+    # sorpresa al arrancar.
+    _PREWARM_ORDER = ["documentos", "pedidos", "informes", "agenda", "home",
+                      "reportes", "apertura", "ajustes"]
+
+    def _prewarm_views(self) -> None:
+        """Construye las vistas restantes en idle, una cada 600ms.
+
+        Tk obliga a crear widgets en el hilo principal, así que no se puede usar
+        un thread: se escalona con after() para que cada construcción (~20-550ms)
+        caiga en huecos de inactividad y el primer clic en cualquier sección sea
+        instantáneo (la vista ya está cacheada en self._views).
+        """
+        self._prewarm_queue = [k for k in self._PREWARM_ORDER
+                               if k in self._nav_keys and k not in self._views]
+        self._prewarm_next()
+
+    def _prewarm_next(self) -> None:
+        if not getattr(self, "_prewarm_queue", None):
+            return
+        key = self._prewarm_queue.pop(0)
+        try:
+            if key not in self._views:
+                import time as _t
+                t0 = _t.perf_counter()
+                view = self._make_view(key)
+                # Mapearla ya (debajo de la actual) → el coste de layout se paga
+                # aquí en idle y el primer navigate() es un tkraise casi gratis.
+                if view is not None:
+                    view.grid(row=0, column=0, sticky="nsew")
+                    view.lower()
+                    cur = self._views.get(self._current)
+                    if cur is not None:
+                        cur.tkraise()
+                logger.debug("Prewarm vista %s: %.0f ms", key, (_t.perf_counter() - t0) * 1000)
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.debug("Prewarm vista %s falló: %s", key, exc)
+        if self._prewarm_queue:
+            self.after(600, self._prewarm_next)
+
     # ── Persistencia de estado (geometría + última sección) ──────────────────
 
-    @staticmethod
-    def _geometry_ok(geo) -> bool:
-        """Valida 'WxH+X+Y' y que el tamaño sea razonable (evita ventanas rotas)."""
-        if not geo or not isinstance(geo, str):
-            return False
+    def _restore_geometry(self, geo) -> None:
+        """Aplica una geometría segura: tamaño razonable y SIEMPRE dentro de la
+        pantalla visible (recentra si la posición guardada queda fuera, p.ej.
+        un segundo monitor que ahora no existe en sesión remota)."""
         import re
-        m = re.match(r"^(\d+)x(\d+)([+\-]\d+)([+\-]\d+)$", geo)
-        if not m:
-            return False
-        w, h = int(m.group(1)), int(m.group(2))
-        return 700 <= w <= 10000 and 480 <= h <= 10000
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w, h = self.WIDTH, self.HEIGHT
+        x = y = None
+        m = re.match(r"^(\d+)x(\d+)([+\-]\d+)([+\-]\d+)$", geo or "") if isinstance(geo, str) else None
+        if m:
+            w, h = int(m.group(1)), int(m.group(2))
+            x, y = int(m.group(3)), int(m.group(4))
+        # Tamaño dentro de límites de la pantalla
+        w = min(max(w, 900), sw)
+        h = min(max(h, 600), sh)
+        # Posición: si falta o queda fuera de la pantalla → centrar
+        margin = 80
+        if x is None or x < 0 or y < 0 or x > sw - margin or y > sh - margin:
+            x = max(0, (sw - w) // 2)
+            y = max(0, (sh - h) // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
     def save_state(self) -> None:
         """Guarda geometría y sección actual en preferences (llamado al cerrar)."""
@@ -250,11 +314,12 @@ class DocFlowLiteApp(ctk.CTk):
         if view is None:
             return
 
-        # Hide current
-        if self._current and self._current in self._views:
-            self._views[self._current].grid_remove()
-
-        view.grid(row=0, column=0, sticky="nsew")
+        # Todas las vistas comparten la celda (0,0); el cambio de sección es un
+        # tkraise (z-order) en vez de grid_remove/grid — evita re-mapear cientos
+        # de widgets en cada cambio (~100-250ms → ~0ms).
+        if not view.grid_info():
+            view.grid(row=0, column=0, sticky="nsew")
+        view.tkraise()
         self._current = key
         self.sidebar.set_active(key)
         try:
@@ -413,10 +478,15 @@ class DocFlowLiteApp(ctk.CTk):
         args = [python, script, *sys.argv[1:]] if script else [python]
         logger.info("Restarting via execv: args=%s", args)
 
-        # Antes de exec — flush logs y avisos
+        # Antes de exec — flush logs, preferencias pendientes y avisos
         try:
             for handler in logging.getLogger().handlers:
                 handler.flush()
+        except Exception:
+            pass
+        try:
+            from core import preferences
+            preferences.flush()  # write-behind: no perder cambios al reiniciar
         except Exception:
             pass
 

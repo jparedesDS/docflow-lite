@@ -15,37 +15,42 @@ from tkinter import messagebox, ttk
 from core.services import monitoring as monitoring_service
 from gui import cell_format
 from gui import theme
-from gui.widgets.table import DataTable
+from gui.widgets import ui
+from gui.widgets.pilltable import PillTable
 
 logger = logging.getLogger(__name__)
 
 # Columnas visibles (mismo orden que Documents.js)
 VISIBLE_COLUMNS = list(monitoring_service.VISIBLE_COLUMNS)
 
-# Cabeceras abreviadas para las columnas de contenido corto: su texto largo
-# inflaba el ancho aunque el dato sea minúsculo (—, R, 3.0, Sí), forzando la
-# compresión del resto. Con la cabecera corta el total cabe sin comprimir.
-HEADER_DISPLAY = {
-    "Repsonsable": "Resp.",
-    "Crítico": "Crít.",
-    "Info/Review": "Info/Rev",
-    "Nº Revisión": "Rev.",
-    "Fecha Env. Doc.": "Fecha Env.",
-    "Días Devolución": "Días Dev.",
-}
+# Spec de columnas para la PillTable (key · etiqueta cabecera · ancho mín · estira · anchor)
+DOC_COLS = [
+    {"key": "Nº Pedido",       "label": "Pedido",       "min": 108, "anchor": "w"},
+    {"key": "Nº Doc. EIPSA",   "label": "Nº Doc. EIPSA", "min": 172, "anchor": "w"},
+    {"key": "Título",          "label": "Título",       "min": 200, "anchor": "w", "stretch": True},
+    {"key": "Cliente",         "label": "Cliente",      "min": 150, "anchor": "w"},
+    {"key": "Repsonsable",     "label": "Resp.",        "min": 62,  "anchor": "center"},
+    {"key": "Tipo Doc.",       "label": "Tipo",         "min": 130, "anchor": "w"},
+    {"key": "Crítico",         "label": "Crít.",        "min": 64,  "anchor": "center"},
+    {"key": "Info/Review",     "label": "I/R",          "min": 52,  "anchor": "center"},
+    {"key": "Estado",          "label": "Estado",       "min": 124, "anchor": "center"},
+    {"key": "Nº Revisión",     "label": "Rev.",         "min": 56,  "anchor": "center"},
+    {"key": "Fecha Env. Doc.", "label": "Fecha Env.",   "min": 100, "anchor": "center"},
+    {"key": "Días Devolución", "label": "Días Dev.",    "min": 78,  "anchor": "center"},
+]
 
 PAGE_SIZE = 30
 
 
 # KPI cards: (key, label, color)
 KPI_DEFS = [
-    ("total",        "Total",         theme.ACCENT),
-    ("aprobados",    "Aprobados",     theme.GREEN),
-    ("enviados",     "Enviados",      theme.BLUE),
-    ("devoluciones", "Devoluciones",  theme.AMBER),
-    ("criticos",     "Críticos",      theme.RED),
-    ("criticos_15d", "Críticos +15d", theme.ROSE),
-    ("sin_enviar",   "Sin enviar",    theme.TEXT_MUTED),
+    ("total",        "Total",         theme.ACCENT,     "▦"),
+    ("aprobados",    "Aprobados",     theme.GREEN,      "✓"),
+    ("enviados",     "Enviados",      theme.BLUE,       "➤"),
+    ("devoluciones", "Devoluciones",  theme.AMBER,      "↩"),
+    ("criticos",     "Críticos",      theme.RED,        "⚠"),
+    ("criticos_15d", "Críticos +15d", theme.ROSE,       "⏱"),
+    ("sin_enviar",   "Sin enviar",    theme.TEXT_MUTED, "○"),
 ]
 
 
@@ -96,7 +101,23 @@ class DocumentosView(ctk.CTkFrame):
                 ent.insert(0, val)
         self._active_kpi = f.get("kpi") or None
 
-    def _save_filters(self) -> None:
+    def _save_filters(self, delay: int = 0) -> None:
+        """Persiste los filtros. delay>0 lo difiere (evita escribir en disco —
+        preferences.json en red U:\\ — en cada pulsación de tecla)."""
+        aid = getattr(self, "_filters_save_after_id", None)
+        if aid:
+            try:
+                self.after_cancel(aid)
+            except Exception:
+                pass
+            self._filters_save_after_id = None
+        if delay > 0:
+            self._filters_save_after_id = self.after(delay, self._write_filters)
+        else:
+            self._write_filters()
+
+    def _write_filters(self) -> None:
+        self._filters_save_after_id = None
         try:
             from core import preferences as _pref
             _pref.set_value(self._FILTER_PREF, {
@@ -201,19 +222,11 @@ class DocumentosView(ctk.CTkFrame):
         )
         self.btn_next.pack(side="left", padx=theme.SPACE_1)
 
-        # Table
-        self.table = DataTable(self, columns=VISIBLE_COLUMNS, on_double_click=self._on_row_double)
+        # Table — tabla a medida con pills de color por celda (look web)
+        self.table = PillTable(self, columns=DOC_COLS, on_double_click=self._on_row_double,
+                               on_sort=self._on_sort, rowheight=40)
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
-        self._setup_table_columns()
-        self._setup_row_tags()
         self.table.set_context_menu(self._ctx_menu)
-        for col in VISIBLE_COLUMNS:
-            self.table.tree.heading(
-                col, text=HEADER_DISPLAY.get(col, col),
-                command=lambda c=col: self._on_sort(c),
-            )
-        # Reajuste de anchos al redimensionar (con debounce)
-        self.table.tree.bind("<Configure>", lambda e: self._debounce_fit())
 
         # Panel lateral de detalle — se abre solo con doble clic o
         # clic derecho → Ver detalle (no con selección simple)
@@ -235,87 +248,77 @@ class DocumentosView(ctk.CTkFrame):
 
     def _build_kpi_cards(self) -> None:
         self.kpi_widgets: dict[str, dict] = {}
-        for col, (key, label, color) in enumerate(KPI_DEFS):
+        for col, (key, label, color, icon) in enumerate(KPI_DEFS):
             card = ctk.CTkFrame(
                 self.kpi_row, fg_color=theme.BG_CARD,
                 corner_radius=theme.RADIUS_MD,
                 border_width=1, border_color=theme.BORDER,
-                height=72, cursor="hand2",
+                height=82, cursor="hand2",
             )
             card.grid(row=0, column=col, sticky="nsew",
                       padx=(0 if col == 0 else theme.SPACE_2, 0))
             card.grid_propagate(False)
 
-            inner = ctk.CTkFrame(card, fg_color="transparent")
-            inner.pack(fill="both", expand=True, padx=theme.SPACE_3, pady=theme.SPACE_3)
+            # Franja superior de color (como la web)
+            accent = ctk.CTkFrame(card, fg_color=color, height=4, corner_radius=theme.RADIUS_MD)
+            accent.pack(fill="x", padx=2, pady=(2, 0))
 
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="both", expand=True, padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_2))
+
+            # Cabecera: etiqueta + icono a la derecha
+            head = ctk.CTkFrame(inner, fg_color="transparent")
+            head.pack(fill="x")
             lbl_label = ctk.CTkLabel(
-                inner, text=label.upper(), font=theme.FONT_LABEL,
+                head, text=label.upper(), font=theme.FONT_LABEL,
                 text_color=theme.TEXT_MUTED, anchor="w",
             )
-            lbl_label.pack(anchor="w")
+            lbl_label.pack(side="left")
+            lbl_icon = ctk.CTkLabel(head, text=icon, font=theme.font(13, "bold"), text_color=color)
+            lbl_icon.pack(side="right")
+
             lbl_value = ctk.CTkLabel(
-                inner, text="—", font=theme.font(20, "bold"),
+                inner, text="—", font=theme.font(21, "bold"),
                 text_color=color, anchor="w",
             )
             lbl_value.pack(anchor="w", pady=(theme.SPACE_1, 0))
 
-            for w in (card, inner, lbl_label, lbl_value):
+            for w in (card, inner, head, lbl_label, lbl_icon, lbl_value):
                 w.bind("<Button-1>", lambda e, k=key: self._toggle_kpi(k))
 
-            self.kpi_widgets[key] = {"card": card, "value": lbl_value, "color": color, "label": lbl_label}
+            self.kpi_widgets[key] = {"card": card, "value": lbl_value, "color": color,
+                                     "label": lbl_label, "accent": accent}
 
         for col in range(len(KPI_DEFS)):
             self.kpi_row.grid_columnconfigure(col, weight=1, uniform="kpi")
 
-    def _setup_table_columns(self) -> None:
-        # Anchor por tipo de dato: texto → izquierda, números/fechas/badges → centro
-        anchors = {
-            "Nº Pedido": "w", "Nº Doc. EIPSA": "w", "Título": "w", "Cliente": "w",
-            "Repsonsable": "center", "Tipo Doc.": "center", "Crítico": "center",
-            "Info/Review": "center", "Estado": "center", "Nº Revisión": "center",
-            "Fecha Env. Doc.": "center", "Días Devolución": "center",
+    def _build_cells(self, doc: dict) -> dict:
+        """Construye el dict de celdas (texto + estilo) para una fila."""
+        estado = str(doc.get("Estado", "") or "")
+        ecolor = _status_color(estado)
+        crit = str(doc.get("Crítico", "") or "").strip().lower()
+        if crit in ("sí", "si"):
+            critico_cell = {"text": "Sí", "pill": True, "fg": theme.ROSE,
+                            "pill_bg": ui.blend(theme.ROSE, theme.BG_CARD, 0.20)}
+        else:
+            critico_cell = {"text": "No" if crit else "—", "fg": theme.TEXT_MUTED}
+
+        return {
+            "Nº Pedido":       {"text": _fmt(doc.get("Nº Pedido"))},
+            "Nº Doc. EIPSA":   {"text": _fmt(doc.get("Nº Doc. EIPSA")), "fg": theme.ACCENT},
+            "Título":          {"text": _trunc(doc.get("Título"), 64)},
+            "Cliente":         {"text": _trunc(doc.get("Cliente"), 30)},
+            "Repsonsable":     {"text": _fmt(doc.get("Repsonsable"))},
+            "Tipo Doc.":       {"text": _trunc(doc.get("Tipo Doc."), 22)},
+            "Crítico":         critico_cell,
+            "Info/Review":     {"text": _fmt(doc.get("Info/Review"))},
+            "Estado":          {"text": (estado or "Sin enviar"), "pill": True, "fg": ecolor,
+                                "pill_bg": ui.blend(ecolor, theme.BG_CARD, 0.20)},
+            "Nº Revisión":     {"text": _fmt_int(doc.get("Nº Revisión"))},
+            "Fecha Env. Doc.": {"text": _fmt(doc.get("Fecha Env. Doc."))},
+            "Días Devolución": {"text": _fmt_int(doc.get("Días Devolución"), dash=True),
+                                "bold": True},
         }
-        self.table.set_columns_anchor(anchors)
-
-    def _debounce_fit(self) -> None:
-        if self._fit_after_id:
-            try:
-                self.after_cancel(self._fit_after_id)
-            except Exception:
-                pass
-        self._fit_after_id = self.after(150, self._fit_columns)
-
-    def _fit_columns(self) -> None:
-        """Mide el contenido con la fuente activa y ajusta los anchos para que
-        la tabla entre completa. Se readapta a cualquier tema (la fuente mono
-        del tema Coral es más ancha, por eso no sirven anchos fijos en píxeles).
-        El Título absorbe el espacio sobrante; el resto se ciñe al contenido."""
-        self._fit_after_id = None
-        if not self.table.tree.get_children():
-            return
-        # padding bajo (las cabeceras ya van abreviadas) y topes calibrados para
-        # que la suma de las 12 columnas quepa en el ancho real sin comprimir.
-        self.table.autofit_columns(
-            min_w=46,
-            padding=14,
-            max_per={
-                "Nº Pedido": 130, "Nº Doc. EIPSA": 200, "Título": 300,
-                "Cliente": 240, "Tipo Doc.": 200, "Estado": 150,
-            },
-        )
-        # El sobrante de ancho lo absorbe solo el Título (evita huecos centrados raros)
-        self.table.set_columns_stretch({c: (c == "Título") for c in VISIBLE_COLUMNS})
-
-    def _setup_row_tags(self) -> None:
-        # Coloreo de filas como en Documents.js
-        self.table.tree.tag_configure("row_critico",   background=theme.ROW_BG_CRITICAL)
-        self.table.tree.tag_configure("row_warn",      background=theme.ROW_BG_WARN)
-        self.table.tree.tag_configure("row_aprobado",  foreground=theme.GREEN)
-        self.table.tree.tag_configure("row_rechazado", foreground=theme.RED)
-        self.table.tree.tag_configure("row_comentado", foreground=theme.AMBER)
-        self.table.tree.tag_configure("row_enviado",   foreground=theme.BLUE)
-        self.table.tree.tag_configure("row_sin_enviar", foreground=theme.TEXT_MUTED)
 
     # ── Datos ─────────────────────────────────────────────────────────────────
 
@@ -371,7 +374,7 @@ class DocumentosView(ctk.CTkFrame):
 
     def _on_filter_change(self) -> None:
         self._page = 0
-        self._save_filters()
+        self._save_filters(delay=1200)  # diferido: no escribir en disco por tecla
         self._apply_filters_and_render()
 
     def _clear_filters(self) -> None:
@@ -447,11 +450,8 @@ class DocumentosView(ctk.CTkFrame):
         end = min(start + PAGE_SIZE, total)
         page_rows = self._filtered[start:end]
 
-        self.table.clear()
-        for idx, doc in enumerate(page_rows):
-            values = [_fmt_cell(doc, c) for c in VISIBLE_COLUMNS]
-            tags = _row_tags(doc)
-            self.table.add_row(values=values, iid=f"row_{start + idx}", tags=tags)
+        self.table.set_rows(
+            [(f"row_{start + idx}", self._build_cells(doc)) for idx, doc in enumerate(page_rows)])
 
         self.lbl_page.configure(text=f"Pág {self._page + 1} / {pages}")
         self.lbl_status.configure(
@@ -460,9 +460,6 @@ class DocumentosView(ctk.CTkFrame):
         )
         self.btn_prev.configure(state="normal" if self._page > 0 else "disabled")
         self.btn_next.configure(state="normal" if self._page < pages - 1 else "disabled")
-
-        # Reajusta los anchos al contenido de esta página (con la fuente activa)
-        self._debounce_fit()
 
     def _goto_page(self, page: int) -> None:
         self._page = page
@@ -474,17 +471,12 @@ class DocumentosView(ctk.CTkFrame):
         else:
             self._sort_col = col
             self._sort_asc = True
-        # Marca visual: añade flecha (respetando la cabecera abreviada)
-        for c in VISIBLE_COLUMNS:
-            arrow = ""
-            if c == self._sort_col:
-                arrow = " ▲" if self._sort_asc else " ▼"
-            self.table.tree.heading(c, text=f"{HEADER_DISPLAY.get(c, c)}{arrow}")
+        self.table.set_sort_arrow(self._sort_col, self._sort_asc)
         self._page = 0
         self._apply_filters_and_render()
 
-    def _on_row_double(self, item) -> None:
-        doc = self._doc_for_iid(self.table.selected_iid())
+    def _on_row_double(self, rowid) -> None:
+        doc = self._doc_for_iid(rowid)
         if doc is not None:
             self._show_detail(doc)
 
@@ -676,21 +668,23 @@ class DocumentosView(ctk.CTkFrame):
         except (ValueError, IndexError):
             return None
 
-    def _ctx_menu(self, iid: str, col_idx: int):
-        doc = self._doc_for_iid(iid)
+    def _copy(self, text) -> None:
+        text = str(text or "")
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        ui.toast(self, "Copiado", text if len(text) <= 48 else text[:48] + "…", kind="success")
+
+    def _ctx_menu(self, rowid: str):
+        doc = self._doc_for_iid(rowid)
         if doc is None:
             return None
         pedido = str(doc.get("Nº Pedido", "") or "")
         items = [
             ("👁  Ver detalle", lambda: self._show_detail(doc)),
             ("-", None),
-            ("Copiar Nº Doc. EIPSA",
-             lambda: self.table.copy_to_clipboard(doc.get("Nº Doc. EIPSA", ""))),
-            ("Copiar celda",
-             lambda: self.table.copy_to_clipboard(self.table.cell_value(iid, col_idx))),
+            ("Copiar Nº Doc. EIPSA", lambda: self._copy(doc.get("Nº Doc. EIPSA", ""))),
             ("Copiar fila",
-             lambda: self.table.copy_to_clipboard(
-                 "\t".join(str(v) for v in self.table.row_values(iid)))),
+             lambda: self._copy("\t".join(_fmt(doc.get(c, "")) for c in VISIBLE_COLUMNS))),
         ]
         if pedido:
             items += [
@@ -820,13 +814,29 @@ def _fmt(val) -> str:
     return s[:120]
 
 
+def _trunc(val, n: int) -> str:
+    s = _fmt(val)
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _fmt_int(val, dash: bool = False) -> str:
+    """Número entero como texto (3.0 → '3'). Vacío → '0' o '—' si dash."""
+    try:
+        return str(int(float(val)))
+    except (ValueError, TypeError):
+        return "—" if dash else _fmt(val)
+
+
 def _fmt_cell(doc: dict, col: str) -> str:
     """Formateo por columna: iconos de estado, barra de urgencia, marca crítico."""
     raw = doc.get(col, "")
     if col == "Estado":
         return cell_format.estado_with_icon(raw)
     if col == "Días Devolución":
-        return cell_format.urgency_bar(raw)
+        try:
+            return str(int(float(raw)))
+        except (ValueError, TypeError):
+            return "—"
     if col == "Crítico":
         s = str(raw or "").strip().lower()
         if s in ("sí", "si"):
@@ -860,46 +870,26 @@ def _sort_key(v):
 
 
 def _row_tags(doc: dict) -> tuple:
-    """Tags de coloreo para una fila.
+    """Color de la fila SIEMPRE según el Estado (consistente con la web).
 
-    Política de contraste:
-    - Si la fila tiene tinte de fondo (crítico / warn), el fondo ya transmite
-      la urgencia → dejamos el texto neutro (sin color de estado encima) para
-      evitar combinaciones de bajo contraste (rojo sobre rojo, ámbar sobre ámbar).
-    - Si no hay tinte de fondo, el color de estado va en el texto (legible
-      sobre la banda zebra).
+    El color del texto identifica el estado: Aprobado=verde, Enviado=azul,
+    Devolución/comentado=ámbar, Rechazado=rojo, Sin enviar=gris. La condición
+    de crítico/atrasado NO recolorea la fila (eso saturaba la tabla); se ve en
+    las columnas Crítico y Días.
     """
-    tags = []
     estado = str(doc.get("Estado", "") or "").lower().strip()
-    critico = str(doc.get("Crítico", "") or "").lower().strip()
-    es_critico = critico in ("sí", "si")
 
-    has_bg_tint = False
-    if es_critico and "aprobado" not in estado:
-        tags.append("row_critico")
-        has_bg_tint = True
-    else:
-        try:
-            dias = int(float(doc.get("Días Envío", 0) or 0))
-            if dias > 14 and "aprobado" not in estado:
-                tags.append("row_warn")
-                has_bg_tint = True
-        except (ValueError, TypeError):
-            pass
-
-    if not has_bg_tint:
-        if "aprobado" in estado:
-            tags.append("row_aprobado")
-        elif "rechazado" in estado:
-            tags.append("row_rechazado")
-        elif any(s in estado for s in ("com.", "comentado", "menores", "mayores")):
-            tags.append("row_comentado")
-        elif "enviado" in estado:
-            tags.append("row_enviado")
-        elif not estado or "sin" in estado:
-            tags.append("row_sin_enviar")
-
-    return tuple(tags)
+    if "aprobado" in estado:
+        return ("row_aprobado",)
+    if "rechazado" in estado:
+        return ("row_rechazado",)
+    if any(s in estado for s in ("com.", "comentado", "menores", "mayores")):
+        return ("row_comentado",)
+    if "enviado" in estado:
+        return ("row_enviado",)
+    if not estado or "sin" in estado:
+        return ("row_sin_enviar",)
+    return ()
 
 
 def _status_color(estado: str) -> str:

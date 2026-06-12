@@ -27,12 +27,14 @@ class DataTable(ctk.CTkFrame):
     ROW_HEIGHT = 34
 
     def __init__(self, master, columns: list[str], on_double_click=None,
-                 selectmode: str = "browse", striped: bool = True, **kwargs):
+                 selectmode: str = "browse", striped: bool = True,
+                 rowheight: int | None = None, **kwargs):
         super().__init__(
             master, fg_color=theme.BG_CARD, corner_radius=12,
             border_width=1, border_color=theme.BORDER, **kwargs,
         )
 
+        self.ROW_HEIGHT = rowheight or DataTable.ROW_HEIGHT
         self._columns = columns
         self._on_double_click = on_double_click
         self._selectmode = selectmode

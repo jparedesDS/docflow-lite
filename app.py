@@ -92,6 +92,11 @@ def main() -> int:
             app.save_state()  # geometría + última sección
         except Exception as exc:
             logger.debug("save_state falló: %s", exc)
+        try:
+            from core import preferences
+            preferences.flush()  # volcar escrituras pendientes (write-behind)
+        except Exception as exc:
+            logger.debug("preferences.flush falló: %s", exc)
         if scheduler is not None:
             try:
                 scheduler.shutdown(wait=False)

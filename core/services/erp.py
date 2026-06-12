@@ -30,7 +30,7 @@ from core.services import monitoring
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL = 60  # segundos
+CACHE_TTL = 180  # segundos — alineado con monitoring (el auto-refresco invalida)
 
 
 # ════════════════════════════════════════════════════════════════════════════

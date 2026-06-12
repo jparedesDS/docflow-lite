@@ -64,6 +64,7 @@ class AjustesView(ctk.CTkFrame):
             segmented_button_unselected_hover_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN)
         self.tabs.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=(theme.SPACE_2, theme.SPACE_4))
 
+        self._secret_rows: list[tuple] = []
         self._build_general(self.tabs.add("General"))
         self._build_datos(self.tabs.add("Fuentes de datos"))
         self._build_correo(self.tabs.add("Correo"))
@@ -71,6 +72,7 @@ class AjustesView(ctk.CTkFrame):
         self._build_docusign(self.tabs.add("DocuSign"))
         self._build_ia(self.tabs.add("IA"))
         self._build_usuarios(self.tabs.add("Usuarios"))
+        self._resolve_secret_states()
 
     def _restart(self) -> None:
         if self._on_restart and ui.confirm(self, "Reiniciar", "¿Reiniciar la aplicación para aplicar los cambios?"):
@@ -93,19 +95,44 @@ class AjustesView(ctk.CTkFrame):
         return e
 
     def _secret_row(self, parent, label, secret_key, env_key=None):
+        """Fila de credencial. El estado (configurada o no) se resuelve en un
+        hilo de fondo: consultar keyring ~10 veces bloqueaba la apertura ~400ms."""
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", pady=theme.SPACE_1)
         ctk.CTkLabel(row, text=label, font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
                      anchor="w", width=170).pack(side="left")
-        configured = credentials.is_set(secret_key, env_fallback=env_key)
-        e = _entry(row, placeholder="•••• (configurada)" if configured else "sin configurar",
-                   show="•")
+        e = _entry(row, placeholder="comprobando…", show="•")
         e.pack(side="left", fill="x", expand=True)
-        state = ctk.CTkLabel(row, text="✓" if configured else "—", width=20,
-                             font=theme.FONT_SMALL_BOLD,
-                             text_color=theme.GREEN if configured else theme.TEXT_MUTED)
+        state = ctk.CTkLabel(row, text="…", width=20,
+                             font=theme.FONT_SMALL_BOLD, text_color=theme.TEXT_MUTED)
         state.pack(side="left", padx=(theme.SPACE_2, 0))
+        self._secret_rows.append((secret_key, env_key, e, state))
         return e, state
+
+    def _resolve_secret_states(self) -> None:
+        """Resuelve en background el estado de todas las credenciales y pinta."""
+        rows = list(self._secret_rows)
+
+        def work():
+            for key, env, entry, state in rows:
+                try:
+                    ok = credentials.is_set(key, env_fallback=env)
+                except Exception:
+                    ok = False
+
+                def apply(entry=entry, state=state, ok=ok):
+                    try:
+                        if not state.winfo_exists():
+                            return
+                        entry.configure(
+                            placeholder_text="•••• (configurada)" if ok else "sin configurar")
+                        state.configure(text="✓" if ok else "—",
+                                        text_color=theme.GREEN if ok else theme.TEXT_MUTED)
+                    except Exception:
+                        pass
+                self.after(0, apply)
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _save_secret(self, entry, state, secret_key):
         val = entry.get().strip()
@@ -147,6 +174,17 @@ class AjustesView(ctk.CTkFrame):
         self.sw_notif.pack(side="left")
         (self.sw_notif.select if pref.get("notifications", True) else self.sw_notif.deselect)()
 
+        ui.section_header(s, "Reclamaciones — Escalado").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
+        ctk.CTkLabel(s, text="Vacío = sin escalado: todas las reclamaciones salen como Recordatorio "
+                             "(Nivel 1).\nCuando se definan los plazos con los abogados, indica aquí "
+                             "los días para subir de nivel.",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+                     justify="left").pack(anchor="w", pady=(0, theme.SPACE_1))
+        self.ent_claims_l2 = self._setting_row(s, "Días → Nivel 2 (Formal)", "claims_level2_days",
+                                               default="", width=80)
+        self.ent_claims_l3 = self._setting_row(s, "Días → Nivel 3 (Urgente)", "claims_level3_days",
+                                               default="", width=80)
+
         ctk.CTkButton(s, text="Guardar comportamiento", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                       text_color="#FFFFFF", command=self._save_general).pack(anchor="w", pady=theme.SPACE_3)
@@ -168,6 +206,14 @@ class AjustesView(ctk.CTkFrame):
             mins = 5
         pref.set_value("autorefresh_min", max(0, mins))
         pref.set_value("notifications", bool(self.sw_notif.get()))
+        # Umbrales de escalado de reclamaciones (vacío = desactivado → Nivel 1)
+        for ent, key in ((self.ent_claims_l2, "claims_level2_days"),
+                         (self.ent_claims_l3, "claims_level3_days")):
+            raw = ent.get().strip()
+            try:
+                pref.set_value(key, int(raw) if raw else "")
+            except ValueError:
+                pref.set_value(key, "")
         ui.toast(self, "Guardado", "Reinicia para aplicar el auto-refresco.", kind="success")
 
     # ════════════════════════════════════════════════════════════════════════

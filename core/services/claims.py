@@ -323,20 +323,39 @@ def get_pedido_history(pedido: str) -> dict:
 # ── Escalation ────────────────────────────────────────────────────────────────
 
 def get_escalation_level(pedido_data: dict) -> int:
-    """Nivel propuesto en función de los días del documento más antiguo:
-        0–15 días  → 1 Recordatorio
-        15–30 días → 2 Formal
-        30+ días   → 3 Urgente
+    """Nivel propuesto en función de los días del documento más antiguo.
+
+    Los umbrales de escalado se leen de preferences:
+      - `claims_level2_days` → días para pasar a Nivel 2 (Formal)
+      - `claims_level3_days` → días para pasar a Nivel 3 (Urgente)
+
+    Mientras NO estén configurados (pendiente de definirlos con los abogados),
+    TODAS las reclamaciones salen como Nivel 1 — Recordatorio. Se configuran en
+    Ajustes → General → Reclamaciones, sin tocar código.
     """
+    from core import preferences
+
+    def _days_pref(key) -> int | None:
+        try:
+            v = preferences.get(key)
+            return int(v) if v not in (None, "", 0, "0") else None
+        except (ValueError, TypeError):
+            return None
+
+    l2 = _days_pref("claims_level2_days")
+    l3 = _days_pref("claims_level3_days")
+    if l2 is None and l3 is None:
+        return 1  # escalado desactivado de momento → siempre Recordatorio
+
     max_dias = pedido_data.get("max_dias", 0)
     try:
         max_dias = int(float(max_dias))
     except (ValueError, TypeError):
         max_dias = 0
 
-    if max_dias >= 30:
+    if l3 is not None and max_dias >= l3:
         return 3
-    if max_dias >= 15:
+    if l2 is not None and max_dias >= l2:
         return 2
     return 1
 
