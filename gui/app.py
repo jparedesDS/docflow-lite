@@ -145,15 +145,17 @@ class DocFlowLiteApp(ctk.CTk):
             if key not in self._views:
                 import time as _t
                 t0 = _t.perf_counter()
+                # Construir + pre-calcular su layout SIN que se vea: se mapea
+                # detrás de la vista actual (lower), se fuerza el layout en idle
+                # y se desmapea. Así una vista no mapeada no se repinta al
+                # redimensionar, pero al navegar a ella ya tiene el layout hecho
+                # (mapear es instantáneo, sin flash ni recálculo).
                 view = self._make_view(key)
-                # Mapearla ya (debajo de la actual) → el coste de layout se paga
-                # aquí en idle y el primer navigate() es un tkraise casi gratis.
                 if view is not None:
                     view.grid(row=0, column=0, sticky="nsew")
                     view.lower()
-                    cur = self._views.get(self._current)
-                    if cur is not None:
-                        cur.tkraise()
+                    self.update_idletasks()
+                    view.grid_remove()
                 logger.debug("Prewarm vista %s: %.0f ms", key, (_t.perf_counter() - t0) * 1000)
         except Exception as exc:  # noqa: BLE001 — best-effort
             logger.debug("Prewarm vista %s falló: %s", key, exc)
@@ -314,12 +316,17 @@ class DocFlowLiteApp(ctk.CTk):
         if view is None:
             return
 
-        # Todas las vistas comparten la celda (0,0); el cambio de sección es un
-        # tkraise (z-order) en vez de grid_remove/grid — evita re-mapear cientos
-        # de widgets en cada cambio (~100-250ms → ~0ms).
-        if not view.grid_info():
-            view.grid(row=0, column=0, sticky="nsew")
-        view.tkraise()
+        # SOLO la vista actual permanece mapeada; TODAS las demás se ocultan con
+        # grid_remove. Así, al redimensionar/maximizar/minimizar la ventana solo
+        # se repinta UNA vista (no las 8 apiladas) → sin "flashazos" ni lag.
+        # Importante: se ocultan TODAS las demás (no solo la previa) y se eleva la
+        # actual con tkraise — las vistas prewarmeadas quedaron al fondo del
+        # z-order (lower) y, sin re-elevarlas, podían quedar ocultas tras otra.
+        for k, v in self._views.items():
+            if k != key and v.winfo_manager():
+                v.grid_remove()
+        view.grid(row=0, column=0, sticky="nsew")  # re-mapea (grid recuerda opciones)
+        view.tkraise()                              # garantiza que queda visible
         self._current = key
         self.sidebar.set_active(key)
         try:

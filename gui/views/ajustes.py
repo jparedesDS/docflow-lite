@@ -382,6 +382,83 @@ class AjustesView(ctk.CTkFrame):
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
                       text_color="#FFFFFF", command=self._save_ofertas).pack(anchor="w", pady=theme.SPACE_3)
 
+        # ── Seguimiento de respuestas de comerciales (opt-in) ────────────────
+        ui.section_header(s, "Seguimiento de comerciales (opt-in)").pack(
+            fill="x", pady=(theme.SPACE_4, theme.SPACE_1))
+        ctk.CTkLabel(
+            s, text=("Permite saber si una oferta se respondió desde el correo de un comercial.\n"
+                     "SOLO LECTURA: lee únicamente su carpeta «Enviados» (cabeceras), nunca marca, "
+                     "mueve ni borra nada. Requiere informar y contar con su consentimiento."),
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w", justify="left").pack(
+            anchor="w", pady=(0, theme.SPACE_2))
+
+        self.track_list = ctk.CTkFrame(s, fg_color="transparent")
+        self.track_list.pack(fill="x")
+        self._render_tracked()
+
+        addbox = ctk.CTkFrame(s, fg_color=theme.BG_CARD, corner_radius=8,
+                              border_width=1, border_color=theme.BORDER)
+        addbox.pack(fill="x", pady=theme.SPACE_2)
+        row = ctk.CTkFrame(addbox, fg_color="transparent")
+        row.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_3)
+        self.trk_label = _entry(row, placeholder="Nombre (ej: Ana Calvo)", width=160)
+        self.trk_label.pack(side="left", padx=(0, theme.SPACE_2))
+        self.trk_user = _entry(row, placeholder="correo@eipsa.es", width=200)
+        self.trk_user.pack(side="left", padx=(0, theme.SPACE_2))
+        self.trk_pass = _entry(row, placeholder="contraseña", show="•")
+        self.trk_pass.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
+        ctk.CTkButton(row, text="+ Añadir", width=90, height=theme.HEIGHT_INPUT,
+                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      command=self._add_tracked).pack(side="left")
+
+    def _render_tracked(self) -> None:
+        from core.services import ofertas as ofsvc
+        for w in self.track_list.winfo_children():
+            w.destroy()
+        mboxes = ofsvc.list_tracked_mailboxes()
+        if not mboxes:
+            ctk.CTkLabel(self.track_list, text="Sin buzones de seguimiento configurados.",
+                         font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+            return
+        for mb in mboxes:
+            r = ctk.CTkFrame(self.track_list, fg_color=theme.BG_CARD, corner_radius=8,
+                             border_width=1, border_color=theme.BORDER)
+            r.pack(fill="x", pady=(0, theme.SPACE_1))
+            inner = ctk.CTkFrame(r, fg_color="transparent")
+            inner.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
+            ctk.CTkLabel(inner, text=f"📤 {mb.get('label') or mb['user']}", font=theme.FONT_SMALL_BOLD,
+                         text_color=theme.TEXT_MAIN).pack(side="left")
+            ctk.CTkLabel(inner, text=mb["user"], font=theme.FONT_TINY,
+                         text_color=theme.TEXT_MUTED).pack(side="left", padx=(theme.SPACE_2, 0))
+            ctk.CTkButton(inner, text="Quitar", width=70, height=26, corner_radius=theme.RADIUS_SM,
+                          font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
+                          text_color=theme.RED, border_width=1, border_color=theme.RED,
+                          command=lambda u=mb["user"]: self._remove_tracked(u)).pack(side="right")
+
+    def _add_tracked(self) -> None:
+        from core.services import ofertas as ofsvc
+        user = self.trk_user.get().strip()
+        pw = self.trk_pass.get().strip()
+        if not user or not pw:
+            messagebox.showwarning("Seguimiento", "Indica correo y contraseña del comercial.", parent=self)
+            return
+        if not ui.confirm(self, "Confirmar acceso",
+                          f"¿Confirmas que {user} ha sido informado y autoriza el seguimiento "
+                          "de su carpeta Enviados (solo lectura)?"):
+            return
+        ofsvc.add_tracked_mailbox(self.trk_label.get().strip(), user, pw)
+        for e in (self.trk_label, self.trk_user, self.trk_pass):
+            e.delete(0, "end")
+        ui.toast(self, "Añadido", f"Seguimiento de {user} configurado.", kind="success")
+        self._render_tracked()
+
+    def _remove_tracked(self, user: str) -> None:
+        from core.services import ofertas as ofsvc
+        ofsvc.remove_tracked_mailbox(user)
+        ui.toast(self, "Quitado", f"Seguimiento de {user} eliminado.", kind="success")
+        self._render_tracked()
+
     def _save_ofertas(self) -> None:
         for ukey, ue, pkey, pe, ps in self._ofertas_fields:
             pref.set_value(ukey, ue.get().strip())

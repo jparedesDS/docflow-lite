@@ -49,6 +49,18 @@ DEFAULT_SCHEDULES: list[dict] = [
         "options": {"user_filter": "all"},
         "last_run": None,
     },
+    {
+        "id": "monthly-executive-pdf",
+        "type": "executive_pdf",
+        "title": "Reporte Ejecutivo Mensual (PDF)",
+        "description": "PDF con KPIs, gráficos, ranking y predicción — adjunto por email el día 1 de cada mes",
+        "enabled": False,
+        "frequency": "monthly",
+        "schedule": {"day_of_month": 1, "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {"variant": "completo"},
+        "last_run": None,
+    },
 ]
 
 
@@ -157,6 +169,14 @@ def execute_schedule(schedule_id: str) -> dict:
                 uf = [s.strip() for s in uf.split(",") if s.strip()]
             result = send_personal_emails(to_cc=cc, user_filter=uf)
             count = result.get("count", 0)
+        elif sched["type"] == "executive_pdf":
+            from core.services.pdf_report import send_executive_pdf_email
+            if not to:
+                record_run(schedule_id, "error", error="Sin destinatarios (To)")
+                return {"status": "error", "error": "Indica al menos un destinatario en To"}
+            variant = options.get("variant", "completo")
+            result = send_executive_pdf_email(to=to, cc=cc, variant=variant)
+            count = len(result.get("recipients", []))
         else:
             record_run(schedule_id, "error", error=f"Tipo desconocido: {sched['type']}")
             return {"status": "error", "error": f"Tipo desconocido: {sched['type']}"}

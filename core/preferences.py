@@ -26,7 +26,7 @@ _WRITE_DELAY = 0.8  # s — agrupa ráfagas de set_value en una sola escritura
 
 _lock = threading.RLock()
 _cache: dict | None = None
-_dirty = False
+_dirty: set = set()   # claves modificadas pendientes de volcar
 _flush_timer: threading.Timer | None = None
 
 _DEFAULTS: dict = {
@@ -81,18 +81,30 @@ def _schedule_flush() -> None:
 
 
 def flush() -> None:
-    """Vuelca a disco los cambios pendientes (no-op si no hay nada que escribir)."""
-    global _dirty, _flush_timer
+    """Vuelca a disco SOLO las claves modificadas por este proceso, fusionándolas
+    con lo que haya en disco. Así varios procesos (app + scripts) que tocan claves
+    distintas no se pisan al guardar."""
+    global _flush_timer
     with _lock:
         if _flush_timer is not None:
             _flush_timer.cancel()
             _flush_timer = None
         if not _dirty or _cache is None:
             return
-        snapshot = dict(_cache)
-        _dirty = False
+        dirty_keys = set(_dirty)
+        changed = {k: _cache.get(k) for k in dirty_keys}
+        _dirty.clear()
     try:
-        write_json(PREFS_FILE, snapshot)
+        disk = read_json(PREFS_FILE, default={})
+        if not isinstance(disk, dict):
+            disk = {}
+        disk.update(changed)            # nuestras claves cambiadas ganan
+        write_json(PREFS_FILE, disk)
+        with _lock:                     # refrescar caché con lo que otros pusieron
+            if _cache is not None:
+                for k, v in disk.items():
+                    if k not in _dirty:  # no pisar nuevos cambios locales
+                        _cache[k] = v
     except Exception as exc:
         logger.warning("No se pudieron guardar las preferencias: %s", exc)
 
@@ -109,13 +121,12 @@ def get(key: str, default=None):
 
 def set_value(key: str, value) -> None:
     """Actualiza la caché al instante; el disco se escribe en segundo plano."""
-    global _dirty
     with _lock:
         data = _load()
         if data.get(key) == value:
             return  # sin cambios → sin escritura
         data[key] = value
-        _dirty = True
+        _dirty.add(key)
         _schedule_flush()
 
 

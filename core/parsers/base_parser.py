@@ -606,6 +606,34 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
     _estado_principal = estado_counts.most_common(1)[0][0] if estado_counts else ""
     preheader_text = " · ".join(x for x in [_pedido, _cliente, f"{n_docs} doc(s)", _estado_principal] if x)
 
+    # ── Aviso de plazo: solo si hay algún documento NO aprobado ──
+    # Si todos están "Aprobado", no procede plazo de respuesta (no hay nada que
+    # corregir). Basta con un único documento distinto de Aprobado para mostrarlo.
+    all_aprobado = bool(estado_counts) and all(
+        str(e).strip().lower() == "aprobado" for e in estado_counts)
+    deadline_block = "" if all_aprobado else f"""
+      <!-- Aviso plazo -->
+      <table cellpadding="0" cellspacing="0" style="width:100%;border-radius:8px;overflow:hidden;margin-bottom:28px;">
+        <tr>
+          <td style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:14px 18px;">
+            <table cellpadding="0" cellspacing="0" width="100%">
+              <tr>
+                <td style="vertical-align:top;width:28px;font-size:18px;padding-top:1px;">&#9888;</td>
+                <td>
+                  <p style="margin:0;font-size:13px;font-weight:700;color:#BF6C00;">
+                    Plazo de respuesta:
+                    <span style="color:#C62828;">{deadline_str}</span>
+                  </p>
+                  <p style="margin:4px 0 0;font-size:12px;color:#795548;">
+                    La documentación debe ser revisada, actualizada en ERP y subida antes de esta fecha.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>"""
+
     html = f"""<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
@@ -664,27 +692,7 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
         <tbody>{doc_rows}</tbody>
       </table>
 
-      <!-- Aviso plazo -->
-      <table cellpadding="0" cellspacing="0" style="width:100%;border-radius:8px;overflow:hidden;margin-bottom:28px;">
-        <tr>
-          <td style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:14px 18px;">
-            <table cellpadding="0" cellspacing="0" width="100%">
-              <tr>
-                <td style="vertical-align:top;width:28px;font-size:18px;padding-top:1px;">&#9888;</td>
-                <td>
-                  <p style="margin:0;font-size:13px;font-weight:700;color:#BF6C00;">
-                    Plazo de respuesta:
-                    <span style="color:#C62828;">{deadline_str}</span>
-                  </p>
-                  <p style="margin:4px 0 0;font-size:12px;color:#795548;">
-                    La documentación debe ser revisada, actualizada en ERP y subida antes de esta fecha.
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
+      {deadline_block}
 
     </td>
   </tr>

@@ -221,38 +221,179 @@ def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=30
         uids = data[0].split() if data and data[0] else []
         uids = list(reversed(uids))[:limit]
         results = []
-        for uid in uids:
-            _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER] FLAGS)")
-            if not msg_data or not msg_data[0]:
-                continue
-            raw = msg_data[0][1]
-            msg = email.message_from_bytes(raw)
-
-            flags_str = ""
-            for item in msg_data:
-                if isinstance(item, bytes):
-                    flags_str += " " + item.decode(errors="replace")
-                elif isinstance(item, tuple) and item:
-                    head = item[0]
-                    flags_str += " " + (head.decode(errors="replace")
-                                        if isinstance(head, bytes) else str(head))
-            is_read = "\\Seen" in flags_str
-
-            sender = _decode_header_value(msg.get("From", ""))
-            subject = _decode_header_value(msg.get("Subject", ""))
-            date_str = msg.get("Date", "")
+        fields = ("(FLAGS BODY.PEEK[HEADER.FIELDS "
+                  "(FROM SUBJECT DATE MESSAGE-ID REPLY-TO RETURN-PATH AUTHENTICATION-RESULTS)])")
+        for i in range(0, len(uids), 250):              # descarga en LOTE
+            batch = b",".join(uids[i:i + 250])
             try:
-                date_iso = parsedate_to_datetime(date_str).isoformat()
+                _, md = conn.fetch(batch, fields)
             except Exception:
-                date_iso = date_str
-            results.append({
-                "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
-                "subject": subject,
-                "from": sender,
-                "date": date_iso,
-                "is_read": is_read,
-            })
+                continue
+            for item in md:
+                if not (isinstance(item, tuple) and len(item) >= 2 and item[1]):
+                    continue
+                info = item[0].decode(errors="replace") if isinstance(item[0], bytes) else str(item[0])
+                seq = (re.match(r"\s*(\d+)", info) or [None, ""])[1]
+                msg = email.message_from_bytes(item[1])
+                date_str = msg.get("Date", "")
+                try:
+                    date_iso = parsedate_to_datetime(date_str).isoformat()
+                except Exception:
+                    date_iso = date_str
+                results.append({
+                    "uid": seq,
+                    "subject": _decode_header_value(msg.get("Subject", "")),
+                    "from": _decode_header_value(msg.get("From", "")),
+                    "date": date_iso,
+                    "is_read": "\\Seen" in info,
+                    "is_answered": "\\Answered" in info,
+                    "message_id": (msg.get("Message-ID", "") or "").strip(),
+                    "auth_results": "; ".join(msg.get_all("Authentication-Results", []) or []),
+                    "reply_to": _decode_header_value(msg.get("Reply-To", "")),
+                    "return_path": msg.get("Return-Path", ""),
+                })
         return results
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn.logout()
+
+
+_SENT_NAMES = {"sent", "sent items", "inbox.sent", "inbox.sent items", "enviados",
+               "elementos enviados", "[gmail]/sent mail"}
+
+
+def find_sent_folder(conn) -> str | None:
+    """Localiza la carpeta de Enviados (por atributo \\Sent o por nombre común)."""
+    try:
+        typ, data = conn.list()
+    except Exception:
+        return None
+    if typ != "OK" or not data:
+        return None
+    fallback = None
+    for line in data:
+        s = line.decode(errors="replace") if isinstance(line, bytes) else str(line)
+        names = re.findall(r'"([^"]*)"', s)
+        name = names[-1] if names else s.split()[-1]
+        if "\\sent" in s.lower():
+            return name
+        if name.lower() in _SENT_NAMES and fallback is None:
+            fallback = name
+    return fallback
+
+
+_SKIP_FOLDER_TOKENS = ("trash", "papelera", "junk", "spam", "drafts", "borrador",
+                       "deleted", "eliminados")
+_SKIP_FOLDER_ATTRS = ("\\trash", "\\junk", "\\drafts", "\\noselect")
+
+# Solo las cabeceras que necesita el cruce (payload mínimo → mucho más rápido)
+_SENT_FIELDS = ("(BODY.PEEK[HEADER.FIELDS "
+                "(MESSAGE-ID IN-REPLY-TO REFERENCES TO CC SUBJECT DATE FROM)])")
+
+
+def _parse_fetch_messages(md) -> list:
+    """Parsea la respuesta de un FETCH en lote → lista de email.Message."""
+    out = []
+    for item in md:
+        if isinstance(item, tuple) and len(item) >= 2 and item[1]:
+            try:
+                out.append(email.message_from_bytes(item[1]))
+            except Exception:
+                pass
+    return out
+
+
+def _all_folders(conn) -> list[str]:
+    """Todas las carpetas seleccionables (excluye papelera/spam/borradores)."""
+    try:
+        typ, data = conn.list()
+    except Exception:
+        return []
+    if typ != "OK" or not data:
+        return []
+    out = []
+    for line in data:
+        s = line.decode(errors="replace") if isinstance(line, bytes) else str(line)
+        low = s.lower()
+        if any(a in low for a in _SKIP_FOLDER_ATTRS):
+            continue
+        names = re.findall(r'"([^"]*)"', s)
+        name = names[-1] if names else (s.split()[-1] if s.split() else "")
+        if not name or name in ("/", "."):
+            continue
+        if any(tok in name.lower() for tok in _SKIP_FOLDER_TOKENS):
+            continue
+        out.append(name)
+    return out
+
+
+def list_sent_index(days=30, imap_user=None, imap_pass=None, limit=1200):
+    """Indexa los correos ENVIADOS POR el propio buzón en CUALQUIER carpeta (no
+    solo «Enviados»), por si el comercial archiva sus respuestas en carpetas.
+
+    Filtra server-side por remitente = el propio usuario (SEARCH FROM), de modo
+    que NUNCA toca correos recibidos ni descarga cuerpos. Solo lectura (EXAMINE)
+    + BODY.PEEK. Devuelve [{refs, to, subject, from, date, folder}].
+    """
+    from datetime import datetime, timedelta
+    from email.utils import getaddresses
+
+    self_addr = (imap_user or "").strip()
+    conn = _connect("INBOX", imap_user, imap_pass)
+    try:
+        folders = _all_folders(conn)
+        d = datetime.now() - timedelta(days=max(1, days))
+        since = f"{d.day:02d}-{_IMAP_MONTHS[d.month - 1]}-{d.year}"
+        out = []
+        for fname in folders:
+            if len(out) >= limit:
+                break
+            try:
+                conn.select(f'"{fname}"' if " " in fname else fname, readonly=True)
+            except Exception:
+                continue
+            try:
+                if self_addr:
+                    _, data = conn.search(None, "SINCE", since, "FROM", self_addr)
+                else:
+                    _, data = conn.search(None, "SINCE", since)
+            except Exception:
+                continue
+            uids = data[0].split() if data and data[0] else []
+            if not uids:
+                continue
+            remaining = limit - len(out)
+            uids = uids[-remaining:]                 # los más recientes
+            for i in range(0, len(uids), 250):        # descarga en LOTE
+                batch = b",".join(uids[i:i + 250])
+                try:
+                    _, md = conn.fetch(batch, _SENT_FIELDS)
+                except Exception:
+                    continue
+                for msg in _parse_fetch_messages(md):
+                    refs = set()
+                    for h in ("In-Reply-To", "References"):
+                        refs.update(re.findall(r"<[^>]+>", msg.get(h, "") or ""))
+                    recips = [a.lower() for _, a in
+                              getaddresses([msg.get("To", ""), msg.get("Cc", "")]) if a]
+                    date_str = msg.get("Date", "")
+                    try:
+                        date_iso = parsedate_to_datetime(date_str).isoformat()
+                    except Exception:
+                        date_iso = date_str
+                    out.append({
+                        "refs": refs,
+                        "to": recips,
+                        "subject": _decode_header_value(msg.get("Subject", "")),
+                        "from": _decode_header_value(msg.get("From", "")),
+                        "date": date_iso,
+                        "folder": fname,
+                        "own_msgid": (msg.get("Message-ID", "") or "").strip(),
+                    })
+        return out
     finally:
         try:
             conn.close()
@@ -269,6 +410,41 @@ def fetch_email(uid, folder="INBOX", imap_user=None, imap_pass=None):
         return email.message_from_bytes(raw)
     finally:
         conn.close()
+        conn.logout()
+
+
+def fetch_by_msgid(folder, msgid, imap_user=None, imap_pass=None):
+    """Trae UN email por su Message-ID en una carpeta concreta (solo-lectura,
+    BODY.PEEK). Devuelve email.Message o None. Para ver el cuerpo de una
+    respuesta enviada bajo demanda."""
+    if not msgid:
+        return None
+    conn = _connect("INBOX", imap_user, imap_pass)
+    try:
+        try:
+            conn.select(f'"{folder}"' if " " in (folder or "") else (folder or "INBOX"),
+                        readonly=True)
+        except Exception:
+            return None
+        try:
+            _, data = conn.uid("SEARCH", None, "HEADER", "Message-ID", msgid)
+        except Exception:
+            return None
+        uids = data[0].split() if data and data[0] else []
+        if not uids:
+            return None
+        try:
+            _, md = conn.uid("FETCH", uids[-1], "(BODY.PEEK[])")
+        except Exception:
+            return None
+        if not md or not md[0]:
+            return None
+        return email.message_from_bytes(md[0][1])
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
         conn.logout()
 
 

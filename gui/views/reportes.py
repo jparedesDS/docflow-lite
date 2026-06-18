@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 EXCEL_REPORTS = [
     {
         "id": "monitoring",
+        "kind": "excel",
         "icon": "📊",
         "color": theme.BLUE,
         "title": "Monitoring Report",
@@ -37,11 +38,37 @@ EXCEL_REPORTS = [
     },
     {
         "id": "export",
+        "kind": "excel",
         "icon": "📥",
         "color": theme.GREEN,
         "title": "Export Excel (simple)",
         "desc": "Excel plano con todos los documentos + hoja de resumen por estado.",
         "filename": "Export_DocFlow_{date}.xlsx",
+    },
+]
+
+PDF_REPORTS = [
+    {
+        "id": "pdf_completo",
+        "kind": "pdf",
+        "variant": "completo",
+        "icon": "📄",
+        "color": theme.ACCENT,
+        "title": "Reporte Ejecutivo — Completo",
+        "desc": ("PDF presentable con portada, KPIs, distribución por estado (tarta), "
+                 "ranking de equipo, top clientes, predicción de riesgo y scorecard de clientes."),
+        "filename": "Reporte_Ejecutivo_Completo_{date}.pdf",
+    },
+    {
+        "id": "pdf_esencial",
+        "kind": "pdf",
+        "variant": "esencial",
+        "icon": "📃",
+        "color": theme.GREEN,
+        "title": "Reporte Ejecutivo — Esencial",
+        "desc": ("PDF corto (1-2 págs): portada, KPIs globales, distribución por estado "
+                 "y ranking de equipo. Va al grano."),
+        "filename": "Reporte_Ejecutivo_Esencial_{date}.pdf",
     },
 ]
 
@@ -105,12 +132,28 @@ class ReportesView(ctk.CTkFrame):
     # ════════════════════════════════════════════════════════════════════════
 
     def _build_tab_excels(self, parent) -> None:
-        grid = ctk.CTkFrame(parent, fg_color="transparent")
-        grid.pack(fill="both", expand=True, pady=8)
+        scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        scroll.pack(fill="both", expand=True)
+
+        # Excel
+        ctk.CTkLabel(scroll, text="HOJAS DE CÁLCULO (EXCEL)", font=theme.font(10, "bold"),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(fill="x", pady=(4, 6))
+        grid = ctk.CTkFrame(scroll, fg_color="transparent")
+        grid.pack(fill="x")
         grid.grid_columnconfigure((0, 1), weight=1, uniform="cols")
         for i, report in enumerate(EXCEL_REPORTS):
             row, col = divmod(i, 2)
             self._excel_cards[report["id"]] = self._build_excel_card(grid, row, col, report)
+
+        # PDF
+        ctk.CTkLabel(scroll, text="REPORTE EJECUTIVO (PDF)", font=theme.font(10, "bold"),
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(fill="x", pady=(16, 6))
+        pgrid = ctk.CTkFrame(scroll, fg_color="transparent")
+        pgrid.pack(fill="x")
+        pgrid.grid_columnconfigure((0, 1), weight=1, uniform="cols")
+        for i, report in enumerate(PDF_REPORTS):
+            row, col = divmod(i, 2)
+            self._excel_cards[report["id"]] = self._build_excel_card(pgrid, row, col, report)
 
     def _build_excel_card(self, parent, row: int, col: int, report: dict) -> dict:
         card = ctk.CTkFrame(
@@ -152,11 +195,15 @@ class ReportesView(ctk.CTkFrame):
     def _on_download_excel(self, report: dict) -> None:
         if self._busy_id is not None:
             return
+        kind = report.get("kind", "excel")
+        is_pdf = kind == "pdf"
+        ext = ".pdf" if is_pdf else ".xlsx"
+        types = [("PDF", "*.pdf")] if is_pdf else [("Excel", "*.xlsx")]
         default_name = report["filename"].format(date=datetime.now().strftime("%Y-%m-%d"))
         path = filedialog.asksaveasfilename(
             parent=self, title=f"Guardar {report['title']}",
-            defaultextension=".xlsx", initialfile=default_name,
-            filetypes=[("Excel", "*.xlsx"), ("Todos", "*.*")],
+            defaultextension=ext, initialfile=default_name,
+            filetypes=types + [("Todos", "*.*")],
         )
         if not path:
             return
@@ -164,15 +211,23 @@ class ReportesView(ctk.CTkFrame):
         self._busy_id = report["id"]
         card = self._excel_cards[report["id"]]
         card["btn"].configure(state="disabled", text="Generando…")
-        card["lbl"].configure(text="⏳  Generando Excel…", text_color=theme.TEXT_MUTED)
+        card["lbl"].configure(text=f"⏳  Generando {'PDF' if is_pdf else 'Excel'}…",
+                              text_color=theme.TEXT_MUTED)
         self.lbl_status.configure(text=f"Generando {report['title']}…", text_color=theme.TEXT_MUTED)
 
         rid = report["id"]
         title = report["title"]
+        variant = report.get("variant", "completo")
 
         def worker():
             try:
-                if rid == "monitoring":
+                if is_pdf:
+                    from core.services import pdf_report
+                    summary = monitoring_service.get_monitoring_data()
+                    if not summary:
+                        raise RuntimeError("No hay documentos en data_erp.xlsx")
+                    data = pdf_report.generate_executive_pdf(variant)
+                elif rid == "monitoring":
                     sections = monitoring_service.get_monitoring_report_sections()
                     if not sections.get("all_docs"):
                         raise RuntimeError("No hay documentos en data_erp.xlsx")
@@ -472,7 +527,7 @@ class ReportesView(ctk.CTkFrame):
         recipients = sched.get("recipients") or {}
         to = recipients.get("to") or []
         cc = recipients.get("cc") or []
-        if sched["type"] == "executive" and (to or cc):
+        if sched["type"] in ("executive", "executive_pdf") and (to or cc):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
                 footer, text=f"  ·  {recip_text}",
@@ -1016,21 +1071,37 @@ class EditScheduleDialog(ctk.CTkToplevel):
 
         # Frecuencia (read-only de momento)
         schedule = sched.get("schedule") or {}
+        self._frequency = sched.get("frequency", "weekly")
 
-        # Día de la semana
-        ctk.CTkLabel(self, text="Día de la semana",
-                     font=theme.font(10, "bold"),
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
-        day_options = list(sched_service.DAY_LABELS.values())
-        current_day = sched_service.DAY_LABELS.get(schedule.get("day_of_week", "mon"), "Lunes")
-        self.cmb_day = ctk.CTkOptionMenu(
-            self, values=day_options, width=180, height=34, corner_radius=8,
-            fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
-            button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
-            font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
-        )
-        self.cmb_day.set(current_day)
-        self.cmb_day.pack(anchor="w", padx=22, pady=(0, 10))
+        if self._frequency == "monthly":
+            # Día del mes (1-28)
+            ctk.CTkLabel(self, text="Día del mes (1-28)",
+                         font=theme.font(10, "bold"),
+                         text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
+            self.cmb_day = None
+            self.ent_dom = ctk.CTkEntry(
+                self, height=34, corner_radius=8, width=120,
+                fg_color=theme.BG_INPUT, border_color=theme.BORDER,
+                text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
+            )
+            self.ent_dom.insert(0, str(schedule.get("day_of_month", 1)))
+            self.ent_dom.pack(anchor="w", padx=22, pady=(0, 10))
+        else:
+            # Día de la semana
+            ctk.CTkLabel(self, text="Día de la semana",
+                         font=theme.font(10, "bold"),
+                         text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
+            self.ent_dom = None
+            day_options = list(sched_service.DAY_LABELS.values())
+            current_day = sched_service.DAY_LABELS.get(schedule.get("day_of_week", "mon"), "Lunes")
+            self.cmb_day = ctk.CTkOptionMenu(
+                self, values=day_options, width=180, height=34, corner_radius=8,
+                fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
+                button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
+                font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
+            )
+            self.cmb_day.set(current_day)
+            self.cmb_day.pack(anchor="w", padx=22, pady=(0, 10))
 
         # Hora
         time_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -1057,9 +1128,10 @@ class EditScheduleDialog(ctk.CTkToplevel):
         self.ent_min.insert(0, f"{schedule.get('minute', 0):02d}")
         self.ent_min.pack(side="left")
 
-        # Recipients (solo si es executive)
+        # Recipients (executive y executive_pdf usan To/Cc)
         recipients = sched.get("recipients") or {}
-        if sched["type"] == "executive":
+        self.cmb_variant = None
+        if sched["type"] in ("executive", "executive_pdf"):
             ctk.CTkLabel(self, text="Destinatarios To",
                          font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
@@ -1082,6 +1154,20 @@ class EditScheduleDialog(ctk.CTkToplevel):
             self.ent_cc.insert(0, ", ".join(recipients.get("cc") or []))
             self.ent_cc.pack(fill="x", padx=22, pady=(0, 12))
             self.ent_filter = None
+
+            # Selector de variante (solo PDF)
+            if sched["type"] == "executive_pdf":
+                ctk.CTkLabel(self, text="Variante del PDF",
+                             font=theme.font(10, "bold"),
+                             text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
+                self.cmb_variant = ctk.CTkOptionMenu(
+                    self, values=["completo", "esencial"], width=180, height=34, corner_radius=8,
+                    fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
+                    button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
+                    font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
+                )
+                self.cmb_variant.set((sched.get("options") or {}).get("variant", "completo"))
+                self.cmb_variant.pack(anchor="w", padx=22, pady=(0, 12))
         else:
             # Personal: filtro de usuarios
             options = sched.get("options") or {}
@@ -1140,17 +1226,28 @@ class EditScheduleDialog(ctk.CTkToplevel):
             messagebox.showwarning("Hora inválida", "Indica hora (0-23) y minutos (0-59) numéricos.")
             return
 
-        day_label = self.cmb_day.get()
-        day_key = sched_service.LABEL_TO_DAY.get(day_label, "mon")
+        if self._frequency == "monthly":
+            try:
+                dom = int(self.ent_dom.get())
+                if not (1 <= dom <= 28):
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Día inválido", "Indica un día del mes entre 1 y 28.")
+                return
+            schedule_changes = {"day_of_month": dom, "hour": hour, "minute": minute}
+        else:
+            day_label = self.cmb_day.get()
+            day_key = sched_service.LABEL_TO_DAY.get(day_label, "mon")
+            schedule_changes = {"day_of_week": day_key, "hour": hour, "minute": minute}
 
-        changes: dict = {
-            "schedule": {"day_of_week": day_key, "hour": hour, "minute": minute},
-        }
+        changes: dict = {"schedule": schedule_changes}
         cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
 
-        if self.ent_to is not None:  # executive
+        if self.ent_to is not None:  # executive / executive_pdf
             to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
             changes["recipients"] = {"to": to, "cc": cc}
+            if self.cmb_variant is not None:  # executive_pdf
+                changes["options"] = {"variant": self.cmb_variant.get()}
         else:  # personal
             raw = self.ent_filter.get().strip()
             if not raw or raw.lower() == "all":

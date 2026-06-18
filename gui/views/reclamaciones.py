@@ -8,6 +8,7 @@ import customtkinter as ctk
 from tkinter import messagebox
 
 from core.services import claims as claims_service
+from core.services import smtp as smtp_service
 from gui import cell_format
 from gui import theme
 from gui.widgets import ui
@@ -698,18 +699,22 @@ class ReclamacionPreview(ctk.CTkToplevel):
         })
         self.docs_table.tree.column("✓", anchor="center", stretch=False)
 
-        for r in pv["table_rows"]:
+        for i, r in enumerate(pv["table_rows"]):
             tag = ""
             if isinstance(r["return_days"], int):
                 if r["return_days"] >= 60: tag = "urg_high"
                 elif r["return_days"] >= 30: tag = "urg_medium"
                 elif r["return_days"] >= 15: tag = "urg_low"
+            # iid SINTÉTICO único (no el código EIPSA): hay docs con código
+            # vacío en data_erp (iid="" colisiona con la raíz del Treeview) y
+            # podría haber códigos duplicados. El código real va en la columna
+            # "EIPSA Doc." (values[1]) y se lee desde ahí en _get_included_codes.
             self.docs_table.add_row(
                 values=[
                     "☑", r["eipsa_doc_no"], r["title"], r["status"],
                     r["revision"] or "—", r["sent_date"] or "—", r["return_days"],
                 ],
-                iid=r["eipsa_doc_no"],
+                iid=f"d{i}",
                 tags=(tag,) if tag else (),
             )
         self.docs_table.tree.tag_configure("urg_low", foreground=theme.BLUE)
@@ -761,8 +766,9 @@ class ReclamacionPreview(ctk.CTkToplevel):
         out = []
         for iid in self.docs_table.tree.get_children():
             values = self.docs_table.tree.item(iid, "values")
+            # values[1] = "EIPSA Doc." (el código real; el iid es sintético "dN")
             if values and values[0] == "☑":
-                out.append(iid)
+                out.append(values[1])
         return out
 
     def _update_doc_counter(self) -> None:
@@ -822,10 +828,12 @@ class ReclamacionPreview(ctk.CTkToplevel):
         if not session.can_manage("reclamaciones"):
             ui.toast(self, "Solo lectura", "No tienes permiso para enviar reclamaciones.", kind="warn")
             return
-        to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
-        cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
+        # Parseo robusto: tolera separadores , ; y saltos, formato
+        # 'Nombre' <email> y nombres no-ASCII (pegado de Outlook/Webmail).
+        to = smtp_service.clean_addresses(self.ent_to.get())
+        cc = smtp_service.clean_addresses(self.ent_cc.get())
         if not to:
-            messagebox.showwarning("Destinatarios", "Indica al menos un destinatario en 'To'.")
+            messagebox.showwarning("Destinatarios", "Indica al menos un destinatario válido en 'To'.")
             return
 
         included = self._get_included_codes()

@@ -7,7 +7,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import formatdate, make_msgid
+from email.utils import formataddr, formatdate, getaddresses, make_msgid
 
 from core.config import (
     IMAP_HOST, IMAP_PASS, IMAP_PORT, IMAP_USER,
@@ -120,6 +120,58 @@ def _append_to_sent(raw_message: bytes) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def parse_recipients(value) -> list[tuple[str, str]]:
+    """Normaliza destinatarios a [(nombre, email), …] sin duplicados.
+
+    Acepta string o lista. Tolera el formato de pegado de Outlook/Webmail:
+      · Separadores `,`  `;`  y saltos de línea.
+      · Formato `'Nombre Apellido' <email>` o `Nombre <email>` o email pelado.
+      · Nombres con tildes / no-ASCII (p.ej. «杨振华»).
+    Las entradas sin `@` válido se descartan.
+    """
+    if value is None:
+        return []
+    items = [value] if isinstance(value, str) else list(value)
+    joined = ", ".join(str(i) for i in items if i is not None and str(i).strip())
+    # getaddresses parsea listas separadas por coma → normalizamos ; y saltos.
+    joined = joined.replace(";", ",").replace("\n", ",").replace("\r", ",")
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for name, addr in getaddresses([joined]):
+        # Outlook envuelve nombres y a veces emails pelados en comillas SIMPLES
+        # ('...'), que no son comillas RFC → getaddresses las deja pegadas a la
+        # dirección. Las quitamos (solo las envolventes; respeta O'Brien).
+        name = _strip_squotes(name)
+        addr = _strip_squotes(addr)
+        if not addr or "@" not in addr or " " in addr:
+            continue
+        key = addr.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((name, addr))
+    return out
+
+
+def _strip_squotes(s: str) -> str:
+    s = (s or "").strip()
+    if len(s) >= 2 and s[0] == "'" and s[-1] == "'":
+        s = s[1:-1].strip()
+    return s
+
+
+def _format_header(pairs: list[tuple[str, str]]) -> str:
+    """Cabecera RFC-5322: `Nombre <email>` con el nombre codificado (RFC 2047)
+    si lleva no-ASCII. formataddr usa charset utf-8 por defecto."""
+    return ", ".join(formataddr((n, a)) if n else a for n, a in pairs)
+
+
+def clean_addresses(value) -> list[str]:
+    """Lista legible `Nombre <email>` (o email pelado), deduplicada — para que
+    la vista muestre/guarde destinatarios limpios."""
+    return [f"{n} <{a}>" if n else a for n, a in parse_recipients(value)]
+
+
 def send_html_email(
     to: list[str],
     cc: list[str],
@@ -133,10 +185,13 @@ def send_html_email(
 
     save_to_sent=False permite desactivar el APPEND (p.ej. para tests).
     """
+    to_pairs = parse_recipients(to)
+    cc_pairs = parse_recipients(cc)
+
     msg = MIMEMultipart("mixed")
     msg["From"] = SMTP_USER
-    msg["To"] = "; ".join(to)
-    msg["Cc"] = "; ".join(cc)
+    msg["To"] = _format_header(to_pairs)
+    msg["Cc"] = _format_header(cc_pairs)
     msg["Subject"] = subject
     # Headers de fecha + ID: imprescindibles para que Outlook muestre
     # "Enviado: <fecha>" en la copia archivada en Sent Items vía IMAP APPEND.
@@ -153,7 +208,8 @@ def send_html_email(
         msg.attach(part)
 
     raw = msg.as_bytes()
-    all_recipients = to + cc
+    # Envelope: SOLO las direcciones peladas (sin nombre) para el RCPT TO.
+    all_recipients = [a for _, a in to_pairs] + [a for _, a in cc_pairs]
 
     # 1) Envío SMTP
     with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:

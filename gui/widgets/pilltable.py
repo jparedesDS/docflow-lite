@@ -76,8 +76,11 @@ class PillTable(ctk.CTkFrame):
         # contenido cambia de tamaño — evita forzar update_idletasks por render.
         self._inner.bind("<Configure>",
                          lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
-        self._canvas.bind("<Enter>", lambda e: self._canvas.bind_all("<MouseWheel>", self._on_wheel))
-        self._canvas.bind("<Leave>", lambda e: self._canvas.unbind_all("<MouseWheel>"))
+        # Rueda del ratón: enlazada DIRECTAMENTE al canvas y al frame interior (no
+        # con bind_all, que secuestraría la rueda del resto de la app). Cada fila
+        # también la enlaza (ver _bind_row) para que funcione encima de las filas.
+        self._canvas.bind("<MouseWheel>", self._on_wheel)
+        self._inner.bind("<MouseWheel>", self._on_wheel)
 
     # ── Helpers de layout ────────────────────────────────────────────────────
 
@@ -200,6 +203,7 @@ class PillTable(ctk.CTkFrame):
             w.bind("<Button-1>", on_click)
             w.bind("<Double-Button-1>", on_dbl)
             w.bind("<Button-3>", on_ctx)
+            w.bind("<MouseWheel>", self._on_wheel)
 
     def _paint(self, rowid: str, bg: str) -> None:
         ro = self._pool[self._rowid_pos[rowid]]
