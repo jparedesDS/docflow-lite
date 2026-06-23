@@ -7,6 +7,7 @@ Genera la vista que consume la pantalla "Documentos" de la app Lite.
 import logging
 import math
 import os
+import re
 import time
 from datetime import date, datetime
 
@@ -456,6 +457,79 @@ def get_monitoring_report_sections() -> dict:
         "sin_enviar": sin_enviar,
         "status_global": get_status_global(),
         "kpis": kpis,
+    }
+
+
+# ── Hitos de revisión: 1er envío (Rev. 0) y 1ª aprobación ─────────────────────
+# Se derivan del texto de "Historial Rev." (formato 'DD-MM-YYYY <Estado> Rev. N //
+# …'), con fallback al envío de la revisión actual (Fecha Env. Doc.). Compartido
+# por la vista Documentos y el Excel de monitoring.
+
+_REV_HIST_RE = re.compile(r"(\d{1,2}[-/]\d{1,2}[-/]\d{4})\s+(.+?)\s+Rev\.?\s*(\d+)", re.IGNORECASE)
+
+
+def fmt_date_ddmmyyyy(val) -> str:
+    """Devuelve la fecha en formato DD/MM/YYYY, o '' si no se puede parsear."""
+    d = _parse_date(val)
+    return d.strftime("%d/%m/%Y") if d else ""
+
+
+def _rev_history_events(doc: dict) -> list[tuple]:
+    """Eventos (rev:int|None, datetime, kind) del 'Historial Rev.' + el envío de
+    la revisión actual (para no perder los documentos sin historial)."""
+    events: list[tuple] = []
+    hist = str(doc.get("Historial Rev.", "") or "")
+    for tok in hist.split("//"):
+        m = _REV_HIST_RE.search(tok)
+        if not m:
+            continue
+        d = _parse_date(m.group(1))
+        if d is None:
+            continue
+        estado = m.group(2).strip().lower()
+        if "aprobado" in estado:
+            kind = "aprobado"
+        elif "enviado" in estado:
+            kind = "enviado"
+        else:
+            kind = "otro"
+        events.append((int(m.group(3)), d, kind))
+
+    cd = _parse_date(doc.get("Fecha Env. Doc.") or doc.get("Fecha"))
+    if cd is not None:
+        try:
+            crev = int(float(doc.get("Nº Revisión")))
+        except (ValueError, TypeError):
+            crev = None
+        events.append((crev, cd, "enviado"))
+    return events
+
+
+def revision_milestones(doc: dict) -> dict:
+    """Primer envío (Rev. 0) y primera aprobación de un documento.
+
+    · first_send: SOLO el envío de la Rev. 0. El ERP no conserva el envío de
+      Rev. 0 en el 'Historial Rev.' de los documentos que ya pasaron por varias
+      revisiones, así que es None cuando no consta (no se infiere uno falso).
+    · first_approval: la entrada 'Aprobado' de menor revisión (a igualdad, la
+      fecha más antigua); None si nunca se ha aprobado.
+
+    Devuelve datetimes (o None); usa fmt_date_ddmmyyyy o .strftime para mostrar.
+    """
+    events = _rev_history_events(doc)
+
+    rev0 = [e for e in events if e[2] == "enviado" and e[0] == 0]
+    first_send = min(rev0, key=lambda e: e[1]) if rev0 else None
+
+    apprs = [e for e in events if e[2] == "aprobado"]
+    first_appr = (min(apprs, key=lambda e: (e[0] if e[0] is not None else 9999, e[1]))
+                  if apprs else None)
+
+    return {
+        "first_send": first_send[1] if first_send else None,
+        "first_send_rev": first_send[0] if first_send else None,
+        "first_approval": first_appr[1] if first_appr else None,
+        "first_approval_rev": first_appr[0] if first_appr else None,
     }
 
 

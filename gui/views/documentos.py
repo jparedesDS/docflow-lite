@@ -570,13 +570,30 @@ class DocumentosView(ctk.CTkFrame):
             ("Nº Doc. Cliente", doc.get("Nº Doc. Cliente")),
         ])
 
-        # Fechas
+        # Fechas — todas en DD/MM/YYYY; añade 1.er envío (Rev. 0) y 1.ª aprobación
+        # derivados del "Historial Rev." (lógica compartida en monitoring_service).
         self._d_section(body, "Fechas")
-        self._d_dates(body, [
-            ("Pedido", doc.get("Fecha Pedido"), theme.BLUE),
-            ("Prevista", doc.get("Fecha Prevista"), theme.AMBER),
-            ("Env. Doc.", doc.get("Fecha Env. Doc."), theme.GREEN),
-        ])
+
+        def _dd(v):
+            return monitoring_service.fmt_date_ddmmyyyy(v) or _fmt(v)
+
+        date_items = [
+            ("Pedido", _dd(doc.get("Fecha Pedido")), theme.BLUE),
+            ("Prevista", _dd(doc.get("Fecha Prevista")), theme.AMBER),
+            ("Env. Doc.", _dd(doc.get("Fecha Env. Doc.")), theme.GREEN),
+        ]
+        ms = monitoring_service.revision_milestones(doc)
+        if ms["first_send"]:
+            rev = ms["first_send_rev"]
+            date_items.append((
+                f"1.er envío (Rev. {rev})" if rev is not None else "1.er envío",
+                ms["first_send"].strftime("%d/%m/%Y"), theme.BLUE))
+        if ms["first_approval"]:
+            rev = ms["first_approval_rev"]
+            date_items.append((
+                f"1.ª aprobación (Rev. {rev})" if rev is not None else "1.ª aprobación",
+                ms["first_approval"].strftime("%d/%m/%Y"), theme.GREEN))
+        self._d_dates(body, date_items)
 
         # Seguimiento
         seg = str(doc.get("Seguimiento", "") or "").strip()

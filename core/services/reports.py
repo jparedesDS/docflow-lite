@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 from openpyxl import Workbook
+
+from core.services import monitoring
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.formatting.rule import DataBarRule, Rule
@@ -67,6 +69,7 @@ COLUMN_ORDER = [
     "Título", "Tipo Doc.", "Info/Review", "Repsonsable", "Días Envío",
     "Crítico", "Estado", "Notas", "Nº Revisión",
     "Fecha Env. Doc.", "Fecha Dev. Doc.", "Días Devolución",
+    "1ª Fecha Envío (Rev.0)", "1ª Fecha Aprobación",
     "Reclamaciones", "Seguimiento", "Historial Rev.",
 ]
 
@@ -77,7 +80,8 @@ COLS_CENTRAR = {
     "Sin Enviar", "Total", "% Completado",
 }
 
-DATE_COLS = {"Fecha Pedido", "Fecha Prevista", "Fecha Env. Doc.", "Fecha Dev. Doc."}
+DATE_COLS = {"Fecha Pedido", "Fecha Prevista", "Fecha Env. Doc.", "Fecha Dev. Doc.",
+             "1ª Fecha Envío (Rev.0)", "1ª Fecha Aprobación"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -137,6 +141,8 @@ def generate_monitoring_excel(sections: dict) -> bytes:
         ws = wb.create_sheet(title=sheet_name)
         ws.sheet_properties.tabColor = TAB_COLORS[sheet_name]
 
+        # Añade 1ª Fecha Envío (Rev.0) y 1ª Fecha Aprobación a cada doc de la hoja
+        data = [_add_rev_dates(d) for d in data]
         cols = _get_cols(data)
         _write_header(ws, cols)
         _write_rows(ws, data, cols)
@@ -339,6 +345,19 @@ def _parse_any_date(val) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+def _add_rev_dates(doc: dict) -> dict:
+    """Añade '1ª Fecha Envío (Rev.0)' y '1ª Fecha Aprobación' (datetime o '').
+
+    Reusa monitoring.revision_milestones (misma lógica que el panel Documentos):
+    el envío de Rev.0 solo si consta; la aprobación de menor revisión si existe.
+    """
+    d = dict(doc)
+    ms = monitoring.revision_milestones(doc)
+    d["1ª Fecha Envío (Rev.0)"] = ms["first_send"] or ""
+    d["1ª Fecha Aprobación"] = ms["first_approval"] or ""
+    return d
 
 
 def _add_notas(doc: dict) -> dict:
