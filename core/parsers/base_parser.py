@@ -26,6 +26,29 @@ ACONEX_PO_MAP = {
     "2201BI01A0-2206-3000": "P-25/037",
 }
 
+# AYESA: referencia del asunto ("Documentos de <ref>") → Nº PO del ERP.
+# El portal AYESA usa su propia numeración (proyecto 2206 / ref 3000005785-...),
+# que NO está en data_erp; este mapa enlaza esa referencia con el PO real, y de
+# ahí se resuelve el Nº Pedido vía ERP. Añadir una entrada por pedido AYESA nuevo.
+AYESA_REF_PO_MAP = {
+    "3000005785-2206-3000": "7011408252",  # P-26/048 · ORIFICIOS Y PLACAS DE RESTRICCIÓN
+}
+
+# AYESA: código de tipo (en el código de doc de cliente, p.ej. ...-DL-001) →
+# valor de "Tipo Doc." del ERP, para emparejar el documento del email con el
+# documento del pedido y rellenar su Nº Doc. EIPSA.
+AYESA_DOC_TYPE_TO_ERP = {
+    "DL": "VDDL", "LIS": "VDDL", "VDDL": "VDDL", "IND": "VDDL",
+    "ITP": "PPI", "PLN": "PPI", "PPI": "PPI",
+    "PLA": "Programa", "PRG": "Programa",
+    "CAL": "Cálculos", "ESP": "Cálculos",
+    "PLG": "Planos", "DWG": "Planos",
+    "CER": "Certificados", "NACE": "Certificados",
+    "DOS": "Dossier", "DD": "Dossier",
+    "PRC": "Procedimientos", "NDE": "Procedimientos",
+    "PRC0": "Packing",
+}
+
 # Project key → Nº Pedido (DOCUMENT SPACE / HEC)
 DOCSPACE_PO_MAP = {
     "JUS&ICS2": "P-24/070",
@@ -60,6 +83,7 @@ DOC_TYPE_MAP = {
     "LIS": "Listado", "LIST": "Listado", "VDB": "Listado",
     "VDDL": "Listado", "DL": "Listado",
     "ITP": "PPI", "PLN": "PPI",
+    "PLA": "Programa", "PRG": "Programa",
     "PRC": "Procedimientos", "NDE": "Procedimientos", "PH": "Procedimientos",
     "MAN": "Manual", "PLD": "Nameplate",
     "CAT": "Catalogo", "SPL": "Repuestos",
@@ -729,15 +753,32 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
     return html
 
 
+def _data_erp_path() -> str:
+    """Ruta efectiva del data_erp.xlsx (respeta el vínculo configurado).
+
+    Antes importaba `utils.config` (módulo del DocFlow grande, inexistente en
+    lite) y reventaba. Ahora resuelve la ruta vía data_source con fallback a la
+    ruta por defecto de core.config.
+    """
+    try:
+        from core import data_source
+        return data_source.get_effective_path("data_erp")
+    except Exception:
+        try:
+            from core.config import DATA_ERP_PATH
+            return DATA_ERP_PATH
+        except Exception:
+            return ""
+
+
 def lookup_erp(numero_pedido: str) -> dict:
     """Busca en data_erp.xlsx por Nº Pedido y devuelve Cliente, Material, etc."""
     import os
-    from utils.config import DATA_ERP_PATH
-
-    if not numero_pedido or not os.path.exists(DATA_ERP_PATH):
+    path = _data_erp_path()
+    if not numero_pedido or not path or not os.path.exists(path):
         return {}
     try:
-        df = pd.read_excel(DATA_ERP_PATH, engine="openpyxl")
+        df = pd.read_excel(path, engine="openpyxl")
     except Exception:
         return {}
 
@@ -754,12 +795,11 @@ def lookup_erp(numero_pedido: str) -> dict:
 def lookup_erp_by_npo(npo: str) -> dict:
     """Busca en data_erp.xlsx por Nº PO y devuelve Nº Pedido, Cliente, Material."""
     import os
-    from utils.config import DATA_ERP_PATH
-
-    if not npo or not os.path.exists(DATA_ERP_PATH):
+    path = _data_erp_path()
+    if not npo or not path or not os.path.exists(path):
         return {}
     try:
-        df = pd.read_excel(DATA_ERP_PATH, engine="openpyxl")
+        df = pd.read_excel(path, engine="openpyxl")
     except Exception:
         return {}
 

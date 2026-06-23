@@ -16,6 +16,7 @@ import pandas as pd
 from core.config import PEDIDOS_BASE_PATH, PROCESSED_EMAILS_FILE
 from core.parsers import (
     aconex_parser,
+    ayesa_parser,
     docspace_parser,
     gaia_parser,
     prodoc_parser,
@@ -33,7 +34,8 @@ from core.utils.json_store import read_json, write_json
 
 logger = logging.getLogger(__name__)
 
-PARSERS = [tr_parser, aconex_parser, sendoc_parser, gaia_parser, prodoc_parser, docspace_parser]
+PARSERS = [tr_parser, aconex_parser, sendoc_parser, gaia_parser, prodoc_parser,
+           docspace_parser, ayesa_parser]
 PLATFORM_NAMES = {
     "tr_parser": "TÉCNICAS REUNIDAS",
     "aconex_parser": "ACONEX",
@@ -41,6 +43,7 @@ PLATFORM_NAMES = {
     "gaia_parser": "GAIA",
     "prodoc_parser": "PRODOC",
     "docspace_parser": "DOCUMENT SPACE",
+    "ayesa_parser": "AYESA",
 }
 
 
