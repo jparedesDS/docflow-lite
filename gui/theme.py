@@ -1,8 +1,8 @@
 """Paleta y constantes de tema.
 
 4 modos disponibles:
-- light         — Linear/Vercel claro · indigo · Inter/Segoe UI
-- dark          — Linear/Vercel oscuro · indigo · Inter/Segoe UI
+- light         — Anthropic claro · papel cálido + azul · Segoe UI
+- dark          — Anthropic oscuro · warm dark + azul · Segoe UI
 - light-coral   — Cream + coral · estilo terminal · monospace
 - dark-coral    — Warm dark + coral · estilo terminal · monospace
 
@@ -29,72 +29,72 @@ _CORAL_PRESSED = "#A8553A"
 # ═══ Paletas por modo ═══════════════════════════════════════════════════════
 
 _DARK = {
-    "BG_PAGE":         "#0F1117",
-    "BG_CARD":         "#1A1D27",
-    "BG_SIDEBAR":      "#0C0E15",
-    "BG_INPUT":        "#252837",
-    "BORDER":          "#2E3244",
-    "BORDER_STRONG":   "#3D4256",
+    "BG_PAGE":         "#1C1B19",  # warm dark (estética Anthropic)
+    "BG_CARD":         "#242321",
+    "BG_SIDEBAR":      "#191816",
+    "BG_INPUT":        "#2A2825",
+    "BORDER":          "#393734",
+    "BORDER_STRONG":   "#52504B",
 
-    "ACCENT":          "#4F46E5",  # indigo principal
-    "ACCENT_HOVER":    "#4338CA",
-    "ACCENT_PRESSED":  "#3730A3",
-    "ACCENT_SOFT":     "#1E1C3A",
+    "ACCENT":          "#5B9BE0",  # azul "info" (claro sobre fondo cálido oscuro)
+    "ACCENT_HOVER":    "#85B7EB",
+    "ACCENT_PRESSED":  "#B5D4F4",
+    "ACCENT_SOFT":     "#22303F",
 
-    "TEXT_MAIN":       "#F1F5F9",
-    "TEXT_SUB":        "#B4BCD0",
-    "TEXT_MUTED":      "#7B8398",
+    "TEXT_MAIN":       "#F0EEE6",  # crema cálida
+    "TEXT_SUB":        "#B4B2A9",
+    "TEXT_MUTED":      "#8A8880",
 
-    "ROW_BG_CRITICAL": "#3B1818",
-    "ROW_BG_WARN":     "#2C2412",
-    "ROW_BG_EDITED":   "#1E3A5F",
-    "DELETE_HOVER":    "#3B1818",
+    "ROW_BG_CRITICAL": "#3B201C",
+    "ROW_BG_WARN":     "#332515",
+    "ROW_BG_EDITED":   "#22303F",
+    "DELETE_HOVER":    "#3B201C",
 
-    "ROW_STRIPE":      "#1F232F",  # banda alterna (zebra) — sutil sobre BG_CARD
-    "ROW_HOVER":       "#252A39",  # fila bajo el cursor
-    "TABLE_HEADER_BG": "#13151D",  # cabecera de tabla, más oscura que las filas
-    "TABLE_HEADER_FG": "#9AA3B8",
+    "ROW_STRIPE":      "#211F1D",  # banda alterna (zebra) — sutil sobre BG_CARD
+    "ROW_HOVER":       "#2B2926",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#191816",  # cabecera de tabla
+    "TABLE_HEADER_FG": "#A8A29A",
 
-    "NOTE_BLUE":       "#1E3A5F",
-    "NOTE_GREEN":      "#14532D",
-    "NOTE_AMBER":      "#451A03",
-    "NOTE_ROSE":       "#4C0519",
+    "NOTE_BLUE":       "#22303F",
+    "NOTE_GREEN":      "#26331C",
+    "NOTE_AMBER":      "#3A2A14",
+    "NOTE_ROSE":       "#3A2026",
 
     "FONT_FAMILY":      "Segoe UI",
     "FONT_FAMILY_MONO": "Consolas",
 }
 
 _LIGHT = {
-    "BG_PAGE":         "#F7F8FA",
+    "BG_PAGE":         "#F5F4EF",  # papel cálido (estética Anthropic/widget)
     "BG_CARD":         "#FFFFFF",
-    "BG_SIDEBAR":      "#FAFBFC",
-    "BG_INPUT":        "#F3F4F6",
-    "BORDER":          "#E5E7EB",
-    "BORDER_STRONG":   "#D1D5DB",
+    "BG_SIDEBAR":      "#FAF9F5",
+    "BG_INPUT":        "#F0EEE6",
+    "BORDER":          "#E7E5DD",  # borde fino cálido
+    "BORDER_STRONG":   "#D3D1C7",
 
-    "ACCENT":          "#4F46E5",
-    "ACCENT_HOVER":    "#4338CA",
-    "ACCENT_PRESSED":  "#3730A3",
-    "ACCENT_SOFT":     "#EEF2FF",
+    "ACCENT":          "#185FA5",  # azul "info" del sistema (c-blue 600)
+    "ACCENT_HOVER":    "#0C447C",
+    "ACCENT_PRESSED":  "#042C53",
+    "ACCENT_SOFT":     "#E6F1FB",
 
-    "TEXT_MAIN":       "#0F172A",
-    "TEXT_SUB":        "#475569",
-    "TEXT_MUTED":      "#94A3B8",
+    "TEXT_MAIN":       "#2C2C2A",  # casi-negro cálido (c-gray 900)
+    "TEXT_SUB":        "#5F5E5A",
+    "TEXT_MUTED":      "#888780",
 
-    "ROW_BG_CRITICAL": "#FEE2E2",
-    "ROW_BG_WARN":     "#FEF3C7",
-    "ROW_BG_EDITED":   "#DBEAFE",
-    "DELETE_HOVER":    "#FECACA",
+    "ROW_BG_CRITICAL": "#FCEBEB",
+    "ROW_BG_WARN":     "#FAEEDA",
+    "ROW_BG_EDITED":   "#E6F1FB",
+    "DELETE_HOVER":    "#F7C1C1",
 
-    "ROW_STRIPE":      "#F4F6FA",  # banda alterna (zebra)
-    "ROW_HOVER":       "#EAEEF6",  # fila bajo el cursor
-    "TABLE_HEADER_BG": "#EDF0F5",  # cabecera de tabla
-    "TABLE_HEADER_FG": "#5B6678",
+    "ROW_STRIPE":      "#FAF9F5",  # banda alterna (zebra) cálida
+    "ROW_HOVER":       "#F0EEE6",  # fila bajo el cursor
+    "TABLE_HEADER_BG": "#F1EFE8",  # cabecera de tabla (c-gray 50)
+    "TABLE_HEADER_FG": "#5F5E5A",
 
-    "NOTE_BLUE":       "#DBEAFE",
-    "NOTE_GREEN":      "#DCFCE7",
-    "NOTE_AMBER":      "#FEF3C7",
-    "NOTE_ROSE":       "#FCE7F3",
+    "NOTE_BLUE":       "#E6F1FB",
+    "NOTE_GREEN":      "#EAF3DE",
+    "NOTE_AMBER":      "#FAEEDA",
+    "NOTE_ROSE":       "#FBEAF0",
 
     "FONT_FAMILY":      "Segoe UI",
     "FONT_FAMILY_MONO": "Consolas",

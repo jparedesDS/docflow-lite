@@ -24,6 +24,7 @@ from tkinter import filedialog, messagebox
 from core.services import docusign as ds
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,9 @@ class DocusignView(ctk.CTkFrame):
         self._days = 30
         self._selected_id: str | None = None
         self._build_header()
-        if not ds.is_configured():
+        if not ds.deps_available():
+            self._render_missing_deps()
+        elif not ds.is_configured():
             self._render_not_configured()
         else:
             self._build_body()
@@ -111,7 +114,7 @@ class DocusignView(ctk.CTkFrame):
         title_row.pack(anchor="w")
         ctk.CTkLabel(title_row, text="✒", font=theme.font(20, "bold"),
                      text_color=ACCENT_DS).pack(side="left", padx=(0, theme.SPACE_2))
-        ctk.CTkLabel(title_row, text="Contratos & Firmas", font=theme.FONT_TITLE,
+        ctk.CTkLabel(title_row, text="DocuSign", font=theme.FONT_TITLE,
                      text_color=theme.TEXT_MAIN).pack(side="left")
         ctk.CTkLabel(left, text="DocuSign eSignature", font=theme.FONT_SUBTITLE,
                      text_color=theme.TEXT_SUB, anchor="w").pack(anchor="w", pady=(theme.SPACE_1, 0))
@@ -156,6 +159,26 @@ class DocusignView(ctk.CTkFrame):
         code.pack(fill="x")
         ctk.CTkLabel(code, text=env_block, font=theme.mfont(11), text_color="#A5F3FC",
                      justify="left", anchor="w").pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+
+    def _render_missing_deps(self) -> None:
+        """Dependencias de DocuSign ausentes (PyJWT/requests) — aviso, sin romper."""
+        box = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=14,
+                           border_width=1, border_color=theme.BORDER)
+        box.pack(fill="x", padx=theme.SPACE_6, pady=theme.SPACE_5)
+        inner = ctk.CTkFrame(box, fg_color="transparent")
+        inner.pack(padx=theme.SPACE_6, pady=theme.SPACE_6)
+        ctk.CTkLabel(inner, text="✒", font=theme.font(34, "bold"), text_color=ACCENT_DS).pack()
+        ctk.CTkLabel(inner, text="Faltan dependencias de DocuSign", font=theme.font(16, "bold"),
+                     text_color=theme.TEXT_MAIN).pack(pady=(theme.SPACE_2, theme.SPACE_1))
+        ctk.CTkLabel(inner, text="Esta sección necesita PyJWT y requests. Instálalos y reinicia:",
+                     font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+                     wraplength=520, justify="center").pack(pady=(0, theme.SPACE_3))
+        code = ctk.CTkFrame(inner, fg_color=theme.BG_PAGE, corner_radius=10,
+                            border_width=1, border_color=theme.BORDER)
+        code.pack(fill="x")
+        ctk.CTkLabel(code, text="pip install pyjwt requests", font=theme.mfont(11),
+                     text_color="#A5F3FC", justify="left", anchor="w").pack(
+            fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
 
     # ── Cuerpo: KPIs + filtros + master-detail ───────────────────────────────
 
@@ -221,7 +244,7 @@ class DocusignView(ctk.CTkFrame):
         self.list_status = ctk.CTkLabel(left, text="", font=theme.FONT_TINY,
                                         text_color=theme.TEXT_MUTED, anchor="w")
         self.list_status.pack(fill="x", pady=(0, theme.SPACE_1))
-        self.list_scroll = ctk.CTkScrollableFrame(left, fg_color="transparent")
+        self.list_scroll = ScrollFrame(left)
         self.list_scroll.pack(fill="both", expand=True)
 
         self.detail = ctk.CTkFrame(split, fg_color=theme.BG_CARD, corner_radius=12,

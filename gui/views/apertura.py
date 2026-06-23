@@ -17,6 +17,7 @@ import re
 from core.services import apertura as apertura_service
 from core.services import comm_matrix as comm_matrix_service
 from gui import theme
+from gui.widgets.scrollframe import ScrollFrame
 
 
 # Email parser tolerante: coma, punto y coma, espacio, salto de línea
@@ -88,7 +89,7 @@ class AperturaView(ctk.CTkFrame):
         ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
         # Wrapper scrollable
-        wrapper = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        wrapper = ScrollFrame(self)
         wrapper.pack(fill="both", expand=True,
                      padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 

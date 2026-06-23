@@ -24,6 +24,7 @@ from core.services import ofertas as of
 from core.services import ofertas_meta as om
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 
 _TRUST_FILTERS = {"Verificado": "verificado", "Precaución": "precaucion", "Sospechoso": "sospechoso"}
 _ASIGNADOS = ["Sin asignar"] + sorted({i.get("nombre", "") for i in USERS.values() if i.get("nombre")})
@@ -221,7 +222,7 @@ class OfertasView(ctk.CTkFrame):
         self.list_status = ctk.CTkLabel(left, text="", font=theme.FONT_TINY,
                                         text_color=theme.TEXT_MUTED, anchor="w")
         self.list_status.pack(fill="x", pady=(0, theme.SPACE_1))
-        self.list_scroll = ctk.CTkScrollableFrame(left, fg_color="transparent")
+        self.list_scroll = ScrollFrame(left)
         self.list_scroll.pack(fill="both", expand=True)
 
         self.detail = ctk.CTkScrollableFrame(split, fg_color=theme.BG_CARD, corner_radius=12,

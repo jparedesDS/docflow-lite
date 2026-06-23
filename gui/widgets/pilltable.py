@@ -70,12 +70,14 @@ class PillTable(ctk.CTkFrame):
         self._inner = tk.Frame(self._canvas, bg=theme.BG_CARD)
         self._inner.grid_columnconfigure(0, weight=1)
         self._win = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
-        self._canvas.bind("<Configure>",
-                          lambda e: self._canvas.itemconfigure(self._win, width=e.width))
-        # Actualiza el scrollregion automáticamente (diferido a idle) cuando el
-        # contenido cambia de tamaño — evita forzar update_idletasks por render.
-        self._inner.bind("<Configure>",
-                         lambda e: self._canvas.configure(scrollregion=self._canvas.bbox("all")))
+        # Rendimiento: durante una ráfaga de redimensionado (p.ej. maximizar) Tk
+        # dispara muchos <Configure>. Evitamos trabajo redundante:
+        #  · sólo reajustamos el ancho del item si CAMBIÓ (no en cada evento)
+        #  · el scrollregion se recalcula una sola vez, diferido a idle (coalesce)
+        self._last_canvas_w = 0
+        self._sr_after = None
+        self._canvas.bind("<Configure>", self._on_canvas_configure)
+        self._inner.bind("<Configure>", self._on_inner_configure)
         # Rueda del ratón: enlazada DIRECTAMENTE al canvas y al frame interior (no
         # con bind_all, que secuestraría la rueda del resto de la app). Cada fila
         # también la enlaza (ver _bind_row) para que funcione encima de las filas.
@@ -92,6 +94,29 @@ class PillTable(ctk.CTkFrame):
     def _on_wheel(self, event) -> None:
         try:
             self._canvas.yview_scroll(int(-event.delta / 120), "units")
+        except Exception:
+            pass
+
+    def _on_canvas_configure(self, e) -> None:
+        # Sólo reajusta el ancho del frame interior si el ancho cambió de verdad
+        # (Tk dispara <Configure> repetidos con el mismo ancho durante una ráfaga).
+        if e.width != self._last_canvas_w:
+            self._last_canvas_w = e.width
+            self._canvas.itemconfigure(self._win, width=e.width)
+
+    def _on_inner_configure(self, _e) -> None:
+        # Coalesce: recalcula el scrollregion una sola vez al final de la ráfaga.
+        if self._sr_after is not None:
+            try:
+                self.after_cancel(self._sr_after)
+            except Exception:
+                pass
+        self._sr_after = self.after_idle(self._update_scrollregion)
+
+    def _update_scrollregion(self) -> None:
+        self._sr_after = None
+        try:
+            self._canvas.configure(scrollregion=self._canvas.bbox("all"))
         except Exception:
             pass
 

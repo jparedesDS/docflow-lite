@@ -18,6 +18,7 @@ from gui import cell_format, theme
 from gui.views.documentos import _fmt, _fmt_int, _status_color, _trunc
 from gui.widgets import ui
 from gui.widgets.pilltable import PillTable
+from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ class PedidosView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(header, text="Pedidos", font=theme.FONT_TITLE,
+        ctk.CTkLabel(header, text="Seguimiento", font=theme.FONT_TITLE,
                      text_color=theme.TEXT_MAIN, anchor="w").pack(anchor="w")
         ctk.CTkLabel(
             header, text="Busca un pedido y consulta toda su información en una vista",
@@ -85,7 +86,7 @@ class PedidosView(ctk.CTkFrame):
         self.lbl_count.pack(side="left")
 
         # ── Ficha del pedido (todo el ancho, scrollable) ─────────────────
-        self.detail = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.detail = ScrollFrame(self)
         self.detail.pack(fill="both", expand=True, padx=theme.SPACE_6,
                          pady=(0, theme.SPACE_4))
         self._placeholder("Cargando pedidos…")

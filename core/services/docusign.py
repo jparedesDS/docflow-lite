@@ -16,8 +16,16 @@ import time
 import uuid
 from datetime import datetime, timezone, timedelta
 
-import jwt
-import requests
+try:
+    import jwt
+    import requests
+    _DEPS_OK = True
+    _DEPS_ERR = ""
+except ImportError as _exc:  # PyJWT / requests no instalados → degradar sin romper
+    jwt = None
+    requests = None
+    _DEPS_OK = False
+    _DEPS_ERR = str(_exc)
 
 from core.config import (
     DOCUSIGN_INTEGRATION_KEY,
@@ -39,6 +47,11 @@ STATUS_META = {
     "created":   {"label": "Borrador",   "urgency": "none",   "color": "#64748B"},
     "timed_out": {"label": "Expirado",   "urgency": "high",   "color": "#D97706"},
 }
+
+
+def deps_available() -> bool:
+    """True si están instaladas las dependencias de DocuSign (PyJWT + requests)."""
+    return _DEPS_OK
 
 
 def is_configured() -> bool:
@@ -75,6 +88,10 @@ class DocuSignService:
     # ── Auth ────────────────────────────────────────────────────────────────
 
     def _get_token(self) -> str:
+        if not _DEPS_OK:
+            raise RuntimeError(
+                "Faltan dependencias de DocuSign (PyJWT/requests). "
+                "Instálalas con: pip install pyjwt requests")
         if self._token and time.time() < self._token_expiry - 300:
             return self._token
         if not is_configured():

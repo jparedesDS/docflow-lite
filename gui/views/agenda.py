@@ -10,6 +10,7 @@ from tkinter import messagebox
 from core.services import agenda as agenda_service
 from core.services import monitoring as monitoring_service
 from gui import theme
+from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +114,7 @@ class AgendaView(ctk.CTkFrame):
         )
         self.lbl_tareas_count.pack(side="right")
 
-        self.tareas_scroll = ctk.CTkScrollableFrame(
-            parent, fg_color="transparent",
-        )
+        self.tareas_scroll = ScrollFrame(parent)
         self.tareas_scroll.pack(fill="both", expand=True, pady=(4, 0))
 
     def _on_filter_tareas(self) -> None:
@@ -296,7 +295,7 @@ class AgendaView(ctk.CTkFrame):
         )
         self.lbl_notas_count.pack(side="right")
 
-        self.notas_scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.notas_scroll = ScrollFrame(parent)
         self.notas_scroll.pack(fill="both", expand=True, pady=(4, 0))
 
     def _reload_notas(self) -> None:
@@ -395,7 +394,7 @@ class AgendaView(ctk.CTkFrame):
         )
         self.lbl_reuniones_count.pack(side="right")
 
-        self.reuniones_scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.reuniones_scroll = ScrollFrame(parent)
         self.reuniones_scroll.pack(fill="both", expand=True, pady=(4, 0))
 
     def _reload_reuniones(self) -> None:

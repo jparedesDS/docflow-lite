@@ -12,6 +12,7 @@ from core.services import smtp as smtp_service
 from gui import cell_format
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -969,7 +970,7 @@ class CommMatrixWindow(ctk.CTkToplevel):
         ).pack(side="right")
 
         # Lista scrollable
-        self.list_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.list_scroll = ScrollFrame(self)
         self.list_scroll.pack(side="top", fill="both", expand=True,
                                padx=theme.SPACE_5, pady=(theme.SPACE_2, theme.SPACE_2))
 

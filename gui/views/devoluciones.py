@@ -11,6 +11,7 @@ from tkinter import messagebox
 from core.services import transmittal
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -736,7 +737,7 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
                               pady=(0, theme.SPACE_1))
 
         # Scroll wrapper para que el contenido crezca sin romper el footer
-        scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        scroll = ScrollFrame(self)
         scroll.pack(side="top", fill="both", expand=True,
                      padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_2))
 

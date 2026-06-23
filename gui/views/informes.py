@@ -20,6 +20,7 @@ import customtkinter as ctk
 from core.services import analytics as an
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ class InformesView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(header, text="Informes", font=theme.FONT_TITLE,
+        ctk.CTkLabel(header, text="Analítica", font=theme.FONT_TITLE,
                      text_color=theme.TEXT_MAIN, anchor="w").pack(anchor="w")
         ctk.CTkLabel(header, text="Analítica de documentación · rendimiento · predicción",
                      font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w").pack(
@@ -94,7 +95,7 @@ class InformesView(ctk.CTkFrame):
             status = ctk.CTkLabel(tab, text="", font=theme.FONT_SMALL,
                                   text_color=theme.TEXT_MUTED, anchor="w")
             status.pack(fill="x", padx=theme.SPACE_2, pady=(theme.SPACE_2, theme.SPACE_1))
-            scroll = ctk.CTkScrollableFrame(tab, fg_color="transparent")
+            scroll = ScrollFrame(tab)
             scroll.pack(fill="both", expand=True, padx=theme.SPACE_2, pady=(0, theme.SPACE_2))
             setattr(self, attr, scroll)
             setattr(self, attr + "_status", status)

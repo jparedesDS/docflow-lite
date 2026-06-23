@@ -21,6 +21,7 @@ from core.services import reports as reports_service
 from core.services import scheduled_reports as sched_service
 from core.services import weekly_summary as weekly_service
 from gui import theme
+from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ class ReportesView(ctk.CTkFrame):
     # ════════════════════════════════════════════════════════════════════════
 
     def _build_tab_excels(self, parent) -> None:
-        scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        scroll = ScrollFrame(parent)
         scroll.pack(fill="both", expand=True)
 
         # Excel
@@ -435,7 +436,7 @@ class ReportesView(ctk.CTkFrame):
         ).pack(side="left")
 
         # Lista
-        self.schedules_scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.schedules_scroll = ScrollFrame(parent)
         self.schedules_scroll.pack(fill="both", expand=True)
 
         self._reload_schedules()
@@ -601,7 +602,7 @@ class ReportesView(ctk.CTkFrame):
         ).pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
 
         # Container con scroll
-        self.data_scroll = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.data_scroll = ScrollFrame(parent)
         self.data_scroll.pack(fill="both", expand=True)
 
         self._data_cards: dict[str, dict] = {}

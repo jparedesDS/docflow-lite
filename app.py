@@ -52,6 +52,30 @@ def _install_excepthook() -> None:
 _install_excepthook()
 
 
+def _configure_ctk_rendering() -> None:
+    """Optimización de renderizado de CustomTkinter (antes de crear ventanas).
+
+    A 100 % de escala desactivamos la capa automática de DPI de CTk: a esa escala
+    es visualmente idéntica, pero elimina la multiplicación de coordenadas por
+    escala en CADA repintado de widget y el rastreador de escala por ventana —
+    abaratando el repintado en maximizar/restaurar. A escalas ≠100 % NO se toca
+    (desactivarla encogería la interfaz).
+    """
+    try:
+        import customtkinter as ctk
+        dpi = 96
+        try:
+            import ctypes
+            dpi = int(ctypes.windll.user32.GetDpiForSystem())
+        except Exception:
+            pass
+        if dpi == 96 and hasattr(ctk, "deactivate_automatic_dpi_awareness"):
+            ctk.deactivate_automatic_dpi_awareness()
+            logger.info("CTk DPI awareness desactivado (escala 100%%) — repintado más ligero")
+    except Exception as exc:  # noqa: BLE001 — optimización best-effort
+        logger.debug("No se pudo ajustar el render de CTk: %s", exc)
+
+
 def _try_start_scheduler():
     try:
         from core.services.scheduled_reports import start_background_scheduler
@@ -75,6 +99,7 @@ def _authenticate():
 
 
 def main() -> int:
+    _configure_ctk_rendering()  # antes de crear la primera ventana (login)
     user = _authenticate()
     if user is None:
         logger.info("Login cancelado por el usuario")

@@ -17,6 +17,7 @@ from core.config import OFERTAS_ACCOUNTS, SECRET_ENV_MAP
 from core.services import docusign as ds
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +79,8 @@ class AjustesView(ctk.CTkFrame):
         if self._on_restart and ui.confirm(self, "Reiniciar", "¿Reiniciar la aplicación para aplicar los cambios?"):
             self._on_restart()
 
-    def _scroll(self, parent) -> ctk.CTkScrollableFrame:
-        s = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+    def _scroll(self, parent) -> ScrollFrame:
+        s = ScrollFrame(parent)
         s.pack(fill="both", expand=True)
         return s
 
@@ -627,7 +628,7 @@ class UserEditDialog(ctk.CTkToplevel):
             self.e_ini.configure(state="disabled")
 
         ui.section_header(self, "Permisos por sección").pack(fill="x", padx=pad, pady=(theme.SPACE_3, theme.SPACE_1))
-        grid = ctk.CTkScrollableFrame(self, fg_color="transparent", height=300)
+        grid = ScrollFrame(self, height=300)
         grid.pack(fill="both", expand=True, padx=pad, pady=(0, 8))
         self._perm_vars = {}
         cur = (self._user or {}).get("permisos") or {}

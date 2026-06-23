@@ -8,6 +8,7 @@ from datetime import datetime
 import customtkinter as ctk
 
 from gui import theme
+from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class HomeView(ctk.CTkFrame):
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        wrapper = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        wrapper = ScrollFrame(self)
         wrapper.pack(fill="both", expand=True)
 
         # ─── Saludo + fecha ──────────────────────────────────────────────

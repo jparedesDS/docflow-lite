@@ -16,19 +16,29 @@ class DocFlowLiteApp(ctk.CTk):
     WIDTH = 1280
     HEIGHT = 820
 
-    NAV_ITEMS = [
-        {"key": "home",          "label": "Inicio",            "icon": "⌂"},
-        {"key": "apertura",      "label": "Apertura pedidos",  "icon": "✚"},
-        {"key": "agenda",        "label": "Agenda",            "icon": "▣"},
-        {"key": "inbox",         "label": "Bandeja AI",        "icon": "✦"},
-        {"key": "ofertas",       "label": "Ofertas",           "icon": "✉"},
-        {"key": "documentos",    "label": "Documentos",        "icon": "◫"},
-        {"key": "pedidos",       "label": "Pedidos",           "icon": "▦"},
-        {"key": "devoluciones",  "label": "Devoluciones",      "icon": "✉"},
-        {"key": "reclamaciones", "label": "Reclamaciones",     "icon": "⚠"},
-        {"key": "docusign",      "label": "Contratos & Firmas","icon": "✒"},
-        {"key": "informes",      "label": "Informes",          "icon": "▤"},
-        {"key": "reportes",      "label": "Centro de Reportes","icon": "📊"},
+    # Navegación agrupada: ítems sueltos + grupos colapsables. Las CLAVES (key)
+    # no cambian — solo se reorganiza la presentación y se renombran etiquetas
+    # ("Pedidos"→"Seguimiento", "Informes"→"Analítica") para no chocar con el
+    # nombre de su grupo. Atajos de teclado y ruteo siguen usando las keys.
+    NAV_LAYOUT = [
+        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂"},
+        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
+        {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
+            {"key": "apertura",   "label": "Apertura",    "icon": "✚"},
+            {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
+            {"key": "documentos", "label": "Documentos",  "icon": "◫"},
+        ]},
+        {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
+            {"key": "inbox",         "label": "Bandeja AI",         "icon": "✦"},
+            {"key": "ofertas",       "label": "Ofertas",            "icon": "✉"},
+            {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩"},
+            {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠"},
+            {"key": "docusign",      "label": "DocuSign",           "icon": "✒"},
+        ]},
+        {"type": "group", "id": "informes", "label": "Informes", "items": [
+            {"key": "informes", "label": "Analítica",         "icon": "▤"},
+            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊"},
+        ]},
     ]
 
     def __init__(self, current_user: dict | None = None):
@@ -282,18 +292,31 @@ class DocFlowLiteApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar — filtrado por permisos del usuario
+        # Sidebar — layout agrupado, filtrado por permisos del usuario.
+        # Grupos sin ítems visibles se descartan; Ajustes (admin) va suelto al final.
         from core import auth
-        items = [it for it in self.NAV_ITEMS if auth.can_view(self.current_user, it["key"])]
+        layout: list[dict] = []
+        keys: set[str] = set()
+        for entry in self.NAV_LAYOUT:
+            if entry.get("type") == "group":
+                vis = [it for it in entry["items"]
+                       if auth.can_view(self.current_user, it["key"])]
+                if vis:
+                    layout.append({**entry, "items": vis})
+                    keys.update(it["key"] for it in vis)
+            elif auth.can_view(self.current_user, entry["key"]):
+                layout.append(entry)
+                keys.add(entry["key"])
         if auth.is_admin(self.current_user):
-            items.append({"key": "ajustes", "label": "Ajustes", "icon": "⚙"})
-        self._nav_keys = {it["key"] for it in items}
+            layout.append({"type": "item", "key": "ajustes", "label": "Ajustes", "icon": "⚙"})
+            keys.add("ajustes")
+        self._nav_keys = keys
 
         nombre = self.current_user.get("nombre") or "Usuario"
         initials = self.current_user.get("initials") or "—"
         self.sidebar = Sidebar(
             self,
-            items=items,
+            layout=layout,
             on_select=self.navigate,
             on_toggle_theme=self._toggle_theme,
             current_user_label=f"{nombre} ({initials})",
