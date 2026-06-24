@@ -243,6 +243,34 @@ class AjustesView(ctk.CTkFrame):
                                        ui.toast(self, "Guardado", "Reinicia para aplicar.", kind="success"))
                       ).pack(anchor="w", pady=theme.SPACE_2)
 
+        # ── Rutas de Apertura de pedidos (antes en la vista Apertura) ────────
+        from core.services import apertura as _ap
+        ui.section_header(self.datos_scroll, "Rutas de Apertura (avanzado)").pack(
+            fill="x", pady=(theme.SPACE_3, theme.SPACE_1))
+        ctk.CTkLabel(self.datos_scroll,
+                     text="Carpetas y plantillas que usa la sección Apertura para crear pedidos.",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
+            anchor="w", pady=(0, theme.SPACE_1))
+        self.ent_ap_base = self._setting_row(self.datos_scroll, "Base de datos de pedidos",
+                                             "apertura_base_dir", default=str(_ap.DEFAULT_BASE_DIR), width=360)
+        self.ent_ap_tpl = self._setting_row(self.datos_scroll, "Plantilla 00 DOCUMENTACIÓN",
+                                            "apertura_template_dir", default=str(_ap.DEFAULT_TEMPLATE_DIR), width=360)
+        self.ent_ap_plan = self._setting_row(self.datos_scroll, "Plantilla Planning (.xlsm)",
+                                             "apertura_planning_tpl", default=str(_ap.DEFAULT_PLANNING_TEMPLATE), width=360)
+        self.ent_ap_erp = self._setting_row(self.datos_scroll, "Plantilla VDDL ERP (.xlsx)",
+                                            "apertura_erp_tpl", default=str(_ap.DEFAULT_ERP_TEMPLATE), width=360)
+        ctk.CTkButton(self.datos_scroll, text="Guardar rutas de apertura", height=34,
+                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      command=self._save_apertura_paths).pack(anchor="w", pady=theme.SPACE_2)
+
+    def _save_apertura_paths(self) -> None:
+        pref.set_value("apertura_base_dir", self.ent_ap_base.get().strip())
+        pref.set_value("apertura_template_dir", self.ent_ap_tpl.get().strip())
+        pref.set_value("apertura_planning_tpl", self.ent_ap_plan.get().strip())
+        pref.set_value("apertura_erp_tpl", self.ent_ap_erp.get().strip())
+        ui.toast(self, "Guardado", "Rutas de apertura guardadas. Reinicia para aplicar.", kind="success")
+
     def _datos_card(self, st: dict) -> None:
         card = ctk.CTkFrame(self.datos_scroll, fg_color=theme.BG_CARD, corner_radius=10,
                             border_width=1, border_color=theme.BORDER)

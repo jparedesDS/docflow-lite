@@ -63,6 +63,12 @@ def _parse_iso(s: str) -> datetime:
     return datetime.strptime(s.strip(), "%Y-%m-%d")
 
 
+def _year_from_pedido(raw: str) -> int | None:
+    """Deduce el año del código del pedido: 'P-26-009' → 2026."""
+    m = apertura_service._PEDIDO_FLEX_RE.match((raw or "").strip())
+    return 2000 + int(m.group(1)) if m else None
+
+
 class AperturaView(ctk.CTkFrame):
     """Formulario para abrir un pedido nuevo."""
 
@@ -110,13 +116,9 @@ class AperturaView(ctk.CTkFrame):
         self._field(grid, "Revisión", self.var_suffix, row=0, col=1,
                     placeholder="S00")
 
-        self.var_año = ctk.StringVar(value=str(datetime.now().year))
-        self._field(grid, "Año", self.var_año, row=0, col=2,
-                    placeholder=str(datetime.now().year))
-
         self.var_sref = ctk.StringVar()
-        self._field(grid, "S.REF (PO cliente)", self.var_sref, row=0, col=3,
-                    placeholder="1078010640")
+        self._field(grid, "S.REF (PO cliente)", self.var_sref, row=0, col=2, colspan=2,
+                    placeholder="1078010640  ·  el año se deduce del código (P-26-… → 2026)")
 
         # Fila 1 (cliente + material a 2 cols — opcionales, se auto-rellenan)
         self.var_cliente = ctk.StringVar()
@@ -135,6 +137,50 @@ class AperturaView(ctk.CTkFrame):
         self.var_f_prevista = ctk.StringVar(value=_today_plus_iso(180))
         self._field(grid, "Fecha prevista entrega *", self.var_f_prevista,
                     row=2, col=2, colspan=2, placeholder="2026-11-28")
+
+        # ─── Botonera (Localizar / Procesar) — justo encima de Resultado ──
+        btn_row = ctk.CTkFrame(wrapper, fg_color="transparent")
+        btn_row.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_2))
+
+        self.btn_locate = ctk.CTkButton(
+            btn_row, text="🔍  Localizar pedido", command=self._on_locate,
+            **theme.button_kwargs("secondary"),
+        )
+        self.btn_locate.pack(side="left", padx=(0, theme.SPACE_2))
+
+        self.btn_create = ctk.CTkButton(
+            btn_row, text="✦  Procesar pedido", command=self._on_create,
+            **theme.button_kwargs("primary"),
+        )
+        self.btn_create.pack(side="left", padx=(0, theme.SPACE_2))
+
+        ctk.CTkButton(
+            btn_row, text="Limpiar formulario", command=self._on_clear,
+            **theme.button_kwargs("ghost"),
+        ).pack(side="left", padx=(0, theme.SPACE_2))
+
+        self.btn_open = ctk.CTkButton(
+            btn_row, text="Abrir carpeta del pedido", command=self._on_open,
+            state="disabled",
+            **theme.button_kwargs("secondary"),
+        )
+        self.btn_open.pack(side="left")
+
+        # ─── Resultado / log ──────────────────────────────────────────────
+        result_card = self._card(wrapper, "Resultado")
+        self.txt_result = ctk.CTkTextbox(
+            result_card, height=160, font=theme.FONT_MONO,
+            fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
+            border_width=1, border_color=theme.BORDER, corner_radius=theme.RADIUS_MD,
+        )
+        self.txt_result.pack(fill="both", expand=True,
+                             padx=theme.SPACE_4, pady=(0, theme.SPACE_4))
+        self.txt_result.insert("1.0",
+            "1) Mete el código del pedido (p.ej. P-26-050) y pulsa «Localizar pedido»\n"
+            "   para verificar que existe la carpeta y que se rellenan Cliente/Material.\n"
+            "2) Pulsa «Procesar pedido» para crear «00 DOCUMENTACIÓN» dentro de\n"
+            "   «2-Tecnico», copiar la plantilla, generar Planning y VDDL.")
+        self.txt_result.configure(state="disabled")
 
         # ─── Card: Acciones a ejecutar ────────────────────────────────────
         actions = self._card(wrapper, "Acciones a ejecutar")
@@ -295,76 +341,18 @@ class AperturaView(ctk.CTkFrame):
         self.txt_cm_to.bind("<KeyRelease>", lambda _e: self._refresh_cm_status())
         self.txt_cm_cc.bind("<KeyRelease>", lambda _e: self._refresh_cm_status())
 
-        # ─── Card: Rutas (avanzado) ───────────────────────────────────────
-        paths = self._card(wrapper, "Rutas (avanzado)")
-
-        path_grid = ctk.CTkFrame(paths, fg_color="transparent")
-        path_grid.pack(fill="x", padx=theme.SPACE_4, pady=(0, theme.SPACE_3))
-        path_grid.grid_columnconfigure(0, weight=1)
-
-        self.var_base_dir = ctk.StringVar(value=str(apertura_service.DEFAULT_BASE_DIR))
-        self._field(path_grid, "Base de datos de pedidos", self.var_base_dir,
-                    row=0, col=0, colspan=1)
-
-        self.var_template_dir = ctk.StringVar(value=str(apertura_service.DEFAULT_TEMPLATE_DIR))
-        self._field(path_grid, "Plantilla 00 DOCUMENTACIÓN", self.var_template_dir,
-                    row=1, col=0, colspan=1)
-
+        # ─── Rutas (se configuran en Ajustes ▸ Fuentes de datos) ──────────
+        # Sin UI aquí: las rutas se editan/persisten en Ajustes; aquí solo se
+        # leen para localizar y procesar el pedido.
+        from core import preferences as _pref
+        self.var_base_dir = ctk.StringVar(
+            value=str(_pref.get("apertura_base_dir") or apertura_service.DEFAULT_BASE_DIR))
+        self.var_template_dir = ctk.StringVar(
+            value=str(_pref.get("apertura_template_dir") or apertura_service.DEFAULT_TEMPLATE_DIR))
         self.var_planning_tpl = ctk.StringVar(
-            value=str(apertura_service.DEFAULT_PLANNING_TEMPLATE)
-        )
-        self._field(path_grid, "Plantilla Planning (.xlsm)", self.var_planning_tpl,
-                    row=2, col=0, colspan=1)
-
+            value=str(_pref.get("apertura_planning_tpl") or apertura_service.DEFAULT_PLANNING_TEMPLATE))
         self.var_erp_tpl = ctk.StringVar(
-            value=str(apertura_service.DEFAULT_ERP_TEMPLATE)
-        )
-        self._field(path_grid, "Plantilla VDDL ERP (.xlsx)", self.var_erp_tpl,
-                    row=3, col=0, colspan=1)
-
-        # ─── Botonera ─────────────────────────────────────────────────────
-        btn_row = ctk.CTkFrame(wrapper, fg_color="transparent")
-        btn_row.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_4))
-
-        self.btn_locate = ctk.CTkButton(
-            btn_row, text="🔍  Localizar pedido", command=self._on_locate,
-            **theme.button_kwargs("secondary"),
-        )
-        self.btn_locate.pack(side="left", padx=(0, theme.SPACE_2))
-
-        self.btn_create = ctk.CTkButton(
-            btn_row, text="✦  Procesar pedido", command=self._on_create,
-            **theme.button_kwargs("primary"),
-        )
-        self.btn_create.pack(side="left", padx=(0, theme.SPACE_2))
-
-        ctk.CTkButton(
-            btn_row, text="Limpiar formulario", command=self._on_clear,
-            **theme.button_kwargs("ghost"),
-        ).pack(side="left", padx=(0, theme.SPACE_2))
-
-        self.btn_open = ctk.CTkButton(
-            btn_row, text="Abrir carpeta del pedido", command=self._on_open,
-            state="disabled",
-            **theme.button_kwargs("secondary"),
-        )
-        self.btn_open.pack(side="left")
-
-        # ─── Resultado / log ──────────────────────────────────────────────
-        result_card = self._card(wrapper, "Resultado")
-        self.txt_result = ctk.CTkTextbox(
-            result_card, height=160, font=theme.FONT_MONO,
-            fg_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN,
-            border_width=1, border_color=theme.BORDER, corner_radius=theme.RADIUS_MD,
-        )
-        self.txt_result.pack(fill="both", expand=True,
-                             padx=theme.SPACE_4, pady=(0, theme.SPACE_4))
-        self.txt_result.insert("1.0",
-            "1) Mete el código del pedido (p.ej. P-26-050) y pulsa «Localizar pedido»\n"
-            "   para verificar que existe la carpeta y que se rellenan Cliente/Material.\n"
-            "2) Pulsa «Procesar pedido» para crear «00 DOCUMENTACIÓN» dentro de\n"
-            "   «2-Tecnico», copiar la plantilla, generar Planning y VDDL.")
-        self.txt_result.configure(state="disabled")
+            value=str(_pref.get("apertura_erp_tpl") or apertura_service.DEFAULT_ERP_TEMPLATE))
 
     # ── Helpers de UI ──────────────────────────────────────────────────────
 
@@ -473,7 +461,6 @@ class AperturaView(ctk.CTkFrame):
     def _on_clear(self) -> None:
         self.var_pedido.set("P-26-")
         self.var_suffix.set("S00")
-        self.var_año.set(str(datetime.now().year))
         self.var_sref.set("")
         self.var_cliente.set("")
         self.var_material.set("")
@@ -494,17 +481,13 @@ class AperturaView(ctk.CTkFrame):
     def _on_locate(self) -> None:
         """Busca la carpeta del pedido y rellena Cliente/Material auto."""
         pedido_raw = self.var_pedido.get().strip()
-        año_raw = self.var_año.get().strip()
         try:
             folder_id, suf = apertura_service.parse_pedido(pedido_raw)
         except ValueError as exc:
             messagebox.showerror("Pedido inválido", str(exc), parent=self)
             return
-        try:
-            año = int(año_raw) if año_raw else datetime.now().year
-        except ValueError:
-            messagebox.showerror("Año inválido", "Introduce un año numérico.", parent=self)
-            return
+        # El año va implícito en el código del pedido (P-26-… → 2026)
+        año = _year_from_pedido(pedido_raw) or datetime.now().year
 
         base_raw = self.var_base_dir.get().strip() or str(apertura_service.DEFAULT_BASE_DIR)
         from pathlib import Path as _P
@@ -590,8 +573,8 @@ class AperturaView(ctk.CTkFrame):
             sref = self.var_sref.get().strip()
             cliente = self.var_cliente.get().strip()
             material = self.var_material.get().strip()
-            año_raw = self.var_año.get().strip()
-            año = int(año_raw) if año_raw else None
+            # El año se deduce del código del pedido (P-26-… → 2026)
+            año = _year_from_pedido(pedido)
             f_entrada = _parse_iso(self.var_f_entrada.get())
             f_prevista = _parse_iso(self.var_f_prevista.get())
             create_if_missing = bool(self.var_create_if_missing.get())

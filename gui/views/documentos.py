@@ -385,6 +385,17 @@ class DocumentosView(ctk.CTkFrame):
         self._save_filters()
         self._apply_filters_and_render()
 
+    def set_pedido_filter(self, pedido: str) -> None:
+        """Filtra la tabla por un Nº Pedido concreto (salto desde Seguimiento)."""
+        for ent in (self.ent_q, self.ent_cliente, self.ent_resp):
+            ent.delete(0, "end")
+        self.ent_pedido.delete(0, "end")
+        self.ent_pedido.insert(0, pedido or "")
+        self._active_kpi = None
+        self._page = 0
+        self._save_filters()
+        self._apply_filters_and_render()
+
     def _apply_filters_and_render(self) -> None:
         q = self.ent_q.get().strip()
         pedido = self.ent_pedido.get().strip()

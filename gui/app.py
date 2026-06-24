@@ -25,12 +25,12 @@ class DocFlowLiteApp(ctk.CTk):
         {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
         {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
             {"key": "apertura",   "label": "Apertura",    "icon": "✚"},
+            {"key": "ofertas",    "label": "Ofertas",     "icon": "✉"},
             {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
             {"key": "documentos", "label": "Documentos",  "icon": "◫"},
         ]},
         {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
             {"key": "inbox",         "label": "Bandeja AI",         "icon": "✦"},
-            {"key": "ofertas",       "label": "Ofertas",            "icon": "✉"},
             {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩"},
             {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠"},
             {"key": "docusign",      "label": "DocuSign",           "icon": "✒"},
@@ -371,7 +371,7 @@ class DocFlowLiteApp(ctk.CTk):
             view = DocumentosView(self.content, on_navigate=self.navigate)
         elif key == "pedidos":
             from gui.views.pedidos import PedidosView
-            view = PedidosView(self.content)
+            view = PedidosView(self.content, on_open_documentos=self._open_doc_pedido)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)
@@ -403,6 +403,16 @@ class DocFlowLiteApp(ctk.CTk):
             return None
         self._views[key] = view
         return view
+
+    def _open_doc_pedido(self, pedido: str) -> None:
+        """Abre la sección Documentos filtrada por un pedido (desde Seguimiento)."""
+        view = self._views.get("documentos") or self._make_view("documentos")
+        self.navigate("documentos")
+        if view is not None and hasattr(view, "set_pedido_filter"):
+            try:
+                view.set_pedido_filter(pedido)
+            except Exception:
+                logger.debug("set_pedido_filter falló", exc_info=True)
 
     # ── Atajos teclado (con guarda de foco en Entry) ─────────────────────────
 
