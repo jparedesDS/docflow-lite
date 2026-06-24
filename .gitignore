@@ -19,6 +19,7 @@ state/*.json
 state/*.log
 state/*.lock
 state/*.json.lock
+state/reports/
 
 # PyInstaller
 *.spec.bak

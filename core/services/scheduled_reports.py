@@ -61,6 +61,30 @@ DEFAULT_SCHEDULES: list[dict] = [
         "options": {"variant": "completo"},
         "last_run": None,
     },
+    {
+        "id": "weekly-interactive",
+        "type": "interactive",
+        "title": "Informe Interactivo Semanal (web)",
+        "description": "Informe HTML interactivo (KPIs, gráficos, riesgo) adjunto por email cada lunes",
+        "enabled": False,
+        "frequency": "weekly",
+        "schedule": {"day_of_week": "mon", "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {"period": "weekly"},
+        "last_run": None,
+    },
+    {
+        "id": "monthly-interactive",
+        "type": "interactive",
+        "title": "Informe Interactivo Mensual (web)",
+        "description": "Informe HTML interactivo del mes adjunto por email el día 1 de cada mes",
+        "enabled": False,
+        "frequency": "monthly",
+        "schedule": {"day_of_month": 1, "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {"period": "monthly"},
+        "last_run": None,
+    },
 ]
 
 
@@ -176,6 +200,14 @@ def execute_schedule(schedule_id: str) -> dict:
                 return {"status": "error", "error": "Indica al menos un destinatario en To"}
             variant = options.get("variant", "completo")
             result = send_executive_pdf_email(to=to, cc=cc, variant=variant)
+            count = len(result.get("recipients", []))
+        elif sched["type"] == "interactive":
+            from core.services.interactive_report import send_email
+            if not to:
+                record_run(schedule_id, "error", error="Sin destinatarios (To)")
+                return {"status": "error", "error": "Indica al menos un destinatario en To"}
+            period = options.get("period", "weekly")
+            result = send_email(period=period, to=to, cc=cc)
             count = len(result.get("recipients", []))
         else:
             record_run(schedule_id, "error", error=f"Tipo desconocido: {sched['type']}")

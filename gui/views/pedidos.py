@@ -357,6 +357,55 @@ class PedidosView(ctk.CTkFrame):
         pbar.pack(fill="x", pady=(theme.SPACE_2, 0))
         pbar.set(min(pct, 100) / 100)
 
+        # Acción: generar el informe web completo de este pedido
+        ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
+        actions = ctk.CTkFrame(inner, fg_color="transparent")
+        actions.pack(fill="x", pady=(0, theme.SPACE_1))
+        ctk.CTkLabel(actions, text="Informe web completo: ficha, KPIs, predicción y tabla de toda la documentación.",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
+            side="left", fill="x", expand=True)
+        btn = ctk.CTkButton(
+            actions, text="Informe del pedido  →", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF")
+        btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
+        btn.pack(side="right")
+
+    # ── Informe del pedido (HTML interactivo) ────────────────────────────────
+
+    def _generate_pedido_report(self, pedido: str, btn=None) -> None:
+        if btn is not None:
+            btn.configure(state="disabled", text="Generando…")
+
+        def worker():
+            try:
+                from core.services import interactive_report as ir
+                path, _ = ir.generate_pedido(pedido)
+                self.after(0, lambda: self._pedido_report_done(path, btn))
+            except Exception as exc:
+                logger.exception("Error generando informe del pedido")
+                msg = str(exc)
+                self.after(0, lambda: self._pedido_report_fail(msg, btn))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _restore_report_btn(self, btn) -> None:
+        if btn is not None and btn.winfo_exists():
+            btn.configure(state="normal", text="Informe del pedido  →")
+
+    def _pedido_report_done(self, path, btn) -> None:
+        import webbrowser
+        try:
+            webbrowser.open(path.as_uri())
+        except Exception:
+            logger.debug("No se pudo abrir el navegador", exc_info=True)
+        ui.toast(self, "Informe listo", path.name, kind="success")
+        self._restore_report_btn(btn)
+
+    def _pedido_report_fail(self, msg, btn) -> None:
+        ui.toast(self, "No se pudo generar el informe", msg, kind="info")
+        self._restore_report_btn(btn)
+
     # ── 2) Estado de la documentación: barra segmentada ──────────────────────
 
     def _build_estado_documental(self, parent, kpis: dict, avg_dias) -> None:

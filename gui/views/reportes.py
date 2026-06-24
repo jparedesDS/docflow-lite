@@ -528,7 +528,7 @@ class ReportesView(ctk.CTkFrame):
         recipients = sched.get("recipients") or {}
         to = recipients.get("to") or []
         cc = recipients.get("cc") or []
-        if sched["type"] in ("executive", "executive_pdf") and (to or cc):
+        if sched["type"] in ("executive", "executive_pdf", "interactive") and (to or cc):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
                 footer, text=f"  ·  {recip_text}",
@@ -1129,10 +1129,10 @@ class EditScheduleDialog(ctk.CTkToplevel):
         self.ent_min.insert(0, f"{schedule.get('minute', 0):02d}")
         self.ent_min.pack(side="left")
 
-        # Recipients (executive y executive_pdf usan To/Cc)
+        # Recipients (executive / executive_pdf / interactive usan To/Cc)
         recipients = sched.get("recipients") or {}
         self.cmb_variant = None
-        if sched["type"] in ("executive", "executive_pdf"):
+        if sched["type"] in ("executive", "executive_pdf", "interactive"):
             ctk.CTkLabel(self, text="Destinatarios To",
                          font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
