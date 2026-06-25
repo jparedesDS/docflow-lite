@@ -791,7 +791,8 @@ class ReportesView(ctk.CTkFrame):
         recipients = sched.get("recipients") or {}
         to = recipients.get("to") or []
         cc = recipients.get("cc") or []
-        if sched["type"] in ("executive", "executive_pdf", "interactive") and (to or cc):
+        if sched["type"] in ("executive", "executive_pdf", "interactive",
+                              "interactive_executive") and (to or cc):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
                 footer, text=f"  ·  {recip_text}",
@@ -1395,7 +1396,7 @@ class EditScheduleDialog(ctk.CTkToplevel):
         # Recipients (executive / executive_pdf / interactive usan To/Cc)
         recipients = sched.get("recipients") or {}
         self.cmb_variant = None
-        if sched["type"] in ("executive", "executive_pdf", "interactive"):
+        if sched["type"] in ("executive", "executive_pdf", "interactive", "interactive_executive"):
             ctk.CTkLabel(self, text="Destinatarios To",
                          font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
@@ -1405,7 +1406,22 @@ class EditScheduleDialog(ctk.CTkToplevel):
                 text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
             )
             self.ent_to.insert(0, ", ".join(recipients.get("to") or []))
-            self.ent_to.pack(fill="x", padx=22, pady=(0, 8))
+            self.ent_to.pack(fill="x", padx=22, pady=(0, 6))
+
+            # Botones rápidos: añadir el email de cada compañero al To
+            tqa = ctk.CTkFrame(self, fg_color="transparent")
+            tqa.pack(fill="x", padx=22, pady=(0, 10))
+            tbtns = [("Limpiar", lambda: self._set_to(""))]
+            tbtns += [(ini, (lambda e=(info.get("emails") or [""])[0]: self._add_email_to_to(e)))
+                      for ini, info in sorted(USERS.items())]
+            for c in range(5):
+                tqa.grid_columnconfigure(c, weight=1, uniform="tqa")
+            for i, (lbl, cmd) in enumerate(tbtns):
+                ctk.CTkButton(
+                    tqa, text=lbl, height=26, corner_radius=6, font=theme.FONT_TINY,
+                    fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
+                    text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+                    command=cmd).grid(row=i // 5, column=i % 5, sticky="ew", padx=2, pady=2)
 
             ctk.CTkLabel(self, text="Cc",
                          font=theme.font(10, "bold"),
@@ -1504,6 +1520,20 @@ class EditScheduleDialog(ctk.CTkToplevel):
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
             command=self._save,
         ).pack(side="right")
+
+    def _set_to(self, value: str) -> None:
+        self.ent_to.delete(0, "end")
+        if value:
+            self.ent_to.insert(0, value)
+
+    def _add_email_to_to(self, email: str) -> None:
+        if not email:
+            return
+        cur = self.ent_to.get().strip()
+        parts = [p.strip() for p in cur.split(",") if p.strip()]
+        if email not in parts:
+            parts.append(email)
+        self._set_to(", ".join(parts))
 
     def _set_filter(self, value: str) -> None:
         self.ent_filter.delete(0, "end")
