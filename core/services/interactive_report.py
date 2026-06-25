@@ -1640,3 +1640,57 @@ def send_pedido_email(pedido: str, to: list[str] | None = None,
     result["status"] = "sent"
     result["recipients"] = to
     return result
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  Resumen a Microsoft Teams (tarjeta de notificación)
+# ════════════════════════════════════════════════════════════════════════════
+
+def post_period_to_teams(period: str = "weekly", ref_date: datetime | None = None) -> dict:
+    data = build_report_data(period, ref_date, with_ai=False)
+    k = {x["label"]: x["value"] for x in data["kpis"]}
+    facts = [
+        ("Movimientos", k.get("Movimientos")),
+        ("Enviados", k.get("Enviados")),
+        ("Aprobados", k.get("Aprobados")),
+        ("Devoluciones", k.get("Devoluciones")),
+        ("Aprobación global", f"{data['snapshot']['pct_global']}%"),
+        ("En riesgo (+15d)", data["snapshot"]["riesgo"]),
+    ]
+    from core.services import teams
+    return teams.post_card(data["meta"]["title"], data["meta"]["period_label"],
+                           data["narrative"], facts)
+
+
+def post_pedido_to_teams(pedido: str) -> dict:
+    data = build_pedido_report_data(pedido, with_ai=False)
+    k = data["kpis"]
+    facts = [
+        ("Cliente", data["info"]["cliente"] or "—"),
+        ("Documentos", k["total"]),
+        ("Aprobado", f"{k['pct']}%"),
+        ("Enviados", k["enviados"]),
+        ("Devoluciones", k["devoluciones"]),
+        ("Sin enviar", k["sin_enviar"]),
+        ("Críticos", k["criticos"]),
+    ]
+    from core.services import teams
+    return teams.post_card(data["meta"]["title"], data["info"]["cliente"],
+                           data["narrative"], facts)
+
+
+def post_executive_to_teams(ref_date: datetime | None = None) -> dict:
+    data = build_executive_report_data(ref_date, with_ai=False)
+    t = data["totals"]
+    riesgo = next((k["value"] for k in data["kpis"] if k["label"] == "En riesgo"), 0)
+    facts = [
+        ("Documentos", t["total"]),
+        ("Aprobación global", f"{t['pct']}%"),
+        ("Enviados", t["enviados"]),
+        ("Devoluciones", t["devoluciones"]),
+        ("En riesgo (+15d)", riesgo),
+        ("Pedidos en riesgo", len(data["pred"])),
+    ]
+    from core.services import teams
+    return teams.post_card(data["meta"]["title"], data["meta"]["period_label"],
+                           data["narrative"], facts)

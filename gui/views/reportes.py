@@ -175,6 +175,8 @@ class ReportesView(ctk.CTkFrame):
                       **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
         ctk.CTkButton(btns, text="Enviar por email", command=self._ir_send,
                       **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
+        ctk.CTkButton(btns, text="Enviar a Teams", command=self._ir_teams,
+                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
 
         self._ir_status = ctk.CTkLabel(wrap, text="", font=theme.FONT_SMALL,
                                        text_color=theme.TEXT_MUTED, anchor="w", justify="left")
@@ -320,6 +322,44 @@ class ReportesView(ctk.CTkFrame):
         self._ir_status.configure(
             text=f"✓  Informe enviado a {len(to)} destinatario(s).", text_color=theme.GREEN)
         ui.toast(self, "Enviado", ", ".join(to), kind="success")
+
+    def _ir_teams(self) -> None:
+        target = self._ir_target()
+        if target is None:
+            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            return
+        from core.services import teams
+        if not teams.is_configured():
+            ui.toast(self, "Teams no configurado",
+                     "Pega la URL del webhook en Ajustes ▸ Fuentes de datos.", kind="info")
+            return
+        self._ir_status.configure(text="⏳  Publicando resumen en Teams…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                if target[0] == "pedido":
+                    res = self._ir.post_pedido_to_teams(target[1])
+                elif target[0] == "executive":
+                    res = self._ir.post_executive_to_teams()
+                else:
+                    period, ref = target[1]
+                    res = self._ir.post_period_to_teams(period, ref)
+                self.after(0, lambda: self._ir_teams_done(res))
+            except Exception as exc:
+                logger.exception("Error publicando en Teams")
+                msg = str(exc)
+                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ir_teams_done(self, res: dict) -> None:
+        if res.get("ok"):
+            self._ir_status.configure(text="✓  Resumen publicado en Teams.", text_color=theme.GREEN)
+            ui.toast(self, "Teams", "Resumen publicado en el canal.", kind="success")
+        else:
+            msg = res.get("error", "Error desconocido")
+            self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED)
+            ui.toast(self, "No se pudo publicar en Teams", msg, kind="info")
 
     # ════════════════════════════════════════════════════════════════════════
     #  TAB 1: EXCELS
