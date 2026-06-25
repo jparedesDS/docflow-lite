@@ -21,6 +21,7 @@ from core.services import reports as reports_service
 from core.services import scheduled_reports as sched_service
 from core.services import weekly_summary as weekly_service
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
@@ -119,14 +120,216 @@ class ReportesView(ctk.CTkFrame):
                         padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
         self.tab_excels = self.tabs.add("Excels")
+        self.tab_interactive = self.tabs.add("Informe interactivo")
         self.tab_summaries = self.tabs.add("Resúmenes por email")
         self.tab_scheduled = self.tabs.add("Programados")
         self.tab_data = self.tabs.add("Fuente de datos")
 
         self._build_tab_excels(self.tab_excels)
+        self._build_tab_interactive(self.tab_interactive)
         self._build_tab_summaries(self.tab_summaries)
         self._build_tab_scheduled(self.tab_scheduled)
         self._build_tab_data(self.tab_data)
+
+    # ════════════════════════════════════════════════════════════════════════
+    #  INFORME INTERACTIVO (HTML semanal / mensual / por pedido)
+    # ════════════════════════════════════════════════════════════════════════
+
+    def _build_tab_interactive(self, tab) -> None:
+        from core.services import interactive_report as ir
+        self._ir = ir
+        self._ir_mode = "period"          # "period" | "pedido"
+        self._ir_period = "weekly"
+        self._ir_periods: dict[str, str] = {}
+        self._ir_pedidos: dict[str, str] = {}
+        self._ir_last_path = None
+
+        wrap = ScrollFrame(tab)
+        wrap.pack(fill="both", expand=True, padx=theme.SPACE_2, pady=theme.SPACE_2)
+
+        ctk.CTkLabel(
+            wrap, text="Genera un informe web interactivo (un único archivo .html con "
+            "gráficos y resumen IA), listo para abrir, archivar o enviar por email.",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+            anchor="w", justify="left", wraplength=720).pack(
+            anchor="w", pady=(theme.SPACE_2, theme.SPACE_3))
+
+        card = ctk.CTkFrame(wrap, fg_color=theme.BG_CARD, corner_radius=12,
+                            border_width=1, border_color=theme.BORDER)
+        card.pack(fill="x", pady=(0, theme.SPACE_3))
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_4)
+
+        ctk.CTkLabel(inner, text="PERIODO", font=theme.FONT_TINY,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self._ir_seg = ctk.CTkSegmentedButton(
+            inner, values=["Semanal", "Mensual", "Por pedido"], command=self._on_ir_period,
+            height=theme.HEIGHT_BUTTON_SM, font=theme.FONT_SMALL_BOLD,
+            corner_radius=theme.RADIUS_MD, fg_color=theme.BG_PAGE,
+            selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
+            unselected_color=theme.BG_PAGE, unselected_hover_color=theme.BG_INPUT,
+            text_color=theme.TEXT_MAIN)
+        self._ir_seg.set("Semanal")
+        self._ir_seg.pack(anchor="w", pady=(theme.SPACE_1, theme.SPACE_3))
+
+        self._ir_sel_label = ctk.CTkLabel(inner, text="SEMANA / MES", font=theme.FONT_TINY,
+                                          text_color=theme.TEXT_MUTED, anchor="w")
+        self._ir_sel_label.pack(anchor="w")
+        self._ir_menu = ctk.CTkOptionMenu(
+            inner, values=["—"], width=380, height=theme.HEIGHT_INPUT,
+            font=theme.FONT_SMALL, fg_color=theme.BG_INPUT, button_color=theme.ACCENT,
+            button_hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_MAIN)
+        self._ir_menu.pack(anchor="w", pady=(theme.SPACE_1, theme.SPACE_3))
+
+        ctk.CTkLabel(inner, text="DESTINATARIOS · para enviar por email (separa con coma)",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        self._ir_to = ctk.CTkEntry(inner, width=440, height=theme.HEIGHT_INPUT,
+                                    placeholder_text="nombre@empresa.com, otro@empresa.com",
+                                    font=theme.FONT_SMALL)
+        self._ir_to.pack(anchor="w", pady=(theme.SPACE_1, theme.SPACE_4))
+
+        btns = ctk.CTkFrame(inner, fg_color="transparent")
+        btns.pack(anchor="w")
+        ctk.CTkButton(btns, text="Generar y abrir", command=self._ir_generate,
+                      **theme.button_kwargs("primary")).pack(side="left")
+        ctk.CTkButton(btns, text="Abrir carpeta", command=self._ir_open_folder,
+                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
+        ctk.CTkButton(btns, text="Enviar por email", command=self._ir_send,
+                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        self._ir_status = ctk.CTkLabel(wrap, text="", font=theme.FONT_SMALL,
+                                       text_color=theme.TEXT_MUTED, anchor="w", justify="left")
+        self._ir_status.pack(anchor="w", pady=(theme.SPACE_2, 0))
+
+        self._ir_refresh_periods()
+
+    def _on_ir_period(self, value: str) -> None:
+        if value == "Por pedido":
+            self._ir_mode = "pedido"
+            self._ir_sel_label.configure(text="PEDIDO")
+            self._ir_refresh_pedidos()
+        else:
+            self._ir_mode = "period"
+            self._ir_period = "monthly" if value == "Mensual" else "weekly"
+            self._ir_sel_label.configure(text="SEMANA / MES")
+            self._ir_refresh_periods()
+
+    def _ir_refresh_pedidos(self) -> None:
+        self._ir_menu.configure(values=["Cargando…"])
+        self._ir_menu.set("Cargando…")
+
+        def worker():
+            try:
+                rows = self._ir.list_pedidos()
+            except Exception:
+                logger.exception("No se pudieron listar pedidos")
+                rows = []
+            self.after(0, lambda: self._ir_set_pedidos(rows))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ir_set_pedidos(self, rows) -> None:
+        self._ir_pedidos = {}
+        labels = []
+        for r in rows:
+            cli = (r.get("cliente") or "").strip()
+            label = f"{r['pedido']} · {cli}" if cli else r["pedido"]
+            self._ir_pedidos[label] = r["pedido"]
+            labels.append(label)
+        labels = labels or ["—"]
+        self._ir_menu.configure(values=labels)
+        self._ir_menu.set(labels[0])
+
+    def _ir_refresh_periods(self) -> None:
+        try:
+            periods = self._ir.get_available_periods(self._ir_period, n=8)
+        except Exception:
+            logger.exception("No se pudieron calcular los periodos")
+            periods = []
+        self._ir_periods = {label: iso for label, iso in periods}
+        labels = list(self._ir_periods.keys()) or ["—"]
+        self._ir_menu.configure(values=labels)
+        self._ir_menu.set(labels[0])
+
+    def _ir_refdate(self):
+        iso = self._ir_periods.get(self._ir_menu.get())
+        return datetime.fromisoformat(iso) if iso else None
+
+    def _ir_target(self):
+        """('pedido', pedido) o ('period', (period, ref)) según el modo, o None."""
+        if self._ir_mode == "pedido":
+            pedido = self._ir_pedidos.get(self._ir_menu.get())
+            return ("pedido", pedido) if pedido else None
+        return ("period", (self._ir_period, self._ir_refdate()))
+
+    def _ir_generate(self) -> None:
+        target = self._ir_target()
+        if target is None:
+            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            return
+        self._ir_status.configure(text="⏳  Generando informe…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                if target[0] == "pedido":
+                    path, _ = self._ir.generate_pedido(target[1])
+                else:
+                    period, ref = target[1]
+                    path, _ = self._ir.generate(period, ref)
+                self.after(0, lambda: self._ir_generated(path))
+            except Exception as exc:
+                logger.exception("Error generando informe interactivo")
+                msg = str(exc)
+                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ir_generated(self, path) -> None:
+        self._ir_last_path = path
+        self._ir_status.configure(text=f"✓  Informe generado: {path.name}", text_color=theme.GREEN)
+        try:
+            webbrowser.open(path.as_uri())
+        except Exception:
+            logger.debug("No se pudo abrir el navegador", exc_info=True)
+        ui.toast(self, "Informe listo", path.name, kind="success")
+
+    def _ir_open_folder(self) -> None:
+        try:
+            os.startfile(str(self._ir.reports_dir()))  # noqa: S606 (Windows)
+        except Exception as exc:
+            ui.toast(self, "No se pudo abrir la carpeta", str(exc), kind="info")
+
+    def _ir_send(self) -> None:
+        raw = self._ir_to.get().strip()
+        to = [x.strip() for x in raw.replace(";", ",").split(",") if x.strip()]
+        if not to:
+            ui.toast(self, "Sin destinatarios", "Indica al menos un email.", kind="info")
+            return
+        target = self._ir_target()
+        if target is None:
+            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            return
+        self._ir_status.configure(text="⏳  Enviando informe…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                if target[0] == "pedido":
+                    self._ir.send_pedido_email(pedido=target[1], to=to)
+                else:
+                    period, ref = target[1]
+                    self._ir.send_email(period=period, to=to, ref_date=ref)
+                self.after(0, lambda: self._ir_sent(to))
+            except Exception as exc:
+                logger.exception("Error enviando informe interactivo")
+                msg = str(exc)
+                self.after(0, lambda: self._ir_status.configure(text=f"✗  {msg}", text_color=theme.RED))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ir_sent(self, to) -> None:
+        self._ir_status.configure(
+            text=f"✓  Informe enviado a {len(to)} destinatario(s).", text_color=theme.GREEN)
+        ui.toast(self, "Enviado", ", ".join(to), kind="success")
 
     # ════════════════════════════════════════════════════════════════════════
     #  TAB 1: EXCELS
