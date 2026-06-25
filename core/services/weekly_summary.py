@@ -582,6 +582,11 @@ def _team_avg_pct(docs: list) -> float:
     return round(approved / total * 100, 1) if total else 0
 
 
+def _user_email(initials: str) -> str | None:
+    emails = USERS.get(initials, {}).get("emails") or []
+    return emails[0] if emails else None
+
+
 def post_personal_to_teams(initials: str = "JP") -> dict:
     """Publica en Teams la tarjeta de pendientes de una persona."""
     from core.services import teams
@@ -589,7 +594,7 @@ def post_personal_to_teams(initials: str = "JP") -> dict:
     start, end = _get_weekly_range()
     pdata = _collect_personal_data(initials, docs, _team_avg_pct(docs),
                                    start.strftime("%d/%m"), end.strftime("%d/%m"))
-    return teams.post_card(**_personal_card_args(pdata))
+    return teams.post_card(recipient=_user_email(initials), **_personal_card_args(pdata))
 
 
 def post_all_personal_to_teams(user_filter=None) -> dict:
@@ -610,7 +615,7 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
         if pdata["my_pending_total"] == 0:
             skipped.append(initials)
             continue
-        res = teams.post_card(**_personal_card_args(pdata))
+        res = teams.post_card(recipient=_user_email(initials), **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
     return {"status": "sent", "sent": sent, "skipped": skipped,

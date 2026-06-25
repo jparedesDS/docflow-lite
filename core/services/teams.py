@@ -34,7 +34,8 @@ def is_configured() -> bool:
 
 
 def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
-                   link_text: str | None, link_url: str | None) -> dict:
+                   link_text: str | None, link_url: str | None,
+                   recipient: str | None = None) -> dict:
     body: list[dict] = [
         {"type": "TextBlock", "size": "Large", "weight": "Bolder", "text": title, "wrap": True},
     ]
@@ -54,24 +55,35 @@ def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
     }
     if link_text and link_url:
         card["actions"] = [{"type": "Action.OpenUrl", "title": link_text, "url": link_url}]
-    return {
+    msg = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
             "content": card,
         }],
     }
+    # Campo opcional para flujos de Power Automate que publican en chat privado:
+    # el flujo lee `recipient` (email/UPN) y enruta el mensaje a esa persona.
+    # Un webhook de canal lo ignora sin más.
+    if recipient:
+        msg["recipient"] = recipient
+    return msg
 
 
 def post_card(title: str, subtitle: str = "", text: str = "", facts: list | None = None,
               link_text: str | None = None, link_url: str | None = None,
-              timeout: int = 15) -> dict:
-    """Publica una tarjeta en el canal configurado. Devuelve {ok, status|error}."""
+              recipient: str | None = None, timeout: int = 15) -> dict:
+    """Publica una tarjeta vía el webhook configurado. Devuelve {ok, status|error}.
+
+    `recipient` (email/UPN) es opcional: lo añade al payload para flujos de
+    Power Automate que publiquen en el chat privado de esa persona; un webhook
+    de canal lo ignora.
+    """
     url = webhook_url()
     if not url:
         return {"ok": False, "error": "No hay webhook de Teams configurado "
                                       "(Ajustes ▸ Fuentes de datos)."}
-    payload = _adaptive_card(title, subtitle, text, facts or [], link_text, link_url)
+    payload = _adaptive_card(title, subtitle, text, facts or [], link_text, link_url, recipient)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST")
