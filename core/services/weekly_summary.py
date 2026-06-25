@@ -572,9 +572,6 @@ def _personal_card_args(pdata: dict) -> dict:
         tipo = (d.get("tipo") or "").strip()
         if tipo:
             seg.append(tipo)
-        titulo = (d.get("titulo") or "").strip()
-        if titulo:
-            seg.append(titulo[:45])
         seg.append(estado)
         lines.append(f"{emoji} " + " · ".join(seg) + suf)
     rest = pend - 8
