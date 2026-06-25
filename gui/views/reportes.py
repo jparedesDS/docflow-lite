@@ -797,7 +797,7 @@ class ReportesView(ctk.CTkFrame):
                 footer, text=f"  ·  {recip_text}",
                 font=theme.font(10), text_color=theme.TEXT_MUTED, anchor="w",
             ).pack(side="left")
-        elif sched["type"] == "personal":
+        elif sched["type"] in ("personal", "teams_personal"):
             uf = (sched.get("options") or {}).get("user_filter", "all")
             filter_text = "Todo el equipo" if uf == "all" else f"Filtro: {uf}"
             ctk.CTkLabel(
@@ -1450,18 +1450,26 @@ class EditScheduleDialog(ctk.CTkToplevel):
             else:
                 self.ent_filter.insert(0, str(uf))
             self.ent_filter.pack(fill="x", padx=22, pady=(0, 8))
-
-            ctk.CTkLabel(self, text="Cc (añadido a cada email)",
-                         font=theme.font(10, "bold"),
-                         text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
-            self.ent_cc = ctk.CTkEntry(
-                self, height=34, corner_radius=8,
-                fg_color=theme.BG_INPUT, border_color=theme.BORDER,
-                text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
-            )
-            self.ent_cc.insert(0, ", ".join(recipients.get("cc") or []))
-            self.ent_cc.pack(fill="x", padx=22, pady=(0, 12))
             self.ent_to = None
+
+            if sched["type"] == "teams_personal":
+                # Teams se publica en el chat privado de cada persona: no hay Cc.
+                ctk.CTkLabel(
+                    self, text="Cada persona recibe sus pendientes en su chat privado de Teams.",
+                    font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+                    justify="left", wraplength=500).pack(anchor="w", padx=22, pady=(0, 12))
+                self.ent_cc = None
+            else:
+                ctk.CTkLabel(self, text="Cc (añadido a cada email)",
+                             font=theme.font(10, "bold"),
+                             text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
+                self.ent_cc = ctk.CTkEntry(
+                    self, height=34, corner_radius=8,
+                    fg_color=theme.BG_INPUT, border_color=theme.BORDER,
+                    text_color=theme.TEXT_MAIN, font=theme.FONT_BODY,
+                )
+                self.ent_cc.insert(0, ", ".join(recipients.get("cc") or []))
+                self.ent_cc.pack(fill="x", padx=22, pady=(0, 12))
 
         # Footer
         footer = ctk.CTkFrame(self, fg_color="transparent")
@@ -1505,7 +1513,8 @@ class EditScheduleDialog(ctk.CTkToplevel):
             schedule_changes = {"day_of_week": day_key, "hour": hour, "minute": minute}
 
         changes: dict = {"schedule": schedule_changes}
-        cc = [s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
+        cc = ([s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
+              if self.ent_cc is not None else [])
 
         if self.ent_to is not None:  # executive / executive_pdf
             to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]

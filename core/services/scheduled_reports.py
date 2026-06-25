@@ -85,6 +85,18 @@ DEFAULT_SCHEDULES: list[dict] = [
         "options": {},
         "last_run": None,
     },
+    {
+        "id": "weekly-teams-personal",
+        "type": "teams_personal",
+        "title": "Pendientes por Teams (Personal)",
+        "description": "Publica en el chat privado de Teams de cada persona sus documentos pendientes — semanal",
+        "enabled": False,
+        "frequency": "weekly",
+        "schedule": {"day_of_week": "mon", "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {"user_filter": "all"},
+        "last_run": None,
+    },
 ]
 
 
@@ -228,6 +240,17 @@ def execute_schedule(schedule_id: str) -> dict:
                 return {"status": "error", "error": "Indica al menos un destinatario en To"}
             result = send_executive_html_email(to=to, cc=cc)
             count = len(result.get("recipients", []))
+        elif sched["type"] == "teams_personal":
+            from core.services.teams import is_configured
+            from core.services.weekly_summary import post_all_personal_to_teams
+            if not is_configured():
+                record_run(schedule_id, "error", error="Webhook de Teams no configurado")
+                return {"status": "error", "error": "Configura el webhook de Teams en Ajustes"}
+            uf = user_filter
+            if isinstance(uf, str) and uf != "all" and uf:
+                uf = [s.strip() for s in uf.split(",") if s.strip()]
+            result = post_all_personal_to_teams(user_filter=uf)
+            count = result.get("count", 0)
         else:
             record_run(schedule_id, "error", error=f"Tipo desconocido: {sched['type']}")
             return {"status": "error", "error": f"Tipo desconocido: {sched['type']}"}
