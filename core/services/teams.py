@@ -36,7 +36,8 @@ def is_configured() -> bool:
 
 
 def _summary_html(title: str, subtitle: str, text: str, facts: list,
-                  link_text: str | None = None, link_url: str | None = None) -> str:
+                  link_text: str | None = None, link_url: str | None = None,
+                  extra_links: list | None = None) -> str:
     """Resumen en HTML para la acción «Publicar mensaje» del flowbot (Teams
     renderiza HTML básico: negrita, saltos, listas y enlaces)."""
     def esc(s):
@@ -56,14 +57,20 @@ def _summary_html(title: str, subtitle: str, text: str, facts: list,
         if lines:
             items = "".join(f"<li>{esc(ln)}</li>" for ln in lines)
             parts.append(f"<ul>{items}</ul>")
+    link_bits = []
     if link_text and link_url:
-        parts.append(f'🔗 <a href="{esc(link_url)}">{esc(link_text)}</a>')
+        link_bits.append(f'<a href="{esc(link_url)}">{esc(link_text)}</a>')
+    for lt, lu in (extra_links or []):
+        if lt and lu:
+            link_bits.append(f'<a href="{esc(lu)}">{esc(lt)}</a>')
+    if link_bits:
+        parts.append("🔗 " + " &nbsp;·&nbsp; ".join(link_bits))
     return "<br>".join(parts)
 
 
 def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
                    link_text: str | None, link_url: str | None,
-                   recipient: str | None = None) -> dict:
+                   recipient: str | None = None, extra_links: list | None = None) -> dict:
     body: list[dict] = [
         {"type": "TextBlock", "size": "Large", "weight": "Bolder", "text": title, "wrap": True},
     ]
@@ -102,13 +109,14 @@ def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
         # Alternativa robusta: mensaje HTML simple para la acción «Publicar
         # mensaje» (sin JSON de tarjeta adaptable, que da problemas en el flowbot).
         msg["message_html"] = _summary_html(title, subtitle, text, facts,
-                                            link_text, link_url)
+                                            link_text, link_url, extra_links)
     return msg
 
 
 def post_card(title: str, subtitle: str = "", text: str = "", facts: list | None = None,
               link_text: str | None = None, link_url: str | None = None,
-              recipient: str | None = None, timeout: int = 15) -> dict:
+              recipient: str | None = None, extra_links: list | None = None,
+              timeout: int = 15) -> dict:
     """Publica una tarjeta vía el webhook configurado. Devuelve {ok, status|error}.
 
     `recipient` (email/UPN) es opcional: lo añade al payload para flujos de
@@ -119,7 +127,8 @@ def post_card(title: str, subtitle: str = "", text: str = "", facts: list | None
     if not url:
         return {"ok": False, "error": "No hay webhook de Teams configurado "
                                       "(Ajustes ▸ Fuentes de datos)."}
-    payload = _adaptive_card(title, subtitle, text, facts or [], link_text, link_url, recipient)
+    payload = _adaptive_card(title, subtitle, text, facts or [], link_text, link_url,
+                             recipient, extra_links)
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST")

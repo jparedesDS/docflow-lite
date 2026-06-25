@@ -603,25 +603,108 @@ def _user_email(initials: str) -> str | None:
     return emails[0] if emails else None
 
 
-def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None]:
-    """Renderiza el informe personal HTML y devuelve (texto_enlace, url).
+def _render_personal_pdf(pdata: dict) -> bytes:
+    """PDF del informe personal (KPIs + tabla de pendientes) con reportlab.
+    Nextcloud lo renderiza en línea en el navegador."""
+    from io import BytesIO
 
-    Prioridad: 1) Nextcloud (URL http clicable, compartible) si está configurado;
-    2) carpeta de red `reports_share_dir`; 3) carpeta local state/reports."""
+    from reportlab.lib import colors
+    from reportlab.lib.colors import HexColor
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
+                                     TableStyle)
+
+    ACCENT = HexColor("#4F46E5")
+    INK = HexColor("#0F172A")
+    SUB = HexColor("#475569")
+    RED = HexColor("#DC2626")
+    AMBER = HexColor("#D97706")
+    BORDER = HexColor("#E2E8F0")
+    LIGHT = HexColor("#F1F5F9")
+
+    h1 = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=16, textColor=colors.white, leading=20)
+    sub = ParagraphStyle("sub", fontName="Helvetica", fontSize=10, textColor=HexColor("#C7D2FE"), leading=14)
+    kp = ParagraphStyle("kp", fontName="Helvetica-Bold", fontSize=10, textColor=SUB)
+    th = ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=8, textColor=colors.white)
+    td = ParagraphStyle("td", fontName="Helvetica", fontSize=8.5, textColor=INK)
+
+    flow = []
+    band = Table([[Paragraph("DocFlow · Documentos pendientes", h1)],
+                  [Paragraph(f"{pdata['nombre']} ({pdata['initials']}) · "
+                             f"{pdata['my_pending_total']} pendientes", sub)]], colWidths=[170 * mm])
+    band.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), ACCENT),
+                              ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+                              ("TOPPADDING", (0, 0), (0, 0), 12), ("BOTTOMPADDING", (0, -1), (0, -1), 12)]))
+    flow += [band, Spacer(1, 6 * mm)]
+    flow.append(Paragraph(
+        f"Devoluciones: {pdata['my_devol_count']} &nbsp;·&nbsp; Sin enviar: "
+        f"{pdata['my_sin_enviar_count']} &nbsp;·&nbsp; Críticos: {pdata['my_critical']} &nbsp;·&nbsp; "
+        f"Vencen ≤3d: {pdata['my_expiring']}", kp))
+    flow.append(Spacer(1, 4 * mm))
+
+    header = [Paragraph(h, th) for h in ("Nº Doc. EIPSA", "Tipo", "Estado", "Días")]
+    rows = [header]
+    for d in pdata.get("my_pending", []):
+        dias = d.get("dias") or 0
+        rows.append([Paragraph(str(d.get("doc_eipsa", "")), td),
+                     Paragraph(str(d.get("tipo", "")), td),
+                     Paragraph(str(d.get("estado_display") or d.get("estado", "")), td),
+                     Paragraph(str(dias) if dias else "—", td)])
+    table = Table(rows, colWidths=[55 * mm, 38 * mm, 47 * mm, 20 * mm], repeatRows=1)
+    style = [("BACKGROUND", (0, 0), (-1, 0), ACCENT),
+             ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+             ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+             ("LINEBELOW", (0, 0), (-1, -1), 0.4, BORDER),
+             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
+             ("ALIGN", (3, 0), (3, -1), "CENTER"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE")]
+    for i, d in enumerate(pdata.get("my_pending", []), start=1):
+        dias = d.get("dias") or 0
+        if dias > 15:
+            style.append(("TEXTCOLOR", (3, i), (3, i), RED))
+        elif dias > 7:
+            style.append(("TEXTCOLOR", (3, i), (3, i), AMBER))
+    table.setStyle(TableStyle(style))
+    flow.append(table)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=20 * mm, rightMargin=20 * mm,
+                            topMargin=16 * mm, bottomMargin=18 * mm,
+                            title=f"Pendientes {pdata['initials']}", author="DocFlow")
+    doc.build(flow)
+    return buf.getvalue()
+
+
+def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None, list]:
+    """Genera el informe personal y devuelve (texto_enlace, url, enlaces_extra).
+
+    Con Nextcloud configurado sube PDF (vista en línea) + HTML (descarga) y
+    enlaza ambos. Sin Nextcloud, cae a fichero local/red (solo HTML)."""
     html = _render_personal_html(pdata)
-    fname = f"Pendientes_{initials}.html"
+    html_name = f"Pendientes_{initials}.html"
+    pdf_name = f"Pendientes_{initials}.pdf"
 
-    # 1) Nextcloud → URL http clicable en Teams/email
+    # 1) Nextcloud → URLs http clicables (PDF se ve en línea, HTML se descarga)
     try:
         from core.services import nextcloud
         if nextcloud.is_configured():
-            url = nextcloud.upload_report(fname, html)
-            if url:
-                return "Descargar informe completo", url
+            pdf_url = html_url = None
+            try:
+                pdf_url = nextcloud.upload_report(pdf_name, _render_personal_pdf(pdata),
+                                                  content_type="application/pdf", view=True)
+            except Exception:
+                logger.debug("PDF personal falló", exc_info=True)
+            html_url = nextcloud.upload_report(html_name, html)
+            if pdf_url:
+                extra = [("Versión HTML", html_url)] if html_url else []
+                return "Ver informe (PDF)", pdf_url, extra
+            if html_url:
+                return "Descargar informe (HTML)", html_url, []
     except Exception:
         logger.debug("Subida a Nextcloud falló", exc_info=True)
 
-    # 2/3) Fallback a fichero (red o local)
+    # 2/3) Fallback a fichero (red o local), solo HTML
     try:
         from pathlib import Path
 
@@ -631,12 +714,12 @@ def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str |
         share = (pref.get("reports_share_dir") or "").strip()
         base = Path(share) if share else reports_dir()
         base.mkdir(parents=True, exist_ok=True)
-        path = base / fname
+        path = base / html_name
         path.write_text(html, encoding="utf-8")
-        return "Abrir informe completo", path.as_uri()
+        return "Abrir informe completo", path.as_uri(), []
     except Exception:
         logger.debug("No se pudo guardar/enlazar el informe personal", exc_info=True)
-        return None, None
+        return None, None, []
 
 
 def post_personal_to_teams(initials: str = "JP") -> dict:
@@ -646,9 +729,9 @@ def post_personal_to_teams(initials: str = "JP") -> dict:
     start, end = _get_weekly_range()
     pdata = _collect_personal_data(initials, docs, _team_avg_pct(docs),
                                    start.strftime("%d/%m"), end.strftime("%d/%m"))
-    link_text, link_url = _save_personal_report(initials, pdata)
+    link_text, link_url, extra = _save_personal_report(initials, pdata)
     return teams.post_card(recipient=_user_email(initials), link_text=link_text,
-                           link_url=link_url, **_personal_card_args(pdata))
+                           link_url=link_url, extra_links=extra, **_personal_card_args(pdata))
 
 
 def post_all_personal_to_teams(user_filter=None) -> dict:
@@ -669,9 +752,9 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
         if pdata["my_pending_total"] == 0:
             skipped.append(initials)
             continue
-        link_text, link_url = _save_personal_report(initials, pdata)
+        link_text, link_url, extra = _save_personal_report(initials, pdata)
         res = teams.post_card(recipient=_user_email(initials), link_text=link_text,
-                              link_url=link_url, **_personal_card_args(pdata))
+                              link_url=link_url, extra_links=extra, **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
     return {"status": "sent", "sent": sent, "skipped": skipped,
