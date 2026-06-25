@@ -50,18 +50,6 @@ DEFAULT_SCHEDULES: list[dict] = [
         "last_run": None,
     },
     {
-        "id": "monthly-executive-pdf",
-        "type": "executive_pdf",
-        "title": "Reporte Ejecutivo Mensual (PDF)",
-        "description": "PDF con KPIs, gráficos, ranking y predicción — adjunto por email el día 1 de cada mes",
-        "enabled": False,
-        "frequency": "monthly",
-        "schedule": {"day_of_month": 1, "hour": 8, "minute": 0},
-        "recipients": {"to": [], "cc": []},
-        "options": {"variant": "completo"},
-        "last_run": None,
-    },
-    {
         "id": "weekly-interactive",
         "type": "interactive",
         "title": "Informe Interactivo Semanal (web)",
@@ -109,17 +97,29 @@ LABEL_TO_DAY = {v: k for k, v in DAY_LABELS.items()}
 
 # ── Persistencia ──────────────────────────────────────────────────────────────
 
+# Schedules retirados: se purgan del JSON aunque ya estuvieran persistidos
+# (el PDF ejecutivo se sustituyó por el informe interactivo web).
+_DEPRECATED_IDS = {"monthly-executive-pdf"}
+
+
 def _load() -> list[dict]:
     data = read_json(SCHEDULES_FILE, default=None)
-    if data is None or not isinstance(data, list):
+    changed = data is None or not isinstance(data, list)
+    if changed:
         data = [dict(s) for s in DEFAULT_SCHEDULES]
-        _save(data)
+    # Purga schedules obsoletos
+    if any(s.get("id") in _DEPRECATED_IDS for s in data):
+        data = [s for s in data if s.get("id") not in _DEPRECATED_IDS]
+        changed = True
     # Asegurar que existen los schedules por defecto (idempotente al añadir nuevos en código)
     ids = {s.get("id") for s in data}
     for default in DEFAULT_SCHEDULES:
         if default["id"] not in ids:
             data.append(dict(default))
             ids.add(default["id"])
+            changed = True
+    if changed:
+        _save(data)
     return data
 
 
