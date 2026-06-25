@@ -284,6 +284,15 @@ class AjustesView(ctk.CTkFrame):
             justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
         self.ent_reports_share = self._setting_row(self.datos_scroll, "Carpeta compartida de informes",
                                                    "reports_share_dir", default="", width=420)
+        ctk.CTkLabel(
+            self.datos_scroll,
+            text="Enlace público de Nextcloud (https://data.eipsa.es/index.php/s/…) con «Permitir "
+                 "subir y editar» activado: DocFlow sube ahí el informe y enlaza una URL clicable. "
+                 "Si el enlace tiene contraseña, ponla en .env (NEXTCLOUD_SHARE_PASS).",
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+            justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
+        self.ent_nextcloud = self._setting_row(self.datos_scroll, "Enlace público de Nextcloud",
+                                               "nextcloud_share_url", default="", width=420)
         ctk.CTkButton(self.datos_scroll, text="Guardar ajustes de Teams", height=34,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
@@ -292,6 +301,7 @@ class AjustesView(ctk.CTkFrame):
     def _save_teams_webhook(self) -> None:
         pref.set_value("teams_webhook_url", self.ent_teams.get().strip())
         pref.set_value("reports_share_dir", self.ent_reports_share.get().strip())
+        pref.set_value("nextcloud_share_url", self.ent_nextcloud.get().strip())
         ui.toast(self, "Guardado", "Ajustes de Teams guardados.", kind="success")
 
     def _save_apertura_paths(self) -> None:

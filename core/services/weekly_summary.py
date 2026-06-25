@@ -604,8 +604,24 @@ def _user_email(initials: str) -> str | None:
 
 
 def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None]:
-    """Renderiza el informe personal HTML y lo guarda (carpeta de red configurada
-    en `reports_share_dir`, o state/reports). Devuelve (texto_enlace, url) o (None, None)."""
+    """Renderiza el informe personal HTML y devuelve (texto_enlace, url).
+
+    Prioridad: 1) Nextcloud (URL http clicable, compartible) si está configurado;
+    2) carpeta de red `reports_share_dir`; 3) carpeta local state/reports."""
+    html = _render_personal_html(pdata)
+    fname = f"Pendientes_{initials}.html"
+
+    # 1) Nextcloud → URL http clicable en Teams/email
+    try:
+        from core.services import nextcloud
+        if nextcloud.is_configured():
+            url = nextcloud.upload_report(fname, html)
+            if url:
+                return "Descargar informe completo", url
+    except Exception:
+        logger.debug("Subida a Nextcloud falló", exc_info=True)
+
+    # 2/3) Fallback a fichero (red o local)
     try:
         from pathlib import Path
 
@@ -615,8 +631,8 @@ def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str |
         share = (pref.get("reports_share_dir") or "").strip()
         base = Path(share) if share else reports_dir()
         base.mkdir(parents=True, exist_ok=True)
-        path = base / f"Pendientes_{initials}.html"
-        path.write_text(_render_personal_html(pdata), encoding="utf-8")
+        path = base / fname
+        path.write_text(html, encoding="utf-8")
         return "Abrir informe completo", path.as_uri()
     except Exception:
         logger.debug("No se pudo guardar/enlazar el informe personal", exc_info=True)
