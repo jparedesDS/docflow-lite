@@ -85,5 +85,5 @@ def upload_report(filename: str, content, content_type: str = "text/html; charse
         return None
     q = urllib.parse.quote(safe)
     if view:
-        return f"{base}/index.php/s/{token}?path=%2F&files={q}"
+        return f"{base}/index.php/s/{token}?path=%2F&files={q}#pdfviewer"
     return f"{base}/index.php/s/{token}/download?path=%2F&files={q}"
