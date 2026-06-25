@@ -62,11 +62,13 @@ def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
             "content": card,
         }],
     }
-    # Campo opcional para flujos de Power Automate que publican en chat privado:
-    # el flujo lee `recipient` (email/UPN) y enruta el mensaje a esa persona.
-    # Un webhook de canal lo ignora sin más.
+    # Campos opcionales para flujos de Power Automate que publican en chat
+    # privado: `recipient` (email/UPN) y `card` (la tarjeta "cruda", sin el
+    # envoltorio de attachments) para mapear la acción en un clic. Un webhook
+    # de canal los ignora sin más.
     if recipient:
         msg["recipient"] = recipient
+        msg["card"] = card
     return msg
 
 
