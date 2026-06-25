@@ -546,3 +546,72 @@ def get_personal_preview(initials: str = "JP") -> str:
 
     pdata = _collect_personal_data(initials, docs, team_avg_pct, week_start_str, week_end_str)
     return _render_personal_html(pdata)
+
+
+# ── Teams (tarjeta de pendientes por persona) ─────────────────────────────────
+
+def _personal_card_args(pdata: dict) -> dict:
+    pend = pdata.get("my_pending_total", 0)
+    nombre = pdata.get("nombre", pdata.get("initials", ""))
+    ini = pdata.get("initials", "")
+    facts = [
+        ("Pendientes", pend),
+        ("Devoluciones", pdata.get("my_devol_count", 0)),
+        ("Sin enviar", pdata.get("my_sin_enviar_count", 0)),
+        ("Críticos", pdata.get("my_critical", 0)),
+        ("Vencen ≤3d", pdata.get("my_expiring", 0)),
+    ]
+    lines = []
+    for d in pdata.get("my_pending", [])[:8]:
+        dias = f" · {d['dias']}d" if d.get("dias") else ""
+        doc = d.get("doc_eipsa") or (d.get("titulo", "")[:30])
+        lines.append(f"- {doc} — {d.get('estado_display', d.get('estado', ''))}{dias}")
+    rest = pend - 8
+    if rest > 0:
+        lines.append(f"… y {rest} más")
+    text = "\n\n".join(lines) if lines else "✓ Sin documentos pendientes. ¡Todo al día!"
+    subtitle = f"{pend} documento(s) por realizar" if pend else "Sin pendientes"
+    return {"title": f"Pendientes · {nombre} ({ini})", "subtitle": subtitle,
+            "text": text, "facts": facts}
+
+
+def _team_avg_pct(docs: list) -> float:
+    total = len(docs)
+    approved = sum(1 for d in docs
+                   if str(d.get("Estado", "") or "").lower().strip() in ESTADOS_APROBADOS)
+    return round(approved / total * 100, 1) if total else 0
+
+
+def post_personal_to_teams(initials: str = "JP") -> dict:
+    """Publica en Teams la tarjeta de pendientes de una persona."""
+    from core.services import teams
+    docs = monitoring_service.get_monitoring_data()
+    start, end = _get_weekly_range()
+    pdata = _collect_personal_data(initials, docs, _team_avg_pct(docs),
+                                   start.strftime("%d/%m"), end.strftime("%d/%m"))
+    return teams.post_card(**_personal_card_args(pdata))
+
+
+def post_all_personal_to_teams(user_filter=None) -> dict:
+    """Publica una tarjeta por persona (omite quienes no tienen pendientes)."""
+    from core.services import teams
+    docs = monitoring_service.get_monitoring_data()
+    start, end = _get_weekly_range()
+    ws, we = start.strftime("%d/%m"), end.strftime("%d/%m")
+    avg = _team_avg_pct(docs)
+
+    users = USERS
+    if user_filter and user_filter != "all" and isinstance(user_filter, list):
+        users = {k: v for k, v in USERS.items() if k in user_filter}
+
+    sent, skipped, errors = [], [], []
+    for initials in users:
+        pdata = _collect_personal_data(initials, docs, avg, ws, we)
+        if pdata["my_pending_total"] == 0:
+            skipped.append(initials)
+            continue
+        res = teams.post_card(**_personal_card_args(pdata))
+        (sent if res.get("ok") else errors).append(initials)
+        time.sleep(0.4)
+    return {"status": "sent", "sent": sent, "skipped": skipped,
+            "errors": errors, "count": len(sent)}

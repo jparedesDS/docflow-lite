@@ -522,7 +522,7 @@ class ReportesView(ctk.CTkFrame):
             grid, 0, 1,
             title="Monitoring Report (Personal)",
             icon="✉", color=theme.GREEN,
-            desc="Email individual por doc controller con sus pendientes (Com. Menores/Mayores · Comentado · Rechazado · Sin Enviar), KPIs y comparativa vs equipo.",
+            desc="Email individual por doc controller con sus pendientes (Com. Menores/Mayores · Comentado · Rechazado · Sin Enviar) y KPIs. También se puede publicar en Teams por persona.",
             kind="personal",
         )
 
@@ -586,6 +586,14 @@ class ReportesView(ctk.CTkFrame):
             fg_color=color, hover_color=theme.ACCENT_HOVER,
             command=lambda: self._open_send_dialog(kind),
         ).pack(side="left", fill="x", expand=True, padx=(8, 0))
+        if kind == "personal":
+            ctk.CTkButton(
+                actions, text="Teams", font=theme.FONT_BUTTON,
+                height=36, corner_radius=8,
+                fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
+                text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+                command=lambda v=preview_user_var: self._teams_personal(v.get() if v else "JP"),
+            ).pack(side="left", fill="x", expand=True, padx=(8, 0))
 
     def _open_preview(self, kind: str, initials: str = "JP") -> None:
         label = "Resumen Ejecutivo" if kind == "executive" else f"Personal de {initials}"
@@ -632,6 +640,35 @@ class ReportesView(ctk.CTkFrame):
     def _on_sent(self, kind: str) -> None:
         label = "Resumen ejecutivo" if kind == "executive" else "Resúmenes personales"
         self.lbl_status.configure(text=f"✓  {label} enviados", text_color=theme.GREEN)
+
+    def _teams_personal(self, initials: str) -> None:
+        from core.services import teams
+        if not teams.is_configured():
+            messagebox.showinfo(
+                "Teams no configurado",
+                "Pega la URL del webhook en Ajustes ▸ Fuentes de datos.")
+            return
+        self.lbl_status.configure(
+            text=f"⏳  Publicando pendientes de {initials} en Teams…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                res = weekly_service.post_personal_to_teams(initials)
+                self.after(0, lambda: self._teams_personal_done(res, initials))
+            except Exception as exc:
+                logger.exception("Error Teams personal")
+                err = str(exc)
+                self.after(0, lambda: self.lbl_status.configure(text=f"✗  {err}", text_color=theme.RED))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _teams_personal_done(self, res: dict, initials: str) -> None:
+        if res.get("ok"):
+            self.lbl_status.configure(
+                text=f"✓  Pendientes de {initials} publicados en Teams.", text_color=theme.GREEN)
+        else:
+            self.lbl_status.configure(
+                text=f"✗  {res.get('error', 'Error')}", text_color=theme.RED)
 
     # ════════════════════════════════════════════════════════════════════════
     #  TAB 3: PROGRAMADOS
