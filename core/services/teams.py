@@ -14,6 +14,7 @@ envuelta en el formato de mensaje que esperan los flujos de Teams.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -32,6 +33,21 @@ def webhook_url() -> str:
 
 def is_configured() -> bool:
     return bool(webhook_url())
+
+
+def _summary_html(title: str, subtitle: str, text: str, facts: list) -> str:
+    """Resumen en HTML simple (para la acción «Publicar mensaje» del flowbot,
+    que renderiza HTML básico y no exige JSON de tarjeta adaptable)."""
+    def esc(s):
+        return html.escape(str(s))
+    parts = [f"<b>{esc(title)}</b>"]
+    if subtitle:
+        parts.append(esc(subtitle))
+    if facts:
+        parts.append(" &nbsp;·&nbsp; ".join(f"<b>{esc(k)}:</b> {esc(v)}" for k, v in facts))
+    if text:
+        parts.append(esc(text).replace("\n\n", "<br>"))
+    return "<br>".join(parts)
 
 
 def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
@@ -72,6 +88,9 @@ def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
         msg["recipient"] = recipient
         msg["card"] = card
         msg["card_json"] = json.dumps(card, ensure_ascii=False)
+        # Alternativa robusta: mensaje HTML simple para la acción «Publicar
+        # mensaje» (sin JSON de tarjeta adaptable, que da problemas en el flowbot).
+        msg["message_html"] = _summary_html(title, subtitle, text, facts)
     return msg
 
 
