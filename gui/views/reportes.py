@@ -49,30 +49,9 @@ EXCEL_REPORTS = [
     },
 ]
 
-PDF_REPORTS = [
-    {
-        "id": "pdf_completo",
-        "kind": "pdf",
-        "variant": "completo",
-        "icon": "📄",
-        "color": theme.ACCENT,
-        "title": "Reporte Ejecutivo — Completo",
-        "desc": ("PDF presentable con portada, KPIs, distribución por estado (tarta), "
-                 "ranking de equipo, top clientes, predicción de riesgo y scorecard de clientes."),
-        "filename": "Reporte_Ejecutivo_Completo_{date}.pdf",
-    },
-    {
-        "id": "pdf_esencial",
-        "kind": "pdf",
-        "variant": "esencial",
-        "icon": "📃",
-        "color": theme.GREEN,
-        "title": "Reporte Ejecutivo — Esencial",
-        "desc": ("PDF corto (1-2 págs): portada, KPIs globales, distribución por estado "
-                 "y ranking de equipo. Va al grano."),
-        "filename": "Reporte_Ejecutivo_Esencial_{date}.pdf",
-    },
-]
+# El Reporte Ejecutivo en PDF se sustituyó por el informe interactivo HTML
+# (pestaña «Informe interactivo» → modo «Ejecutivo»). El servicio pdf_report
+# sigue disponible para uso programático si se necesitara.
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -360,15 +339,8 @@ class ReportesView(ctk.CTkFrame):
             row, col = divmod(i, 2)
             self._excel_cards[report["id"]] = self._build_excel_card(grid, row, col, report)
 
-        # PDF
-        ctk.CTkLabel(scroll, text="REPORTE EJECUTIVO (PDF)", font=theme.font(10, "bold"),
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(fill="x", pady=(16, 6))
-        pgrid = ctk.CTkFrame(scroll, fg_color="transparent")
-        pgrid.pack(fill="x")
-        pgrid.grid_columnconfigure((0, 1), weight=1, uniform="cols")
-        for i, report in enumerate(PDF_REPORTS):
-            row, col = divmod(i, 2)
-            self._excel_cards[report["id"]] = self._build_excel_card(pgrid, row, col, report)
+        # Nota: el Reporte Ejecutivo en PDF se ha sustituido por el informe
+        # interactivo (pestaña «Informe interactivo» → modo «Ejecutivo»).
 
     def _build_excel_card(self, parent, row: int, col: int, report: dict) -> dict:
         card = ctk.CTkFrame(

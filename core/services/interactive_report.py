@@ -392,7 +392,10 @@ _TABLE_CSS = """
   .detail-grid .lab{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
   .detail-grid .val{margin:2px 0 0;font-size:13px;word-break:break-word;}
   .detail-hist{margin:3px 0 0;font-family:'Consolas',monospace;font-size:12px;color:var(--sub);white-space:pre-wrap;word-break:break-word;}
-  @media print{.tbl-tools{display:none;}tr.detail{display:none!important;}}
+  .hd-actions{display:flex;align-items:center;gap:10px;}
+  .dl-btn{font:inherit;font-size:13px;font-weight:600;cursor:pointer;color:#fff;background:var(--accent);border:0;border-radius:8px;padding:8px 14px;display:inline-flex;align-items:center;gap:6px;}
+  .dl-btn:hover{filter:brightness(1.08);}
+  @media print{.tbl-tools,.no-print{display:none!important;}tr.detail{display:none!important;}}
 """
 
 _TABLE_JS = """
@@ -587,7 +590,10 @@ def render_html(data: dict) -> str:
         <p class="sub">{_esc(meta['period_label'])} · generado {_esc(meta['generated'])}</p>
       </div>
     </div>
-    <span class="badge">{'Mensual' if is_month else 'Semanal'}</span>
+    <div class="hd-actions">
+      <button class="dl-btn no-print" onclick="window.print()">⤓ Descargar PDF</button>
+      <span class="badge">{'Mensual' if is_month else 'Semanal'}</span>
+    </div>
   </header>
 
   <div class="narr">{_esc(data['narrative'])}</div>
@@ -1005,7 +1011,10 @@ def render_executive_html(data: dict) -> str:
         <p class="sub">{_esc(meta['period_label'])} · generado {_esc(meta['generated'])}</p>
       </div>
     </div>
-    <span class="badge">Ejecutivo</span>
+    <div class="hd-actions">
+      <button class="dl-btn no-print" onclick="window.print()">⤓ Descargar PDF</button>
+      <span class="badge">Ejecutivo</span>
+    </div>
   </header>
 
   <div class="narr">{_esc(data['narrative'])}</div>
@@ -1481,7 +1490,10 @@ def render_pedido_html(data: dict) -> str:
         <p class="sub">{_esc(info['cliente'] or 'Cliente n/d')} · generado {_esc(meta['generated'])}</p>
       </div>
     </div>
-    <span class="badge">Pedido</span>
+    <div class="hd-actions">
+      <button class="dl-btn no-print" onclick="window.print()">⤓ Descargar PDF</button>
+      <span class="badge">Pedido</span>
+    </div>
   </header>
 
   <div class="narr">{_esc(data['narrative'])}</div>
