@@ -53,7 +53,9 @@ def _summary_html(title: str, subtitle: str, text: str, facts: list,
         chips = " &nbsp;&#124;&nbsp; ".join(f"<b>{esc(v)}</b> {esc(k)}" for k, v in facts)
         parts.append(chips)
     if table_html:
+        parts.append("&nbsp;")            # línea en blanco de separación
         parts.append(table_html)          # HTML ya construido (no se escapa)
+        parts.append("&nbsp;")
     elif text:
         lines = [ln for ln in str(text).split("\n\n") if ln.strip()]
         if lines:
