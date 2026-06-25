@@ -89,10 +89,10 @@ DEFAULT_SCHEDULES: list[dict] = [
         "id": "weekly-teams-personal",
         "type": "teams_personal",
         "title": "Pendientes por Teams (Personal)",
-        "description": "Publica en el chat privado de Teams de cada persona sus documentos pendientes — semanal",
+        "description": "Publica en el chat privado de Teams de cada persona sus documentos pendientes — Lunes a Viernes",
         "enabled": False,
         "frequency": "weekly",
-        "schedule": {"day_of_week": "mon", "hour": 8, "minute": 0},
+        "schedule": {"day_of_week": "mon-fri", "hour": 8, "minute": 0},
         "recipients": {"to": [], "cc": []},
         "options": {"user_filter": "all"},
         "last_run": None,
@@ -101,8 +101,10 @@ DEFAULT_SCHEDULES: list[dict] = [
 
 
 DAY_LABELS = {
+    "mon-fri": "Lunes a Viernes",
     "mon": "Lunes", "tue": "Martes", "wed": "Miércoles", "thu": "Jueves",
     "fri": "Viernes", "sat": "Sábado", "sun": "Domingo",
+    "mon-sun": "Todos los días",
 }
 LABEL_TO_DAY = {v: k for k, v in DAY_LABELS.items()}
 

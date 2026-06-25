@@ -1449,8 +1449,25 @@ class EditScheduleDialog(ctk.CTkToplevel):
                 self.ent_filter.insert(0, ", ".join(uf))
             else:
                 self.ent_filter.insert(0, str(uf))
-            self.ent_filter.pack(fill="x", padx=22, pady=(0, 8))
+            self.ent_filter.pack(fill="x", padx=22, pady=(0, 6))
             self.ent_to = None
+
+            # Botones rápidos para añadir compañeros / todo el equipo
+            qa = ctk.CTkFrame(self, fg_color="transparent")
+            qa.pack(fill="x", padx=22, pady=(0, 10))
+            btns = [("Todo el equipo", lambda: self._set_filter("all")),
+                    ("Limpiar", lambda: self._set_filter(""))]
+            btns += [(ini, (lambda x=ini: self._add_to_filter(x)))
+                     for ini in sorted(USERS)]
+            cols = 5
+            for c in range(cols):
+                qa.grid_columnconfigure(c, weight=1, uniform="qa")
+            for i, (lbl, cmd) in enumerate(btns):
+                ctk.CTkButton(
+                    qa, text=lbl, height=26, corner_radius=6, font=theme.FONT_TINY,
+                    fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
+                    text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+                    command=cmd).grid(row=i // cols, column=i % cols, sticky="ew", padx=2, pady=2)
 
             if sched["type"] == "teams_personal":
                 # Teams se publica en el chat privado de cada persona: no hay Cc.
@@ -1487,6 +1504,19 @@ class EditScheduleDialog(ctk.CTkToplevel):
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
             command=self._save,
         ).pack(side="right")
+
+    def _set_filter(self, value: str) -> None:
+        self.ent_filter.delete(0, "end")
+        if value:
+            self.ent_filter.insert(0, value)
+
+    def _add_to_filter(self, initials: str) -> None:
+        cur = self.ent_filter.get().strip()
+        parts = ([] if not cur or cur.lower() == "all"
+                 else [p.strip().upper() for p in cur.split(",") if p.strip()])
+        if initials.upper() not in parts:
+            parts.append(initials.upper())
+        self._set_filter(", ".join(parts))
 
     def _save(self) -> None:
         try:
