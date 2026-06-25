@@ -369,6 +369,94 @@ def _chartjs_source() -> str:
         return ""
 
 
+# Búsqueda + filtro por estado + orden por columna + filas expandibles.
+# CSS y JS vanilla (sin dependencias), inyectados en los informes con tablas.
+_TABLE_CSS = """
+  .tbl-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;}
+  .tbl-search,.tbl-status{font:inherit;font-size:13px;padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);}
+  .tbl-search{flex:1;min-width:170px;}
+  .tbl-status{cursor:pointer;}
+  .tbl-count{font-size:12px;color:var(--muted);font-weight:600;}
+  .tbl-hint{font-size:12px;color:var(--muted);}
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}
+  th.sortable:hover{color:var(--accent);}
+  th[data-dir=asc]::after{content:' \\25B2';font-size:9px;}
+  th[data-dir=desc]::after{content:' \\25BC';font-size:9px;}
+  tr.expandable{cursor:pointer;}
+  tr.expandable:hover{background:#F8FAFC;}
+  tr.expandable.open{background:#F5F3FF;}
+  tr.expandable td:first-child::before{content:'\\25B8';color:var(--muted);margin-right:7px;font-size:10px;display:inline-block;}
+  tr.expandable.open td:first-child::before{content:'\\25BE';}
+  tr.detail td{background:#F8FAFC;padding:14px 16px;border-top:0;}
+  .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 20px;}
+  .detail-grid .lab{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+  .detail-grid .val{margin:2px 0 0;font-size:13px;word-break:break-word;}
+  .detail-hist{margin:3px 0 0;font-family:'Consolas',monospace;font-size:12px;color:var(--sub);white-space:pre-wrap;word-break:break-word;}
+  @media print{.tbl-tools{display:none;}tr.detail{display:none!important;}}
+"""
+
+_TABLE_JS = """
+(function(){
+  function norm(s){return (s||'').toString().toLowerCase();}
+  function bodyRows(t){return Array.prototype.slice.call(t.tBodies[0].rows);}
+  function dataRows(t){return bodyRows(t).filter(function(r){return !r.classList.contains('detail');});}
+  function applyFilter(panel){
+    var t=panel.querySelector('table'); if(!t||!t.tBodies.length) return;
+    var s=panel.querySelector('.tbl-search'); var q=norm(s?s.value:'');
+    var sel=panel.querySelector('.tbl-status'); var st=sel?sel.value:'';
+    var shown=0,total=0;
+    bodyRows(t).forEach(function(tr){
+      if(tr.classList.contains('detail')) return;
+      total++;
+      var okQ=!q||norm(tr.textContent).indexOf(q)>=0;
+      var okS=!st||st==='all'||tr.getAttribute('data-estado')===st;
+      var show=okQ&&okS; tr.hidden=!show;
+      var d=tr.nextElementSibling;
+      if(d&&d.classList.contains('detail')&&!show){d.hidden=true;tr.classList.remove('open');}
+      if(show) shown++;
+    });
+    var c=panel.querySelector('.tbl-count'); if(c) c.textContent=shown+' / '+total;
+  }
+  function wireSort(t){
+    t.querySelectorAll('th[data-sort]').forEach(function(th){
+      th.classList.add('sortable');
+      th.addEventListener('click',function(){
+        var idx=Array.prototype.indexOf.call(th.parentNode.children,th);
+        var num=th.getAttribute('data-sort')==='num';
+        var dir=th.getAttribute('data-dir')==='asc'?-1:1;
+        th.parentNode.querySelectorAll('th').forEach(function(o){o.removeAttribute('data-dir');});
+        th.setAttribute('data-dir',dir===1?'asc':'desc');
+        var b=t.tBodies[0]; var rows=dataRows(t);
+        rows.sort(function(a,c){
+          var x=a.cells[idx].textContent.trim(),y=c.cells[idx].textContent.trim();
+          if(num){x=parseFloat(x.replace(/[^0-9.-]/g,''))||0;y=parseFloat(y.replace(/[^0-9.-]/g,''))||0;return (x-y)*dir;}
+          return x.localeCompare(y,'es')*dir;
+        });
+        rows.forEach(function(r){b.appendChild(r);});
+      });
+    });
+  }
+  function wireExpand(t){
+    bodyRows(t).forEach(function(tr){
+      if(!tr.classList.contains('expandable')) return;
+      tr.addEventListener('click',function(){
+        var d=tr.nextElementSibling;
+        if(d&&d.classList.contains('detail')){d.hidden=!d.hidden;tr.classList.toggle('open');}
+      });
+    });
+  }
+  document.querySelectorAll('.tbl-panel').forEach(function(panel){
+    var t=panel.querySelector('table'); if(!t) return;
+    var s=panel.querySelector('.tbl-search'); if(s) s.addEventListener('input',function(){applyFilter(panel);});
+    var sel=panel.querySelector('.tbl-status'); if(sel) sel.addEventListener('change',function(){applyFilter(panel);});
+    if(t.querySelector('th[data-sort]')) wireSort(t);
+    wireExpand(t);
+    applyFilter(panel);
+  });
+})();
+"""
+
+
 def _kpi_card_html(k: dict) -> str:
     d = k["delta"]
     diff = d["diff"]
@@ -486,6 +574,7 @@ def render_html(data: dict) -> str:
   @media (max-width:720px) {{ .kpis,.snap {{ grid-template-columns:repeat(2,1fr); }} .grid2 {{ grid-template-columns:1fr; }} }}
   @media print {{ body {{ background:#fff; }} .wrap {{ max-width:none; }}
     .card,.kpi {{ break-inside:avoid; }} h2 {{ break-after:avoid; }} }}
+{_TABLE_CSS}
 </style>
 </head>
 <body>
@@ -536,9 +625,14 @@ def render_html(data: dict) -> str:
   </div>
 
   <h2>Documentos en riesgo · mayor antigüedad sin movimiento</h2>
-  <div class="card" style="padding:8px 12px">
+  <div class="tbl-panel card" style="padding:14px 16px">
+    <div class="tbl-tools">
+      <input class="tbl-search" type="text" placeholder="Buscar pedido, documento o responsable…">
+      <span class="tbl-count"></span>
+    </div>
     <table>
-      <thead><tr><th>Pedido</th><th>Documento</th><th>Resp.</th><th style="width:160px">Días sin mover</th></tr></thead>
+      <thead><tr><th data-sort="text">Pedido</th><th data-sort="text">Documento</th>
+        <th data-sort="text">Resp.</th><th data-sort="num" style="width:160px">Días sin mover</th></tr></thead>
       <tbody>{aging_html}</tbody>
     </table>
   </div>
@@ -582,6 +676,7 @@ def render_html(data: dict) -> str:
   }});
 }})();
 </script>
+<script>{_TABLE_JS}</script>
 </body>
 </html>"""
 
@@ -897,6 +992,7 @@ def render_executive_html(data: dict) -> str:
   @media (max-width:720px) {{ .kpis {{ grid-template-columns:repeat(3,1fr); }} .grid2 {{ grid-template-columns:1fr; }} }}
   @media print {{ body {{ background:#fff; }} .wrap {{ max-width:none; }}
     .card,.kpi {{ break-inside:avoid; }} h2 {{ break-after:avoid; }} }}
+{_TABLE_CSS}
 </style>
 </head>
 <body>
@@ -936,28 +1032,48 @@ def render_executive_html(data: dict) -> str:
   </div>
 
   <h2>Ranking de equipo</h2>
-  <div class="card" style="padding:8px 12px">
+  <div class="tbl-panel card" style="padding:14px 16px">
+    <div class="tbl-tools">
+      <input class="tbl-search" type="text" placeholder="Buscar responsable…">
+      <span class="tbl-count"></span>
+      <span class="tbl-hint">· clic en una columna para ordenar</span>
+    </div>
     <table>
-      <thead><tr><th>#</th><th>Responsable</th><th>Total</th><th>Aprob.</th>
-        <th>% Compl.</th><th>Devol.</th><th>Tasa Dev.</th><th>Críticos</th></tr></thead>
+      <thead><tr><th data-sort="num">#</th><th data-sort="text">Responsable</th>
+        <th data-sort="num">Total</th><th data-sort="num">Aprob.</th>
+        <th data-sort="num">% Compl.</th><th data-sort="num">Devol.</th>
+        <th data-sort="num">Tasa Dev.</th><th data-sort="num">Críticos</th></tr></thead>
       <tbody>{_exec_ranking_html(data['ranking'])}</tbody>
     </table>
   </div>
 
   <h2>Pedidos en riesgo de retraso</h2>
-  <div class="card" style="padding:8px 12px">
+  <div class="tbl-panel card" style="padding:14px 16px">
+    <div class="tbl-tools">
+      <input class="tbl-search" type="text" placeholder="Buscar pedido…">
+      <span class="tbl-count"></span>
+      <span class="tbl-hint">· clic en una columna para ordenar</span>
+    </div>
     <table>
-      <thead><tr><th>Pedido</th><th>% Real</th><th>% Esper.</th><th>Desv.</th>
-        <th>Aprob/Total</th><th>Fecha prev.</th><th>Pred. fin</th></tr></thead>
+      <thead><tr><th data-sort="text">Pedido</th><th data-sort="num">% Real</th>
+        <th data-sort="num">% Esper.</th><th data-sort="num">Desv.</th>
+        <th data-sort="text">Aprob/Total</th><th data-sort="text">Fecha prev.</th>
+        <th data-sort="text">Pred. fin</th></tr></thead>
       <tbody>{_exec_pred_html(data['pred'])}</tbody>
     </table>
   </div>
 
   <h2>Scorecard de clientes</h2>
-  <div class="card" style="padding:8px 12px">
+  <div class="tbl-panel card" style="padding:14px 16px">
+    <div class="tbl-tools">
+      <input class="tbl-search" type="text" placeholder="Buscar cliente…">
+      <span class="tbl-count"></span>
+      <span class="tbl-hint">· clic en una columna para ordenar</span>
+    </div>
     <table>
-      <thead><tr><th>Cliente</th><th>Score</th><th>% Aprob. 1ªRev</th>
-        <th>Días resp.</th><th>Crít. +30d</th><th>Total</th></tr></thead>
+      <thead><tr><th data-sort="text">Cliente</th><th data-sort="num">Score</th>
+        <th data-sort="num">% Aprob. 1ªRev</th><th data-sort="num">Días resp.</th>
+        <th data-sort="num">Crít. +30d</th><th data-sort="num">Total</th></tr></thead>
       <tbody>{_exec_scorecard_html(data['scorecard'])}</tbody>
     </table>
   </div>
@@ -990,6 +1106,7 @@ def render_executive_html(data: dict) -> str:
   }});
 }})();
 </script>
+<script>{_TABLE_JS}</script>
 </body>
 </html>"""
 
@@ -1108,12 +1225,16 @@ def build_pedido_report_data(pedido: str, with_ai: bool = True) -> dict:
         est = str(d.get("Estado", "") or "").lower().strip()
         if "aprobado" in est:
             ap += 1
+            ekey = "aprobado"
         elif est == "enviado":
             en += 1
+            ekey = "enviado"
         elif any(s in est for s in ("rechazado", "com.", "comentado", "devuel")):
             dev += 1
+            ekey = "devuelto"
         else:
             sin += 1
+            ekey = "sin"
         if _es_critico(d) and "aprobado" not in est:
             crit += 1
         de = _num(d.get("Días Envío"))
@@ -1128,11 +1249,14 @@ def build_pedido_report_data(pedido: str, with_ai: bool = True) -> dict:
             "titulo": str(d.get("Título", "") or ""),
             "tipo": str(d.get("Tipo Doc.", "") or ""),
             "rev": str(d.get("Nº Revisión", "") or ""),
-            "estado_label": lbl, "estado_color": col,
+            "estado_label": lbl, "estado_color": col, "estado_key": ekey,
             "fecha": monitoring_service.fmt_date_ddmmyyyy(d.get("Fecha Env. Doc.")),
             "first_send": monitoring_service.fmt_date_ddmmyyyy(ms["first_send"]),
             "first_appr": monitoring_service.fmt_date_ddmmyyyy(ms["first_approval"]),
             "dias": int(dd) if (dd and dd > 0) else 0,
+            "dias_envio": int(de) if de else None,
+            "info": str(d.get("Info/Review", "") or ""),
+            "historial": str(d.get("Historial Rev.", "") or ""),
             "critico": _es_critico(d),
         })
     table.sort(key=lambda r: r["doc"])
@@ -1214,7 +1338,8 @@ def _pedido_table_html(rows: list[dict]) -> str:
         dcol = RED if dias > 15 else (AMBER if dias > 7 else SLATE)
         crit = ' <span class="crit">crítico</span>' if r["critico"] else ""
         out.append(
-            f'<tr><td class="mono">{_esc(r["doc"])}</td>'
+            f'<tr class="expandable" data-estado="{r.get("estado_key", "")}">'
+            f'<td class="mono">{_esc(r["doc"])}</td>'
             f'<td class="muted">{_esc(r["titulo"][:52])}{crit}</td>'
             f'<td>{_esc(r["tipo"])}</td>'
             f'<td style="text-align:center">{_esc(r["rev"])}</td>'
@@ -1223,8 +1348,28 @@ def _pedido_table_html(rows: list[dict]) -> str:
             f'<td>{_esc(r["first_send"]) or "—"}</td>'
             f'<td>{_esc(r["first_appr"]) or "—"}</td>'
             f'<td style="text-align:center;color:{dcol};font-weight:600">{dias or "—"}</td></tr>'
+            f'<tr class="detail" hidden><td colspan="9">{_pedido_detail_html(r)}</td></tr>'
         )
     return "".join(out)
+
+
+def _pedido_detail_html(r: dict) -> str:
+    de = r.get("dias_envio")
+    items = [
+        ("Título completo", r.get("titulo") or "—"),
+        ("Info / Review", r.get("info") or "—"),
+        ("Días desde envío", de if de not in ("", None) else "—"),
+        ("Crítico", "Sí" if r.get("critico") else "No"),
+    ]
+    grid = "".join(
+        f'<div><p class="lab">{_esc(lab)}</p><p class="val">{_esc(val)}</p></div>'
+        for lab, val in items)
+    hist = (r.get("historial") or "").strip()
+    hist_html = (
+        f'<div style="margin-top:10px"><p class="lab">Historial de revisiones</p>'
+        f'<p class="detail-hist">{_esc(hist)}</p></div>'
+        if hist else "")
+    return f'<div class="detail-grid">{grid}</div>{hist_html}'
 
 
 def _pedido_prediction_html(pred: dict | None) -> str:
@@ -1323,6 +1468,7 @@ def render_pedido_html(data: dict) -> str:
   @media print {{ body {{ background:#fff; }} .wrap {{ max-width:none; }}
     .card,.kpi {{ break-inside:avoid; }} h2 {{ break-after:avoid; }}
     .pagebreak {{ break-before:page; }} }}
+{_TABLE_CSS}
 </style>
 </head>
 <body>
@@ -1384,7 +1530,19 @@ def render_pedido_html(data: dict) -> str:
 
   <div class="pagebreak"></div>
   <h2>Estado de toda la documentación · {k['total']} documentos</h2>
-  <div class="card" style="padding:8px 12px">
+  <div class="tbl-panel card" style="padding:14px 16px">
+    <div class="tbl-tools">
+      <input class="tbl-search" type="text" placeholder="Buscar Nº doc, título o tipo…">
+      <select class="tbl-status">
+        <option value="all">Todos los estados</option>
+        <option value="aprobado">Aprobado</option>
+        <option value="enviado">Enviado</option>
+        <option value="devuelto">Devuelto</option>
+        <option value="sin">Sin enviar</option>
+      </select>
+      <span class="tbl-count"></span>
+      <span class="tbl-hint">· clic en una fila para ver el detalle</span>
+    </div>
     <table>
       <thead><tr><th>Nº Doc. EIPSA</th><th>Título</th><th>Tipo</th><th>Rev.</th>
         <th>Estado</th><th>Fecha env.</th><th>1ª Env. (Rev.0)</th><th>1ª Aprob.</th><th>Días</th></tr></thead>
@@ -1420,6 +1578,7 @@ def render_pedido_html(data: dict) -> str:
   }});
 }})();
 </script>
+<script>{_TABLE_JS}</script>
 </body>
 </html>"""
 
