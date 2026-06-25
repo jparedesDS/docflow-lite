@@ -85,6 +85,18 @@ DEFAULT_SCHEDULES: list[dict] = [
         "options": {"period": "monthly"},
         "last_run": None,
     },
+    {
+        "id": "monthly-executive-html",
+        "type": "interactive_executive",
+        "title": "Reporte Ejecutivo Mensual (web)",
+        "description": "Reporte ejecutivo HTML interactivo (KPIs, ranking, riesgo, scorecard) adjunto por email el día 1 de cada mes",
+        "enabled": False,
+        "frequency": "monthly",
+        "schedule": {"day_of_month": 1, "hour": 8, "minute": 0},
+        "recipients": {"to": [], "cc": []},
+        "options": {},
+        "last_run": None,
+    },
 ]
 
 
@@ -208,6 +220,13 @@ def execute_schedule(schedule_id: str) -> dict:
                 return {"status": "error", "error": "Indica al menos un destinatario en To"}
             period = options.get("period", "weekly")
             result = send_email(period=period, to=to, cc=cc)
+            count = len(result.get("recipients", []))
+        elif sched["type"] == "interactive_executive":
+            from core.services.interactive_report import send_executive_html_email
+            if not to:
+                record_run(schedule_id, "error", error="Sin destinatarios (To)")
+                return {"status": "error", "error": "Indica al menos un destinatario en To"}
+            result = send_executive_html_email(to=to, cc=cc)
             count = len(result.get("recipients", []))
         else:
             record_run(schedule_id, "error", error=f"Tipo desconocido: {sched['type']}")

@@ -163,7 +163,7 @@ class ReportesView(ctk.CTkFrame):
         ctk.CTkLabel(inner, text="PERIODO", font=theme.FONT_TINY,
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         self._ir_seg = ctk.CTkSegmentedButton(
-            inner, values=["Semanal", "Mensual", "Por pedido"], command=self._on_ir_period,
+            inner, values=["Semanal", "Mensual", "Ejecutivo", "Por pedido"], command=self._on_ir_period,
             height=theme.HEIGHT_BUTTON_SM, font=theme.FONT_SMALL_BOLD,
             corner_radius=theme.RADIUS_MD, fg_color=theme.BG_PAGE,
             selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
@@ -208,6 +208,11 @@ class ReportesView(ctk.CTkFrame):
             self._ir_mode = "pedido"
             self._ir_sel_label.configure(text="PEDIDO")
             self._ir_refresh_pedidos()
+        elif value == "Ejecutivo":
+            self._ir_mode = "executive"
+            self._ir_sel_label.configure(text="ALCANCE")
+            self._ir_menu.configure(values=["Cartera completa · estado actual"])
+            self._ir_menu.set("Cartera completa · estado actual")
         else:
             self._ir_mode = "period"
             self._ir_period = "monthly" if value == "Mensual" else "weekly"
@@ -256,10 +261,12 @@ class ReportesView(ctk.CTkFrame):
         return datetime.fromisoformat(iso) if iso else None
 
     def _ir_target(self):
-        """('pedido', pedido) o ('period', (period, ref)) según el modo, o None."""
+        """('pedido', p) | ('executive', None) | ('period', (period, ref)) | None."""
         if self._ir_mode == "pedido":
             pedido = self._ir_pedidos.get(self._ir_menu.get())
             return ("pedido", pedido) if pedido else None
+        if self._ir_mode == "executive":
+            return ("executive", None)
         return ("period", (self._ir_period, self._ir_refdate()))
 
     def _ir_generate(self) -> None:
@@ -273,6 +280,8 @@ class ReportesView(ctk.CTkFrame):
             try:
                 if target[0] == "pedido":
                     path, _ = self._ir.generate_pedido(target[1])
+                elif target[0] == "executive":
+                    path, _ = self._ir.generate_executive()
                 else:
                     period, ref = target[1]
                     path, _ = self._ir.generate(period, ref)
@@ -315,6 +324,8 @@ class ReportesView(ctk.CTkFrame):
             try:
                 if target[0] == "pedido":
                     self._ir.send_pedido_email(pedido=target[1], to=to)
+                elif target[0] == "executive":
+                    self._ir.send_executive_html_email(to=to)
                 else:
                     period, ref = target[1]
                     self._ir.send_email(period=period, to=to, ref_date=ref)
