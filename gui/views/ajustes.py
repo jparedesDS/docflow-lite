@@ -293,14 +293,6 @@ class AjustesView(ctk.CTkFrame):
             justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
         self.ent_nextcloud = self._setting_row(self.datos_scroll, "Enlace público de Nextcloud",
                                                "nextcloud_share_url", default="", width=420)
-        ctk.CTkLabel(
-            self.datos_scroll,
-            text="Ruta de wkhtmltopdf.exe (para el PDF idéntico al email). Vacío = se busca en "
-                 "el PATH y en C:\\Program Files\\wkhtmltopdf\\bin\\. Descárgalo en wkhtmltopdf.org.",
-            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
-            justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
-        self.ent_wkhtml = self._setting_row(self.datos_scroll, "Ruta de wkhtmltopdf",
-                                            "wkhtmltopdf_path", default="", width=420)
         ctk.CTkButton(self.datos_scroll, text="Guardar ajustes de Teams", height=34,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
@@ -310,7 +302,6 @@ class AjustesView(ctk.CTkFrame):
         pref.set_value("teams_webhook_url", self.ent_teams.get().strip())
         pref.set_value("reports_share_dir", self.ent_reports_share.get().strip())
         pref.set_value("nextcloud_share_url", self.ent_nextcloud.get().strip())
-        pref.set_value("wkhtmltopdf_path", self.ent_wkhtml.get().strip())
         ui.toast(self, "Guardado", "Ajustes de Teams guardados.", kind="success")
 
     def _save_apertura_paths(self) -> None:

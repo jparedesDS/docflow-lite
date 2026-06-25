@@ -47,13 +47,9 @@ def _parse_share(share_url: str) -> tuple[str, str] | None:
         return None
 
 
-def upload_report(filename: str, content, content_type: str = "text/html; charset=utf-8",
-                  view: bool = False) -> str | None:
-    """Sube `content` (str o bytes) al recurso compartido y devuelve la URL http.
-
-    view=True → URL de visor (Nextcloud renderiza PDF/imágenes en línea).
-    view=False → URL de descarga directa (lo que requiere HTML, que Nextcloud
-    no renderiza por seguridad). None si no hay configuración o falla."""
+def upload_report(filename: str, content: str) -> str | None:
+    """Sube el HTML al recurso compartido y devuelve la URL http de descarga,
+    o None si no hay configuración o falla."""
     share_url = _share_url()
     if not share_url:
         return None
@@ -64,12 +60,11 @@ def upload_report(filename: str, content, content_type: str = "text/html; charse
     base, token = parsed
     pwd = os.getenv("NEXTCLOUD_SHARE_PASS", "")
     safe = filename.replace("/", "_").replace("\\", "_")
-    data = content if isinstance(content, (bytes, bytearray)) else str(content).encode("utf-8")
     put_url = f"{base}/public.php/webdav/{urllib.parse.quote(safe)}"
     auth = base64.b64encode(f"{token}:{pwd}".encode()).decode()
     req = urllib.request.Request(
-        put_url, data=data, method="PUT",
-        headers={"Authorization": f"Basic {auth}", "Content-Type": content_type})
+        put_url, data=content.encode("utf-8"), method="PUT",
+        headers={"Authorization": f"Basic {auth}", "Content-Type": "text/html; charset=utf-8"})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             code = resp.getcode()
@@ -84,6 +79,4 @@ def upload_report(filename: str, content, content_type: str = "text/html; charse
         logger.warning("Error subiendo a Nextcloud: %s", exc)
         return None
     q = urllib.parse.quote(safe)
-    if view:
-        return f"{base}/index.php/s/{token}?path=%2F&files={q}#pdfviewer"
     return f"{base}/index.php/s/{token}/download?path=%2F&files={q}"

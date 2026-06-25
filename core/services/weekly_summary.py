@@ -603,44 +603,25 @@ def _user_email(initials: str) -> str | None:
     return emails[0] if emails else None
 
 
-def _render_personal_pdf(pdata: dict) -> bytes | None:
-    """PDF idéntico al email: renderiza el mismo HTML (_render_personal_html)
-    con wkhtmltopdf. Devuelve None si wkhtmltopdf no está disponible."""
-    from core.services.htmlpdf import html_to_pdf
-    return html_to_pdf(_render_personal_html(pdata))
+def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None]:
+    """Guarda el informe personal (HTML) y devuelve (texto_enlace, url).
 
-
-def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None, list]:
-    """Genera el informe personal y devuelve (texto_enlace, url, enlaces_extra).
-
-    Con Nextcloud configurado sube PDF (vista en línea) + HTML (descarga) y
-    enlaza ambos. Sin Nextcloud, cae a fichero local/red (solo HTML)."""
+    Con Nextcloud configurado lo sube y enlaza la URL de descarga; si no, cae a
+    la carpeta de red `reports_share_dir` o local (file://)."""
     html = _render_personal_html(pdata)
-    html_name = f"Pendientes_{initials}.html"
-    pdf_name = f"Pendientes_{initials}.pdf"
+    fname = f"Pendientes_{initials}.html"
 
-    # 1) Nextcloud → URLs http clicables (PDF se ve en línea, HTML se descarga)
+    # 1) Nextcloud → URL http de descarga
     try:
         from core.services import nextcloud
         if nextcloud.is_configured():
-            pdf_url = html_url = None
-            try:
-                pdf_bytes = _render_personal_pdf(pdata)
-                if pdf_bytes:
-                    pdf_url = nextcloud.upload_report(pdf_name, pdf_bytes,
-                                                      content_type="application/pdf", view=True)
-            except Exception:
-                logger.debug("PDF personal falló", exc_info=True)
-            html_url = nextcloud.upload_report(html_name, html)
-            if pdf_url:
-                extra = [("Versión HTML", html_url)] if html_url else []
-                return "Ver informe (PDF)", pdf_url, extra
-            if html_url:
-                return "Descargar informe (HTML)", html_url, []
+            url = nextcloud.upload_report(fname, html)
+            if url:
+                return "Descargar informe", url
     except Exception:
         logger.debug("Subida a Nextcloud falló", exc_info=True)
 
-    # 2/3) Fallback a fichero (red o local), solo HTML
+    # 2) Fallback a fichero (red o local)
     try:
         from pathlib import Path
 
@@ -650,12 +631,12 @@ def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str |
         share = (pref.get("reports_share_dir") or "").strip()
         base = Path(share) if share else reports_dir()
         base.mkdir(parents=True, exist_ok=True)
-        path = base / html_name
+        path = base / fname
         path.write_text(html, encoding="utf-8")
-        return "Abrir informe completo", path.as_uri(), []
+        return "Abrir informe completo", path.as_uri()
     except Exception:
         logger.debug("No se pudo guardar/enlazar el informe personal", exc_info=True)
-        return None, None, []
+        return None, None
 
 
 def post_personal_to_teams(initials: str = "JP") -> dict:
@@ -665,9 +646,9 @@ def post_personal_to_teams(initials: str = "JP") -> dict:
     start, end = _get_weekly_range()
     pdata = _collect_personal_data(initials, docs, _team_avg_pct(docs),
                                    start.strftime("%d/%m"), end.strftime("%d/%m"))
-    link_text, link_url, extra = _save_personal_report(initials, pdata)
+    link_text, link_url = _save_personal_report(initials, pdata)
     return teams.post_card(recipient=_user_email(initials), link_text=link_text,
-                           link_url=link_url, extra_links=extra, **_personal_card_args(pdata))
+                           link_url=link_url, **_personal_card_args(pdata))
 
 
 def post_all_personal_to_teams(user_filter=None) -> dict:
@@ -688,9 +669,9 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
         if pdata["my_pending_total"] == 0:
             skipped.append(initials)
             continue
-        link_text, link_url, extra = _save_personal_report(initials, pdata)
+        link_text, link_url = _save_personal_report(initials, pdata)
         res = teams.post_card(recipient=_user_email(initials), link_text=link_text,
-                              link_url=link_url, extra_links=extra, **_personal_card_args(pdata))
+                              link_url=link_url, **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
     return {"status": "sent", "sent": sent, "skipped": skipped,
