@@ -1,11 +1,14 @@
-"""Conversión HTML→PDF de alta fidelidad con wkhtmltopdf (motor WebKit).
+"""Conversión HTML→PDF para que el informe salga como el email.
 
-Renderiza el HTML tal cual (colores, tablas, bordes redondeados…), de modo que
-el PDF salga idéntico al email. Requiere el binario wkhtmltopdf instalado:
-  Windows: https://wkhtmltopdf.org/downloads.html  (instalador MSI)
+Dos motores, por orden de fidelidad:
+  1. wkhtmltopdf (binario WebKit): PDF idéntico al email (bordes redondeados,
+     sombras, todo). Windows MSI: https://wkhtmltopdf.org/downloads.html
+  2. xhtml2pdf (librería pip, sin binario): fallback puro Python; reproduce
+     estructura, colores y tablas, pero pierde detalles CSS (radios, sombras).
 
-La ruta se resuelve por: pref `wkhtmltopdf_path` → env WKHTMLTOPDF_PATH → PATH →
-ubicaciones de instalación por defecto.
+`html_to_pdf` usa wkhtmltopdf si está disponible y, si no, xhtml2pdf.
+La ruta de wkhtmltopdf se resuelve por: pref `wkhtmltopdf_path` →
+env WKHTMLTOPDF_PATH → PATH → ubicaciones de instalación por defecto.
 """
 
 from __future__ import annotations
@@ -39,18 +42,16 @@ def binary() -> str | None:
     return None
 
 
+def _xhtml2pdf_available() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("xhtml2pdf") is not None
+
+
 def available() -> bool:
-    return binary() is not None
+    return binary() is not None or _xhtml2pdf_available()
 
 
-def html_to_pdf(html: str) -> bytes | None:
-    """Convierte un HTML completo a PDF. Devuelve los bytes o None si no está
-    wkhtmltopdf o falla la conversión."""
-    exe = binary()
-    if not exe:
-        logger.warning("wkhtmltopdf no encontrado: no se genera PDF "
-                       "(instálalo o configura la ruta en Ajustes).")
-        return None
+def _wkhtmltopdf(html: str, exe: str) -> bytes | None:
     in_path = out_path = None
     try:
         with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False,
@@ -76,3 +77,35 @@ def html_to_pdf(html: str) -> bytes | None:
                     os.remove(p)
             except Exception:
                 pass
+
+
+def _xhtml2pdf(html: str) -> bytes | None:
+    try:
+        from io import BytesIO
+
+        from xhtml2pdf import pisa
+        out = BytesIO()
+        status = pisa.CreatePDF(src=html, dest=out, encoding="utf-8")
+        if status.err:
+            logger.warning("xhtml2pdf devolvió %s error(es)", status.err)
+            return None
+        return out.getvalue()
+    except Exception as exc:
+        logger.warning("xhtml2pdf falló: %s", exc)
+        return None
+
+
+def html_to_pdf(html: str) -> bytes | None:
+    """Convierte un HTML completo a PDF (wkhtmltopdf si está; si no, xhtml2pdf).
+    Devuelve los bytes o None si no hay ningún motor disponible."""
+    exe = binary()
+    if exe:
+        pdf = _wkhtmltopdf(html, exe)
+        if pdf:
+            return pdf
+    pdf = _xhtml2pdf(html)
+    if pdf:
+        return pdf
+    logger.warning("No hay motor HTML→PDF (instala wkhtmltopdf o `pip install "
+                   "xhtml2pdf`): no se genera PDF.")
+    return None
