@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import urllib.error
 import urllib.request
 
 from core import preferences as pref
@@ -94,6 +95,19 @@ def post_card(title: str, subtitle: str = "", text: str = "", facts: list | None
             code = resp.getcode()
             logger.info("Teams webhook → HTTP %s", code)
             return {"ok": 200 <= code < 300, "status": code}
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", "replace").strip()[:400]
+        except Exception:
+            pass
+        logger.warning("Teams webhook HTTP %s: %s", exc.code, body or exc.reason)
+        hint = ""
+        if exc.code == 401:
+            hint = (" — 401: revisa que la URL del webhook esté completa (incluido "
+                    "el parámetro sig=…), que el flujo esté activado y que el "
+                    "disparador permita llamadas anónimas.")
+        return {"ok": False, "error": f"HTTP {exc.code}: {body or exc.reason}{hint}"}
     except Exception as exc:
         logger.warning("Error publicando en Teams: %s", exc)
         return {"ok": False, "error": str(exc)}
