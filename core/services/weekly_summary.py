@@ -201,6 +201,7 @@ def _collect_personal_data(initials: str, docs: list, team_avg_pct: float,
         my_pending.append({
             "doc_eipsa": str(d.get("Nº Doc. EIPSA", "") or ""),
             "titulo": str(d.get("Título", "") or ""),
+            "tipo": str(d.get("Tipo Doc.", "") or ""),
             "cliente": str(d.get("Cliente", "") or ""),
             "estado": estado_norm,
             "estado_display": estado_display,
@@ -565,9 +566,17 @@ def _personal_card_args(pdata: dict) -> dict:
     for d in pdata.get("my_pending", [])[:8]:
         dias = d.get("dias") or 0
         emoji = "🔴" if dias > 15 else ("🟡" if dias > 7 else "⚪")
-        doc = d.get("doc_eipsa") or (d.get("titulo", "")[:30])
+        estado = d.get("estado_display") or d.get("estado") or ""
         suf = f" · {dias}d" if dias else ""
-        lines.append(f"{emoji} {doc} — {d.get('estado_display', d.get('estado', ''))}{suf}")
+        seg = [d.get("doc_eipsa") or "—"]
+        tipo = (d.get("tipo") or "").strip()
+        if tipo:
+            seg.append(tipo)
+        titulo = (d.get("titulo") or "").strip()
+        if titulo:
+            seg.append(titulo[:45])
+        seg.append(estado)
+        lines.append(f"{emoji} " + " · ".join(seg) + suf)
     rest = pend - 8
     if rest > 0:
         lines.append(f"… y {rest} más")

@@ -42,7 +42,10 @@ def _summary_html(title: str, subtitle: str, text: str, facts: list,
     def esc(s):
         return html.escape(str(s))
 
-    parts = [f"📋 <b>{esc(title)}</b>"]
+    parts = [
+        "📋 <b>DocFlow</b> &nbsp;·&nbsp; <i>Control de Documentación</i>",
+        f"<b>{esc(title)}</b>",
+    ]
     if subtitle:
         parts.append(f"<i>{esc(subtitle)}</i>")
     if facts:
