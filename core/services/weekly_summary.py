@@ -562,25 +562,27 @@ def _personal_card_args(pdata: dict) -> dict:
         ("Críticos", pdata.get("my_critical", 0)),
         ("Vencen ≤3d", pdata.get("my_expiring", 0)),
     ]
-    lines = []
-    for d in pdata.get("my_pending", [])[:8]:
-        dias = d.get("dias") or 0
-        emoji = "🔴" if dias > 15 else ("🟡" if dias > 7 else "⚪")
-        estado = d.get("estado_display") or d.get("estado") or ""
-        suf = f" · {dias}d" if dias else ""
-        seg = [d.get("doc_eipsa") or "—"]
-        tipo = (d.get("tipo") or "").strip()
-        if tipo:
-            seg.append(tipo)
-        seg.append(estado)
-        lines.append(f"{emoji} " + " · ".join(seg) + suf)
-    rest = pend - 8
-    if rest > 0:
-        lines.append(f"… y {rest} más")
-    text = "\n\n".join(lines) if lines else "✅ Sin documentos pendientes. ¡Todo al día!"
+    pending = pdata.get("my_pending", [])
+    if pending:
+        head = "<tr><th>Nº Doc.</th><th>Tipo</th><th>Estado</th><th>Días</th></tr>"
+        body = ""
+        for d in pending[:8]:
+            dias = d.get("dias") or 0
+            emoji = "🔴" if dias > 15 else ("🟡" if dias > 7 else "⚪")
+            body += ("<tr>"
+                     f"<td>{emoji} {_escape(d.get('doc_eipsa', ''))}</td>"
+                     f"<td>{_escape(d.get('tipo', ''))}</td>"
+                     f"<td>{_escape(d.get('estado_display') or d.get('estado', ''))}</td>"
+                     f"<td>{dias if dias else '—'}</td></tr>")
+        rest = pend - 8
+        if rest > 0:
+            body += f"<tr><td colspan='4'>… y {rest} más</td></tr>"
+        table_html = f"<table><thead>{head}</thead><tbody>{body}</tbody></table>"
+    else:
+        table_html = "✅ <i>Sin documentos pendientes. ¡Todo al día!</i>"
     subtitle = f"{pend} documento(s) por realizar" if pend else "Sin pendientes"
     return {"title": f"Pendientes · {nombre} ({ini})", "subtitle": subtitle,
-            "text": text, "facts": facts}
+            "facts": facts, "table_html": table_html}
 
 
 def _team_avg_pct(docs: list) -> float:
