@@ -582,8 +582,16 @@ def _team_avg_pct(docs: list) -> float:
     return round(approved / total * 100, 1) if total else 0
 
 
+# Buzones compartidos: se evitan como destinatario de mensajes personales (un
+# DM de Teams debe ir a la cuenta personal, no al buzón de documentación).
+_SHARED_MAILBOXES = {"documentacion@eipsa.es"}
+
+
 def _user_email(initials: str) -> str | None:
     emails = USERS.get(initials, {}).get("emails") or []
+    personal = [e for e in emails if e.lower().strip() not in _SHARED_MAILBOXES]
+    if personal:
+        return personal[0]
     return emails[0] if emails else None
 
 
