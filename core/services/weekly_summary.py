@@ -563,13 +563,15 @@ def _personal_card_args(pdata: dict) -> dict:
     ]
     lines = []
     for d in pdata.get("my_pending", [])[:8]:
-        dias = f" · {d['dias']}d" if d.get("dias") else ""
+        dias = d.get("dias") or 0
+        emoji = "🔴" if dias > 15 else ("🟡" if dias > 7 else "⚪")
         doc = d.get("doc_eipsa") or (d.get("titulo", "")[:30])
-        lines.append(f"- {doc} — {d.get('estado_display', d.get('estado', ''))}{dias}")
+        suf = f" · {dias}d" if dias else ""
+        lines.append(f"{emoji} {doc} — {d.get('estado_display', d.get('estado', ''))}{suf}")
     rest = pend - 8
     if rest > 0:
         lines.append(f"… y {rest} más")
-    text = "\n\n".join(lines) if lines else "✓ Sin documentos pendientes. ¡Todo al día!"
+    text = "\n\n".join(lines) if lines else "✅ Sin documentos pendientes. ¡Todo al día!"
     subtitle = f"{pend} documento(s) por realizar" if pend else "Sin pendientes"
     return {"title": f"Pendientes · {nombre} ({ini})", "subtitle": subtitle,
             "text": text, "facts": facts}
@@ -595,6 +597,26 @@ def _user_email(initials: str) -> str | None:
     return emails[0] if emails else None
 
 
+def _save_personal_report(initials: str, pdata: dict) -> tuple[str | None, str | None]:
+    """Renderiza el informe personal HTML y lo guarda (carpeta de red configurada
+    en `reports_share_dir`, o state/reports). Devuelve (texto_enlace, url) o (None, None)."""
+    try:
+        from pathlib import Path
+
+        from core import preferences as pref
+        from core.services.interactive_report import reports_dir
+
+        share = (pref.get("reports_share_dir") or "").strip()
+        base = Path(share) if share else reports_dir()
+        base.mkdir(parents=True, exist_ok=True)
+        path = base / f"Pendientes_{initials}.html"
+        path.write_text(_render_personal_html(pdata), encoding="utf-8")
+        return "Abrir informe completo", path.as_uri()
+    except Exception:
+        logger.debug("No se pudo guardar/enlazar el informe personal", exc_info=True)
+        return None, None
+
+
 def post_personal_to_teams(initials: str = "JP") -> dict:
     """Publica en Teams la tarjeta de pendientes de una persona."""
     from core.services import teams
@@ -602,7 +624,9 @@ def post_personal_to_teams(initials: str = "JP") -> dict:
     start, end = _get_weekly_range()
     pdata = _collect_personal_data(initials, docs, _team_avg_pct(docs),
                                    start.strftime("%d/%m"), end.strftime("%d/%m"))
-    return teams.post_card(recipient=_user_email(initials), **_personal_card_args(pdata))
+    link_text, link_url = _save_personal_report(initials, pdata)
+    return teams.post_card(recipient=_user_email(initials), link_text=link_text,
+                           link_url=link_url, **_personal_card_args(pdata))
 
 
 def post_all_personal_to_teams(user_filter=None) -> dict:
@@ -623,7 +647,9 @@ def post_all_personal_to_teams(user_filter=None) -> dict:
         if pdata["my_pending_total"] == 0:
             skipped.append(initials)
             continue
-        res = teams.post_card(recipient=_user_email(initials), **_personal_card_args(pdata))
+        link_text, link_url = _save_personal_report(initials, pdata)
+        res = teams.post_card(recipient=_user_email(initials), link_text=link_text,
+                              link_url=link_url, **_personal_card_args(pdata))
         (sent if res.get("ok") else errors).append(initials)
         time.sleep(0.4)
     return {"status": "sent", "sent": sent, "skipped": skipped,

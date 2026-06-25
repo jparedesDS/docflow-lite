@@ -35,18 +35,26 @@ def is_configured() -> bool:
     return bool(webhook_url())
 
 
-def _summary_html(title: str, subtitle: str, text: str, facts: list) -> str:
-    """Resumen en HTML simple (para la acción «Publicar mensaje» del flowbot,
-    que renderiza HTML básico y no exige JSON de tarjeta adaptable)."""
+def _summary_html(title: str, subtitle: str, text: str, facts: list,
+                  link_text: str | None = None, link_url: str | None = None) -> str:
+    """Resumen en HTML para la acción «Publicar mensaje» del flowbot (Teams
+    renderiza HTML básico: negrita, saltos, listas y enlaces)."""
     def esc(s):
         return html.escape(str(s))
-    parts = [f"<b>{esc(title)}</b>"]
+
+    parts = [f"📋 <b>{esc(title)}</b>"]
     if subtitle:
-        parts.append(esc(subtitle))
+        parts.append(f"<i>{esc(subtitle)}</i>")
     if facts:
-        parts.append(" &nbsp;·&nbsp; ".join(f"<b>{esc(k)}:</b> {esc(v)}" for k, v in facts))
+        chips = " &nbsp;&#124;&nbsp; ".join(f"<b>{esc(v)}</b> {esc(k)}" for k, v in facts)
+        parts.append(chips)
     if text:
-        parts.append(esc(text).replace("\n\n", "<br>"))
+        lines = [ln for ln in str(text).split("\n\n") if ln.strip()]
+        if lines:
+            items = "".join(f"<li>{esc(ln)}</li>" for ln in lines)
+            parts.append(f"<ul>{items}</ul>")
+    if link_text and link_url:
+        parts.append(f'🔗 <a href="{esc(link_url)}">{esc(link_text)}</a>')
     return "<br>".join(parts)
 
 
@@ -90,7 +98,8 @@ def _adaptive_card(title: str, subtitle: str, text: str, facts: list,
         msg["card_json"] = json.dumps(card, ensure_ascii=False)
         # Alternativa robusta: mensaje HTML simple para la acción «Publicar
         # mensaje» (sin JSON de tarjeta adaptable, que da problemas en el flowbot).
-        msg["message_html"] = _summary_html(title, subtitle, text, facts)
+        msg["message_html"] = _summary_html(title, subtitle, text, facts,
+                                            link_text, link_url)
     return msg
 
 

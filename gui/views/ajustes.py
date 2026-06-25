@@ -275,14 +275,24 @@ class AjustesView(ctk.CTkFrame):
             justify="left", wraplength=520).pack(anchor="w", pady=(0, theme.SPACE_1))
         self.ent_teams = self._setting_row(self.datos_scroll, "Webhook de Teams",
                                            "teams_webhook_url", default="", width=420)
-        ctk.CTkButton(self.datos_scroll, text="Guardar webhook de Teams", height=34,
+        ctk.CTkLabel(
+            self.datos_scroll,
+            text="Carpeta de red (opcional) donde guardar los informes que se enlazan en "
+                 "Teams, para que el hipervínculo sea accesible por el equipo (UNC \\\\servidor\\…). "
+                 "Si se deja vacío, se usa la carpeta local y el enlace solo abre en tu equipo.",
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+            justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
+        self.ent_reports_share = self._setting_row(self.datos_scroll, "Carpeta compartida de informes",
+                                                   "reports_share_dir", default="", width=420)
+        ctk.CTkButton(self.datos_scroll, text="Guardar ajustes de Teams", height=34,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
                       fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
                       command=self._save_teams_webhook).pack(anchor="w", pady=theme.SPACE_2)
 
     def _save_teams_webhook(self) -> None:
         pref.set_value("teams_webhook_url", self.ent_teams.get().strip())
-        ui.toast(self, "Guardado", "Webhook de Teams guardado.", kind="success")
+        pref.set_value("reports_share_dir", self.ent_reports_share.get().strip())
+        ui.toast(self, "Guardado", "Ajustes de Teams guardados.", kind="success")
 
     def _save_apertura_paths(self) -> None:
         pref.set_value("apertura_base_dir", self.ent_ap_base.get().strip())
