@@ -660,6 +660,32 @@ class PreviewWindow(ctk.CTkToplevel):
 #  Devolución manual (sin email IMAP de origen)
 # ════════════════════════════════════════════════════════════════════════════
 
+def _lookup_pedido(raw: str) -> dict | None:
+    """Busca cliente / material / PO de un pedido en los datos del ERP.
+
+    Acepta el Nº de pedido en cualquier formato (P-26/029, P-26-029, p26029…):
+    normaliza quitando separadores y casa por prefijo (incluye suplementos)."""
+    import re
+    key = re.sub(r"[^0-9a-z]", "", (raw or "").lower())
+    if len(key) < 4:
+        return None
+    try:
+        from core.services import monitoring
+        docs = monitoring.get_monitoring_data()
+    except Exception:
+        logger.debug("No se pudo cargar monitoring para autocompletar pedido", exc_info=True)
+        return None
+    for d in docs:
+        np = re.sub(r"[^0-9a-z]", "", str(d.get("Nº Pedido", "")).lower())
+        if np and (np == key or np.startswith(key)):
+            return {
+                "cliente": str(d.get("Cliente", "") or ""),
+                "material": str(d.get("Material", "") or ""),
+                "po": str(d.get("Nº PO", "") or ""),
+            }
+    return None
+
+
 class ManualDevolucionWindow(ctk.CTkToplevel):
     """Ventana para crear una devolución 100% manual.
 
@@ -743,6 +769,11 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
 
         # ── Sección: Información del pedido ──────────────────────────────
         self._section_label(scroll, "INFORMACIÓN DEL PEDIDO")
+        ctk.CTkLabel(
+            scroll, text="Escribe el Nº de pedido (P-26/029) y pulsa Enter para autocompletar "
+                         "cliente, material y PO desde el ERP.",
+            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
+            justify="left", wraplength=620).pack(anchor="w", pady=(0, theme.SPACE_2))
 
         info_grid = ctk.CTkFrame(scroll, fg_color="transparent")
         info_grid.pack(fill="x", pady=(0, theme.SPACE_3))
@@ -755,6 +786,10 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         self.ent_cliente  = self._field(info_grid, 1, 0, "Cliente *",   "")
         self.ent_material = self._field(info_grid, 1, 1, "Material",    "")
         self.ent_fecha    = self._field(info_grid, 1, 2, "Fecha (DD-MM-YYYY)", _today_dmy())
+
+        # Autocompletar cliente/material/PO al escribir el pedido (Enter o salir)
+        self.ent_pedido.bind("<Return>", self._autofill_from_pedido)
+        self.ent_pedido.bind("<FocusOut>", self._autofill_from_pedido)
 
         # ── Sección: Documentos ──────────────────────────────────────────
         docs_head = ctk.CTkFrame(scroll, fg_color="transparent")
@@ -811,6 +846,19 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             parent, text=text, font=theme.FONT_LABEL,
             text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(anchor="w", pady=(0, theme.SPACE_2))
+
+    def _set_entry(self, ent: ctk.CTkEntry, value: str) -> None:
+        if value:
+            ent.delete(0, "end")
+            ent.insert(0, value)
+
+    def _autofill_from_pedido(self, _event=None) -> None:
+        info = _lookup_pedido(self.ent_pedido.get().strip())
+        if not info:
+            return
+        self._set_entry(self.ent_cliente, info["cliente"])
+        self._set_entry(self.ent_material, info["material"])
+        self._set_entry(self.ent_po, info.get("po", ""))
 
     def _field(self, grid, row: int, col: int, label: str, placeholder: str) -> ctk.CTkEntry:
         box = ctk.CTkFrame(grid, fg_color="transparent")
