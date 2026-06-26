@@ -95,19 +95,16 @@ def _calc_dias_devolucion(row):
 
 
 def _calc_dias_envio(row):
+    """Días Envío es un valor del ERP (data_erp). Se respeta tal cual; si la
+    celda viene vacía, se muestra 0 (no se calcula desde fechas: la columna no
+    representa el hueco pedido→envío, sino un valor propio del ERP)."""
     existing = row.get("Días Envío")
     if existing not in ("", None) and not (isinstance(existing, float) and math.isnan(existing)):
         try:
             return int(float(existing))
         except (ValueError, TypeError):
             pass
-    fecha_pedido = _parse_date(row.get("Fecha Pedido"))
-    fecha_env = _parse_date(row.get("Fecha Env. Doc.") or row.get("Fecha"))
-    if fecha_pedido and fecha_env:
-        return (fecha_env - fecha_pedido).days
-    if fecha_pedido:
-        return (datetime.now() - fecha_pedido).days
-    return ""
+    return 0
 
 
 # ── API pública ───────────────────────────────────────────────────────────────
