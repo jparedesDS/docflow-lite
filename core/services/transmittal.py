@@ -27,6 +27,7 @@ from core.parsers.base_parser import (
     FINAL_COLUMNS,
     build_notification_html,
     compute_recipients,
+    enrich_missing_from_erp,
 )
 from core.services import imap as imap_service
 from core.services import smtp as smtp_service
@@ -128,6 +129,10 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
         kwargs["plain_body"] = imap_service.get_plain_body(msg)
 
     df = parser.parse(html_body, subject, received_time, **kwargs)
+
+    # Red de seguridad común: si el parser no resolvió pedido/cliente/material/PO
+    # /Doc. EIPSA, se intenta por Nº Doc. Cliente contra el ERP (rellena huecos).
+    df = enrich_missing_from_erp(df)
 
     suggested_to, suggested_cc = compute_recipients(df)
 

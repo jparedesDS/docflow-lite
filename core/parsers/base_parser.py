@@ -816,6 +816,109 @@ def lookup_erp_by_npo(npo: str) -> dict:
     return {}
 
 
+# ═══════════════════════════════════════════════════════
+#  RED DE SEGURIDAD: resolver por Nº Doc. Cliente contra el ERP
+#  Común a TODOS los portales. Si un parser no consigue Nº Pedido / Cliente /
+#  Material / PO / Doc. EIPSA, se emparejan los códigos de doc del email
+#  (Doc. Cliente) con la columna Nº Doc. Cliente del ERP y se rellenan los
+#  huecos. SOLO rellena celdas vacías; nunca pisa lo que el parser ya resolvió.
+# ═══════════════════════════════════════════════════════
+
+_BLANK_VALUES = {"", "nan", "none", "nat", "-"}
+
+
+def norm_doc_code(code) -> str:
+    """Normaliza un código de doc de cliente para comparar sin ruido: sin
+    espacios (internos incluidos) y en mayúsculas. Mantiene los guiones."""
+    return re.sub(r"\s+", "", str(code or "")).upper()
+
+
+def _is_blank(value) -> bool:
+    return str(value).strip().lower() in _BLANK_VALUES
+
+
+def erp_client_code_index() -> dict:
+    """Índice {Nº Doc. Cliente normalizado → fila del ERP} sobre todo el
+    monitoring. Import perezoso para evitar ciclos parsers↔services."""
+    from core.services import monitoring
+    idx: dict = {}
+    for d in monitoring.get_monitoring_data():
+        key = norm_doc_code(d.get("Nº Doc. Cliente"))
+        if key and key not in idx:
+            idx[key] = d
+    return idx
+
+
+def erp_header_from_row(row: dict) -> dict:
+    """Extrae Nº Pedido / Supp. / Cliente / Material / PO de una fila del ERP.
+
+    Separa el sufijo de suministro (-S00) del Nº Pedido.
+    """
+    out = {"n_pedido": "", "supp": "S00", "cliente": "", "material": "", "po": ""}
+    ped = str(row.get("Nº Pedido", "")).strip()
+    m = re.search(r"-(S\d{2})$", ped)
+    if m:
+        out["n_pedido"], out["supp"] = ped[:m.start()], m.group(1)
+    else:
+        out["n_pedido"] = ped
+    out["cliente"] = str(row.get("Cliente", "") or "")
+    out["material"] = str(row.get("Material", "") or "")
+    out["po"] = str(row.get("Nº PO", "") or "").strip()
+    return out
+
+
+def enrich_missing_from_erp(df):
+    """Red de seguridad para cualquier portal. Empareja cada 'Doc. Cliente' del
+    email con su fila del ERP (por Nº Doc. Cliente) y rellena los huecos de
+    Nº Pedido / Cliente / Material / PO / Supp. / Doc. EIPSA / Responsable.
+
+    No hace nada si no hay columna 'Doc. Cliente' o si ningún código casa.
+    Sólo rellena celdas vacías: si el parser ya resolvió un campo, se respeta.
+    """
+    if df is None or getattr(df, "empty", True) or "Doc. Cliente" not in df.columns:
+        return df
+
+    idx = erp_client_code_index()
+    if not idx:
+        return df
+
+    matched = [idx.get(norm_doc_code(c)) for c in df["Doc. Cliente"]]
+    if not any(m is not None for m in matched):
+        return df
+
+    # Cabecera del pedido: de la primera fila emparejada (todos los docs de una
+    # devolución pertenecen al mismo pedido).
+    hit = next((m for m in matched if m is not None), None)
+    if hit is not None:
+        header = erp_header_from_row(hit)
+        for col, val in (
+            ("Nº Pedido", header["n_pedido"]),
+            ("Cliente", header["cliente"]),
+            ("Material", header["material"]),
+            ("PO", header["po"]),
+            ("Supp.", header["supp"]),
+        ):
+            if val and col in df.columns:
+                df[col] = [val if _is_blank(cur) else cur for cur in df[col]]
+
+    # Doc. EIPSA: por fila, de su propia coincidencia exacta.
+    if "Doc. EIPSA" in df.columns:
+        df["Doc. EIPSA"] = [
+            (str(m.get("Nº Doc. EIPSA", "") or "") or cur)
+            if (_is_blank(cur) and m is not None) else cur
+            for cur, m in zip(df["Doc. EIPSA"], matched)
+        ]
+
+    # Responsable: si quedó vacío y ya conocemos el Nº Pedido.
+    if "Responsable" in df.columns and "Nº Pedido" in df.columns:
+        df["Responsable"] = [
+            get_responsable_initials(ped) if (_is_blank(resp) and not _is_blank(ped)) else resp
+            for resp, ped in zip(df["Responsable"], df["Nº Pedido"])
+        ]
+
+    return df
+
+
 FINAL_COLUMNS = [
     "Nº Pedido", "Supp.", "Responsable", "Cliente", "Material", "PO",
     "Doc. EIPSA", "Doc. Cliente", "Título", "Rev.", "Estado",
