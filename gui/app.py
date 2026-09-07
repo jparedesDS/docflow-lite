@@ -20,24 +20,25 @@ class DocFlowLiteApp(ctk.CTk):
     # no cambian — solo se reorganiza la presentación y se renombran etiquetas
     # ("Pedidos"→"Seguimiento", "Informes"→"Analítica") para no chocar con el
     # nombre de su grupo. Atajos de teclado y ruteo siguen usando las keys.
+    # `hint` = letra del atajo global (ver bind_all más abajo); se muestra en el sidebar.
     NAV_LAYOUT = [
-        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂"},
-        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
+        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
+        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
         {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
-            {"key": "apertura",   "label": "Apertura",    "icon": "✚"},
+            {"key": "apertura",   "label": "Apertura",    "icon": "✚", "hint": "N"},
             {"key": "ofertas",    "label": "Ofertas",     "icon": "✉"},
             {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
-            {"key": "documentos", "label": "Documentos",  "icon": "◫"},
+            {"key": "documentos", "label": "Documentos",  "icon": "◫", "hint": "O"},
         ]},
         {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
-            {"key": "inbox",         "label": "Bandeja AI",         "icon": "✦"},
-            {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩"},
-            {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠"},
+            {"key": "inbox",         "label": "Bandeja AI",         "icon": "✦", "hint": "I"},
+            {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩", "hint": "D"},
+            {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠", "hint": "R"},
             {"key": "docusign",      "label": "DocuSign",           "icon": "✒"},
         ]},
         {"type": "group", "id": "informes", "label": "Informes", "items": [
             {"key": "informes", "label": "Analítica",         "icon": "▤"},
-            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊"},
+            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊", "hint": "P"},
         ]},
     ]
 
@@ -96,6 +97,9 @@ class DocFlowLiteApp(ctk.CTk):
         self.bind_all("<KeyPress-P>", self._kb_reportes)
         self.bind_all("<KeyPress-n>", self._kb_apertura)
         self.bind_all("<KeyPress-N>", self._kb_apertura)
+        # Paleta de comandos: funciona también con el foco en un Entry
+        self.bind_all("<Control-k>", lambda _e: self.open_palette())
+        self.bind_all("<Control-K>", lambda _e: self.open_palette())
 
         startup_warnings()
 
@@ -319,6 +323,7 @@ class DocFlowLiteApp(ctk.CTk):
             layout=layout,
             on_select=self.navigate,
             on_toggle_theme=self._toggle_theme,
+            on_search=self.open_palette,
             current_user_label=f"{nombre} ({initials})",
             on_logout=self._logout,
         )
@@ -413,6 +418,36 @@ class DocFlowLiteApp(ctk.CTk):
                 view.set_pedido_filter(pedido)
             except Exception:
                 logger.debug("set_pedido_filter falló", exc_info=True)
+
+    # ── Paleta de comandos (Ctrl+K) ───────────────────────────────────────────
+
+    def open_palette(self) -> None:
+        """Abre la paleta de búsqueda rápida (secciones · pedidos · documentos)."""
+        if getattr(self, "_palette", None) is not None and self._palette.winfo_exists():
+            self._palette.lift()
+            return
+        from gui.widgets.palette import CommandPalette
+        self._palette = CommandPalette(self)
+
+    def open_pedido(self, pedido: str) -> None:
+        """Abre Seguimiento con un pedido seleccionado (desde la paleta)."""
+        view = self._views.get("pedidos") or self._make_view("pedidos")
+        self.navigate("pedidos")
+        if view is not None and hasattr(view, "select_pedido"):
+            try:
+                view.select_pedido(pedido)
+            except Exception:
+                logger.debug("select_pedido falló", exc_info=True)
+
+    def open_documento(self, num_doc: str) -> None:
+        """Abre Documentos filtrado por un Nº de documento (desde la paleta)."""
+        view = self._views.get("documentos") or self._make_view("documentos")
+        self.navigate("documentos")
+        if view is not None and hasattr(view, "set_query"):
+            try:
+                view.set_query(num_doc)
+            except Exception:
+                logger.debug("set_query falló", exc_info=True)
 
     # ── Atajos teclado (con guarda de foco en Entry) ─────────────────────────
 

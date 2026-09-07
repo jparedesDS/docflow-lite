@@ -150,6 +150,39 @@ class PedidosView(ctk.CTkFrame):
             self.opt_pedido.set(labels[0])
             self._on_pick(labels[0])
 
+    @staticmethod
+    def _base_pedido(p) -> str:
+        """'P-26/048-S00' → 'P-26/048' (quita el sufijo de suministro)."""
+        p = str(p or "").strip()
+        return p[:-4] if len(p) > 4 and p[-4:-2].upper() == "-S" and p[-2:].isdigit() else p
+
+    def select_pedido(self, pedido: str, _tries: int = 0) -> None:
+        """Selecciona un pedido por su código (salto desde la paleta Ctrl+K).
+
+        Tolera el sufijo -Sxx (la paleta pasa 'P-26/048-S00'; la lista de
+        proyectos puede ir con o sin él). Los proyectos cargan en un hilo al
+        abrir la vista: si aún no están, reintenta cada 300 ms (máx. ~12 s).
+        """
+        if not self._projects:
+            if _tries < 40:
+                self.after(300, lambda: self.select_pedido(pedido, _tries + 1))
+            return
+        base = self._base_pedido(pedido)
+        self.ent_search.delete(0, "end")
+        self.ent_search.insert(0, base)
+        self._update_matches()          # con 1 match ya lo selecciona solo
+        cur = self._pedido_current or ""
+        if cur == pedido or self._base_pedido(cur) == base:
+            return
+        # Varios matches (-S00/-S01…): el exacto → el de mismo base → el primero
+        labels = list(self._label_to_pedido)
+        exact = [lab for lab in labels if self._label_to_pedido[lab] == pedido]
+        same = [lab for lab in labels if self._base_pedido(self._label_to_pedido[lab]) == base]
+        pick = (exact or same or labels)[:1]
+        if pick:
+            self.opt_pedido.set(pick[0])
+            self._on_pick(pick[0])
+
     def _on_pick(self, label: str) -> None:
         pedido = self._label_to_pedido.get(label)
         if not pedido or pedido == self._pedido_current:

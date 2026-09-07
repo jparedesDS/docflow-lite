@@ -29,7 +29,7 @@ class Sidebar(ctk.CTkFrame):
 
     def __init__(
         self, master, layout: list[dict], on_select,
-        on_toggle_theme=None, on_logout=None,
+        on_toggle_theme=None, on_logout=None, on_search=None,
         current_user_label: str = "",
         **kwargs,
     ):
@@ -43,6 +43,7 @@ class Sidebar(ctk.CTkFrame):
         self._on_select = on_select
         self._on_toggle_theme = on_toggle_theme
         self._on_logout = on_logout
+        self._on_search = on_search
         self._items: dict[str, dict] = {}      # key → {row, bar, btn}
         self._groups: dict[str, dict] = {}      # gid → {header, body, collapsed}
         self._key_group: dict[str, str] = {}    # key → gid
@@ -63,6 +64,22 @@ class Sidebar(ctk.CTkFrame):
 
         sep = ctk.CTkFrame(self, fg_color=theme.BORDER, height=1)
         sep.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_3, theme.SPACE_2))
+
+        # ── Buscar (paleta Ctrl+K) ────────────────────────────────────────
+        if self._on_search is not None:
+            search = ctk.CTkFrame(self, fg_color=theme.BG_INPUT, corner_radius=theme.RADIUS_MD,
+                                  border_width=1, border_color=theme.BORDER, cursor="hand2",
+                                  height=theme.HEIGHT_BUTTON_SM + 2)
+            search.pack(fill="x", padx=theme.SPACE_3, pady=(0, theme.SPACE_2))
+            search.pack_propagate(False)
+            lbl = ctk.CTkLabel(search, text="🔍  Buscar…", font=theme.FONT_SMALL,
+                               text_color=theme.TEXT_SUB, anchor="w")
+            lbl.pack(side="left", padx=(theme.SPACE_3, 0))
+            hint = ctk.CTkLabel(search, text="Ctrl+K", font=theme.FONT_TINY_BOLD,
+                                text_color=theme.TEXT_MUTED)
+            hint.pack(side="right", padx=(0, theme.SPACE_3))
+            for w in (search, lbl, hint):
+                w.bind("<Button-1>", lambda _e: self._on_search())
 
         # ── Navegación (ítems sueltos + grupos) ───────────────────────────
         for entry in layout:
@@ -143,6 +160,13 @@ class Sidebar(ctk.CTkFrame):
             command=lambda k=key: self._handle_click(k),
         )
         btn.pack(side="left", fill="both", expand=True, padx=(theme.SPACE_1, 0))
+
+        # Letra del atajo de teclado (descubrible sin leer ningún manual)
+        if item.get("hint"):
+            ctk.CTkLabel(
+                btn, text=item["hint"], font=theme.FONT_TINY_BOLD,
+                text_color=theme.TEXT_MUTED, fg_color="transparent", width=16,
+            ).place(relx=1.0, rely=0.5, anchor="e", x=-theme.SPACE_3)
 
         self._items[key] = {"row": row, "bar": bar, "btn": btn}
 
