@@ -203,6 +203,38 @@ _BUTTON_SIZES = {
 }
 
 
+def lazy_tabs(tabview: ctk.CTkTabview, builders: dict, on_change=None) -> dict:
+    """Pestañas perezosas: añade todas las pestañas (barato) pero construye el
+    contenido de cada una la PRIMERA vez que se abre. La primera se construye
+    ya. Ahorra cientos de ms al abrir vistas con muchas pestañas (Ajustes,
+    Reportes, Agenda).
+
+    builders: {nombre: fn(frame)} en el orden de las pestañas.
+    on_change: callback opcional fn(nombre) tras cada cambio de pestaña.
+    Devuelve {nombre: frame}; `tabview.lazy_built` es el set de construidas.
+    """
+    frames = {name: tabview.add(name) for name in builders}
+    built: set = set()
+    tabview.lazy_built = built
+
+    def ensure(name: str) -> None:
+        if name in built or name not in builders:
+            return
+        built.add(name)
+        builders[name](frames[name])
+
+    def _on_change() -> None:
+        name = tabview.get()
+        ensure(name)
+        if on_change:
+            on_change(name)
+
+    tabview.configure(command=_on_change)
+    tabview.lazy_ensure = ensure
+    ensure(tabview.get())
+    return frames
+
+
 def button(parent, text: str, variant: str = "primary", command=None,
            size: str = "md", **overrides) -> ctk.CTkButton:
     """CTkButton del sistema de diseño.

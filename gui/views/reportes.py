@@ -77,17 +77,20 @@ class ReportesView(ctk.CTkFrame):
         self.tabs.pack(fill="both", expand=True,
                        padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
-        self.tab_excels = self.tabs.add("Excels")
-        self.tab_interactive = self.tabs.add("Informe interactivo")
-        self.tab_summaries = self.tabs.add("Resúmenes por email")
-        self.tab_scheduled = self.tabs.add("Programados")
-        self.tab_data = self.tabs.add("Fuente de datos")
-
-        self._build_tab_excels(self.tab_excels)
-        self._build_tab_interactive(self.tab_interactive)
-        self._build_tab_summaries(self.tab_summaries)
-        self._build_tab_scheduled(self.tab_scheduled)
-        self._build_tab_data(self.tab_data)
+        # Pestañas perezosas: cada una se construye la primera vez que se abre
+        # (abrir la vista pasa de ~530 ms a construir solo "Excels").
+        frames = ui.lazy_tabs(self.tabs, {
+            "Excels": self._build_tab_excels,
+            "Informe interactivo": self._build_tab_interactive,
+            "Resúmenes por email": self._build_tab_summaries,
+            "Programados": self._build_tab_scheduled,
+            "Fuente de datos": self._build_tab_data,
+        })
+        self.tab_excels = frames["Excels"]
+        self.tab_interactive = frames["Informe interactivo"]
+        self.tab_summaries = frames["Resúmenes por email"]
+        self.tab_scheduled = frames["Programados"]
+        self.tab_data = frames["Fuente de datos"]
 
     # ════════════════════════════════════════════════════════════════════════
     #  INFORME INTERACTIVO (HTML semanal / mensual / por pedido)

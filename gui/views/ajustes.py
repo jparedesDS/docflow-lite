@@ -55,14 +55,24 @@ class AjustesView(ctk.CTkFrame):
         self.tabs.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=(theme.SPACE_2, theme.SPACE_4))
 
         self._secret_rows: list[tuple] = []
-        self._build_general(self.tabs.add("General"))
-        self._build_datos(self.tabs.add("Fuentes de datos"))
-        self._build_correo(self.tabs.add("Correo"))
-        self._build_ofertas(self.tabs.add("Ofertas"))
-        self._build_docusign(self.tabs.add("DocuSign"))
-        self._build_ia(self.tabs.add("IA"))
-        self._build_usuarios(self.tabs.add("Usuarios"))
-        self._resolve_secret_states()
+        self._secret_resolved = 0
+        # Pestañas perezosas: se construyen al abrirlas (abrir Ajustes pasa de
+        # ~770 ms a construir solo "General"); las credenciales de cada pestaña
+        # se resuelven en hilo justo después de construirla.
+        def lazy(builder):
+            # Construir la pestaña y resolver SUS credenciales (en hilo). Va en el
+            # builder —no en el cambio de pestaña— para que funcione también si
+            # la pestaña se construye por código (lazy_ensure), no solo por clic.
+            return lambda frame: (builder(frame), self._resolve_secret_states())
+        ui.lazy_tabs(self.tabs, {
+            "General": lazy(self._build_general),
+            "Fuentes de datos": lazy(self._build_datos),
+            "Correo": lazy(self._build_correo),
+            "Ofertas": lazy(self._build_ofertas),
+            "DocuSign": lazy(self._build_docusign),
+            "IA": lazy(self._build_ia),
+            "Usuarios": lazy(self._build_usuarios),
+        })
 
     def _restart(self) -> None:
         if self._on_restart and ui.confirm(self, "Reiniciar", "¿Reiniciar la aplicación para aplicar los cambios?"):
@@ -100,8 +110,12 @@ class AjustesView(ctk.CTkFrame):
         return e, state
 
     def _resolve_secret_states(self) -> None:
-        """Resuelve en background el estado de todas las credenciales y pinta."""
-        rows = list(self._secret_rows)
+        """Resuelve en background el estado de las credenciales aún no resueltas
+        (las pestañas son perezosas: cada una añade sus filas al abrirse)."""
+        rows = list(self._secret_rows[self._secret_resolved:])
+        self._secret_resolved = len(self._secret_rows)
+        if not rows:
+            return
 
         def work():
             for key, env, entry, state in rows:

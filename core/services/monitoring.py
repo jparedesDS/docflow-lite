@@ -58,7 +58,8 @@ def _read_excel(path: str) -> pd.DataFrame:
     if not os.path.exists(path):
         logger.warning("Archivo no encontrado: %s", path)
         return pd.DataFrame()
-    return pd.read_excel(path, engine="openpyxl")
+    from core.utils.excel import read_excel_fast
+    return read_excel_fast(path)
 
 
 # ── Helpers de fechas ─────────────────────────────────────────────────────────

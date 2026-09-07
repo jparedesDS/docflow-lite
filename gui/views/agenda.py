@@ -33,10 +33,7 @@ class AgendaView(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._tareas_filter = "todas"
-        self._build_layout()
-        self._reload_tareas()
-        self._reload_notas()
-        self._reload_reuniones()
+        self._build_layout()   # cada pestaña se construye y carga al abrirla
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
@@ -48,13 +45,15 @@ class AgendaView(ctk.CTkFrame):
         self.tabs.pack(fill="both", expand=True,
                         padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
-        self.tab_tareas = self.tabs.add("Tareas")
-        self.tab_notas = self.tabs.add("Notas")
-        self.tab_reuniones = self.tabs.add("Reuniones")
-
-        self._build_tareas_tab(self.tab_tareas)
-        self._build_notas_tab(self.tab_notas)
-        self._build_reuniones_tab(self.tab_reuniones)
+        # Pestañas perezosas: cada una se construye y carga la primera vez que
+        # se abre (abrir Agenda pasa de ~600 ms a construir solo "Tareas").
+        frames = ui.lazy_tabs(self.tabs, {
+            "Tareas": lambda f: (self._build_tareas_tab(f), self._reload_tareas()),
+            "Notas": lambda f: (self._build_notas_tab(f), self._reload_notas()),
+            "Reuniones": lambda f: (self._build_reuniones_tab(f), self._reload_reuniones()),
+        })
+        self.tab_tareas, self.tab_notas, self.tab_reuniones = (
+            frames["Tareas"], frames["Notas"], frames["Reuniones"])
 
     # ════════════════════════════════════════════════════════════════════════
     #  TAREAS

@@ -2,6 +2,8 @@ import re
 import pandas as pd
 from datetime import datetime
 
+from core.utils.excel import read_excel_fast
+
 # ═══════════════════════════════════════════════════════
 #  MAPPINGS COMPARTIDOS (migrados de DocuControl)
 # ═══════════════════════════════════════════════════════
@@ -777,7 +779,7 @@ def lookup_erp(numero_pedido: str) -> dict:
     if not numero_pedido or not path or not os.path.exists(path):
         return {}
     try:
-        df = pd.read_excel(path, engine="openpyxl")
+        df = read_excel_fast(path)
     except Exception:
         return {}
 
@@ -798,7 +800,7 @@ def lookup_erp_by_npo(npo: str) -> dict:
     if not npo or not path or not os.path.exists(path):
         return {}
     try:
-        df = pd.read_excel(path, engine="openpyxl")
+        df = read_excel_fast(path)
     except Exception:
         return {}
 

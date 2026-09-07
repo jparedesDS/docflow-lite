@@ -63,7 +63,8 @@ def _read_excel_cached(path: str) -> pd.DataFrame:
     if hit and (now - hit[0]) < CACHE_TTL:
         return hit[1]
     try:
-        df = pd.read_excel(path, engine="openpyxl")
+        from core.utils.excel import read_excel_fast
+        df = read_excel_fast(path)
     except Exception as exc:
         logger.warning("No se pudo leer %s: %s", path, exc)
         df = pd.DataFrame()
