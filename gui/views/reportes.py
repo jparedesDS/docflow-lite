@@ -148,14 +148,13 @@ class ReportesView(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(inner, fg_color="transparent")
         btns.pack(anchor="w")
-        ctk.CTkButton(btns, text="Generar y abrir", command=self._ir_generate,
-                      **theme.button_kwargs("primary")).pack(side="left")
-        ctk.CTkButton(btns, text="Abrir carpeta", command=self._ir_open_folder,
-                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
-        ctk.CTkButton(btns, text="Enviar por email", command=self._ir_send,
-                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
-        ctk.CTkButton(btns, text="Enviar a Teams", command=self._ir_teams,
-                      **theme.button_kwargs("secondary")).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(btns, "Generar y abrir", "primary", command=self._ir_generate).pack(side="left")
+        ui.button(btns, "Abrir carpeta", "secondary",
+                  command=self._ir_open_folder).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(btns, "Enviar por email", "secondary",
+                  command=self._ir_send).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(btns, "Enviar a Teams", "secondary",
+                  command=self._ir_teams).pack(side="left", padx=(theme.SPACE_2, 0))
 
         self._ir_status = ctk.CTkLabel(wrap, text="", font=theme.FONT_SMALL,
                                        text_color=theme.TEXT_MUTED, anchor="w", justify="left")
@@ -388,12 +387,8 @@ class ReportesView(ctk.CTkFrame):
 
         actions = ctk.CTkFrame(inner, fg_color="transparent")
         actions.pack(fill="x", side="bottom")
-        btn_download = ctk.CTkButton(
-            actions, text="⬇  Descargar", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=lambda r=report: self._on_download_excel(r),
-        )
+        btn_download = ui.button(actions, "⬇  Descargar", "primary", size="lg",
+                                 command=lambda r=report: self._on_download_excel(r))
         btn_download.pack(side="left", fill="x", expand=True)
 
         return {"card": card, "lbl": lbl_card, "btn": btn_download, "last_path": None}
@@ -541,27 +536,16 @@ class ReportesView(ctk.CTkFrame):
 
         actions = ctk.CTkFrame(inner, fg_color="transparent")
         actions.pack(fill="x", side="bottom")
-        ctk.CTkButton(
-            actions, text="👁  Preview", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=lambda v=preview_user_var: self._open_preview(kind, v.get() if v else "JP"),
-        ).pack(side="left", fill="x", expand=True)
-        ctk.CTkButton(
-            actions, text="📤  Enviar", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=color, hover_color=theme.ACCENT_HOVER,
-            command=lambda: self._open_send_dialog(kind),
-        ).pack(side="left", fill="x", expand=True, padx=(8, 0))
+        ui.button(actions, "👁  Preview", "chip", size="lg",
+                  command=lambda v=preview_user_var: self._open_preview(kind, v.get() if v else "JP"),
+                  ).pack(side="left", fill="x", expand=True)
+        ui.button(actions, "📤  Enviar", "primary", size="lg", fg_color=color,
+                  command=lambda: self._open_send_dialog(kind),
+                  ).pack(side="left", fill="x", expand=True, padx=(8, 0))
         if kind == "personal":
-            ctk.CTkButton(
-                actions, text="Teams", font=theme.FONT_BUTTON,
-                height=36, corner_radius=8,
-                fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-                command=lambda v=preview_user_var: self._teams_personal(v.get() if v else "JP"),
-            ).pack(side="left", fill="x", expand=True, padx=(8, 0))
+            ui.button(actions, "Teams", "chip", size="lg",
+                      command=lambda v=preview_user_var: self._teams_personal(v.get() if v else "JP"),
+                      ).pack(side="left", fill="x", expand=True, padx=(8, 0))
 
     def _open_preview(self, kind: str, initials: str = "JP") -> None:
         label = "Resumen Ejecutivo" if kind == "executive" else f"Personal de {initials}"
@@ -658,13 +642,8 @@ class ReportesView(ctk.CTkFrame):
         # Toolbar
         toolbar = ctk.CTkFrame(parent, fg_color="transparent")
         toolbar.pack(fill="x", pady=(0, 8))
-        ctk.CTkButton(
-            toolbar, text="↻ Recargar", font=theme.FONT_BUTTON,
-            height=32, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._reload_schedules,
-        ).pack(side="left")
+        ui.button(toolbar, "↻ Recargar", "secondary", height=32,
+                  command=self._reload_schedules).pack(side="left")
 
         # Lista
         self.schedules_scroll = ScrollFrame(parent)
@@ -714,19 +693,12 @@ class ReportesView(ctk.CTkFrame):
         ).pack(anchor="w")
 
         # Acciones
-        ctk.CTkButton(
-            top, text="✏ Editar", font=theme.FONT_BUTTON,
-            width=80, height=30, corner_radius=6,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-            command=lambda s=sched: self._open_edit_dialog(s),
-        ).pack(side="right", padx=4)
-        ctk.CTkButton(
-            top, text="▶ Ejecutar ahora", font=theme.FONT_BUTTON,
-            width=130, height=30, corner_radius=6,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=lambda sid=sched["id"]: self._run_now(sid),
-        ).pack(side="right", padx=4)
+        ui.button(top, "✏ Editar", "outline", size="xs", width=80, height=30,
+                  font=theme.FONT_BUTTON, text_color=theme.TEXT_SUB,
+                  command=lambda s=sched: self._open_edit_dialog(s)).pack(side="right", padx=4)
+        ui.button(top, "▶ Ejecutar ahora", "primary", size="xs", width=130, height=30,
+                  font=theme.FONT_BUTTON,
+                  command=lambda sid=sched["id"]: self._run_now(sid)).pack(side="right", padx=4)
 
         # Footer: horario + last_run
         footer = ctk.CTkFrame(card, fg_color="transparent")
@@ -836,12 +808,8 @@ class ReportesView(ctk.CTkFrame):
         # Acción: regenerar consulta_erp desde el ERP (Postgres local, solo lectura)
         erp_row = ctk.CTkFrame(parent, fg_color="transparent")
         erp_row.pack(fill="x", pady=(0, theme.SPACE_3))
-        self._erp_btn = ctk.CTkButton(
-            erp_row, text="↻  Actualizar consulta desde ERP", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-            command=self._refresh_consulta_from_erp,
-        )
+        self._erp_btn = ui.button(erp_row, "↻  Actualizar consulta desde ERP", "primary", size="sm",
+                                  command=self._refresh_consulta_from_erp)
         self._erp_btn.pack(side="left")
         self._erp_status = ctk.CTkLabel(
             erp_row, text="Se actualiza sola al abrir y cada hora.",
@@ -976,39 +944,20 @@ class ReportesView(ctk.CTkFrame):
         actions = ctk.CTkFrame(inner, fg_color="transparent")
         actions.pack(fill="x")
 
-        ctk.CTkButton(
-            actions, text="📥  Importar archivo…", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            command=lambda k=kind: self._import_file(k),
-        ).pack(side="left")
+        ui.button(actions, "📥  Importar archivo…", "primary", size="sm",
+                  command=lambda k=kind: self._import_file(k)).pack(side="left")
 
-        ctk.CTkButton(
-            actions, text="🔗  Vincular ruta…", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=lambda k=kind: self._link_path(k),
-        ).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(actions, "🔗  Vincular ruta…", "outline", size="sm",
+                  command=lambda k=kind: self._link_path(k)).pack(side="left", padx=(theme.SPACE_2, 0))
 
         if st["mode"] in ("linked", "linked_broken"):
-            ctk.CTkButton(
-                actions, text="Quitar vínculo", font=theme.FONT_SMALL_BOLD,
-                height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-                fg_color="transparent", hover_color=theme.BG_INPUT,
-                text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                command=lambda k=kind: self._clear_link(k),
-            ).pack(side="left", padx=(theme.SPACE_2, 0))
+            ui.button(actions, "Quitar vínculo", "outline", size="sm", text_color=theme.TEXT_SUB,
+                      command=lambda k=kind: self._clear_link(k)).pack(side="left", padx=(theme.SPACE_2, 0))
 
         if st["exists"]:
-            ctk.CTkButton(
-                actions, text="Abrir carpeta", font=theme.FONT_SMALL_BOLD,
-                height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-                fg_color="transparent", hover_color=theme.BG_INPUT,
-                text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                command=lambda p=st["path"]: _open_path(str(Path(p).parent)),
-            ).pack(side="left", padx=(theme.SPACE_2, 0))
+            ui.button(actions, "Abrir carpeta", "outline", size="sm", text_color=theme.TEXT_SUB,
+                      command=lambda p=st["path"]: _open_path(str(Path(p).parent)),
+                      ).pack(side="left", padx=(theme.SPACE_2, 0))
 
         return {"card": card}
 
@@ -1132,19 +1081,8 @@ class SendExecutiveDialog(ctk.CTkToplevel):
 
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", padx=22, pady=14, side="bottom")
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        self.btn_send = ctk.CTkButton(
-            footer, text="Enviar  →", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=self._send,
-        )
+        ui.button(footer, "Cancelar", "secondary", command=self.destroy).pack(side="right", padx=(8, 0))
+        self.btn_send = ui.button(footer, "Enviar  →", "primary", command=self._send)
         self.btn_send.pack(side="right")
 
     def _send(self) -> None:
@@ -1251,19 +1189,8 @@ class SendPersonalDialog(ctk.CTkToplevel):
 
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", padx=22, pady=14, side="bottom")
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        self.btn_send = ctk.CTkButton(
-            footer, text="Enviar  →", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=self._send,
-        )
+        ui.button(footer, "Cancelar", "secondary", command=self.destroy).pack(side="right", padx=(8, 0))
+        self.btn_send = ui.button(footer, "Enviar  →", "primary", command=self._send)
         self.btn_send.pack(side="right")
 
     def _on_mode_change(self) -> None:
@@ -1431,11 +1358,8 @@ class EditScheduleDialog(ctk.CTkToplevel):
             for c in range(5):
                 tqa.grid_columnconfigure(c, weight=1, uniform="tqa")
             for i, (lbl, cmd) in enumerate(tbtns):
-                ctk.CTkButton(
-                    tqa, text=lbl, height=26, corner_radius=6, font=theme.FONT_TINY,
-                    fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                    text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-                    command=cmd).grid(row=i // 5, column=i % 5, sticky="ew", padx=2, pady=2)
+                ui.button(tqa, lbl, "chip", size="xs", height=26, font=theme.FONT_TINY,
+                          command=cmd).grid(row=i // 5, column=i % 5, sticky="ew", padx=2, pady=2)
 
             ctk.CTkLabel(self, text="Cc",
                          font=theme.font(10, "bold"),
@@ -1479,11 +1403,8 @@ class EditScheduleDialog(ctk.CTkToplevel):
             for c in range(cols):
                 qa.grid_columnconfigure(c, weight=1, uniform="qa")
             for i, (lbl, cmd) in enumerate(btns):
-                ctk.CTkButton(
-                    qa, text=lbl, height=26, corner_radius=6, font=theme.FONT_TINY,
-                    fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                    text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-                    command=cmd).grid(row=i // cols, column=i % cols, sticky="ew", padx=2, pady=2)
+                ui.button(qa, lbl, "chip", size="xs", height=26, font=theme.FONT_TINY,
+                          command=cmd).grid(row=i // cols, column=i % cols, sticky="ew", padx=2, pady=2)
 
             if sched["type"] == "teams_personal":
                 # Teams se publica en el chat privado de cada persona: no hay Cc.
@@ -1507,19 +1428,8 @@ class EditScheduleDialog(ctk.CTkToplevel):
         # Footer
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(fill="x", padx=22, pady=14, side="bottom")
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            footer, text="Guardar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=self._save,
-        ).pack(side="right")
+        ui.button(footer, "Cancelar", "secondary", command=self.destroy).pack(side="right", padx=(8, 0))
+        ui.button(footer, "Guardar", "primary", command=self._save).pack(side="right")
 
     def _set_to(self, value: str) -> None:
         self.ent_to.delete(0, "end")

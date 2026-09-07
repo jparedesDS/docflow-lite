@@ -135,28 +135,17 @@ class AperturaView(ctk.CTkFrame):
         btn_row = ctk.CTkFrame(wrapper, fg_color="transparent")
         btn_row.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_2))
 
-        self.btn_locate = ctk.CTkButton(
-            btn_row, text="🔍  Localizar pedido", command=self._on_locate,
-            **theme.button_kwargs("secondary"),
-        )
+        self.btn_locate = ui.button(btn_row, "🔍  Localizar pedido", "secondary", command=self._on_locate)
         self.btn_locate.pack(side="left", padx=(0, theme.SPACE_2))
 
-        self.btn_create = ctk.CTkButton(
-            btn_row, text="✦  Procesar pedido", command=self._on_create,
-            **theme.button_kwargs("primary"),
-        )
+        self.btn_create = ui.button(btn_row, "✦  Procesar pedido", "primary", command=self._on_create)
         self.btn_create.pack(side="left", padx=(0, theme.SPACE_2))
 
-        ctk.CTkButton(
-            btn_row, text="Limpiar formulario", command=self._on_clear,
-            **theme.button_kwargs("ghost"),
-        ).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(btn_row, "Limpiar formulario", "ghost",
+                  command=self._on_clear).pack(side="left", padx=(0, theme.SPACE_2))
 
-        self.btn_open = ctk.CTkButton(
-            btn_row, text="Abrir carpeta del pedido", command=self._on_open,
-            state="disabled",
-            **theme.button_kwargs("secondary"),
-        )
+        self.btn_open = ui.button(btn_row, "Abrir carpeta del pedido", "secondary",
+                                  state="disabled", command=self._on_open)
         self.btn_open.pack(side="left")
 
         # ─── Resultado / log ──────────────────────────────────────────────
@@ -231,16 +220,10 @@ class AperturaView(ctk.CTkFrame):
             ).pack(side="left", padx=(0, theme.SPACE_3))
 
         # Spacer + botones Todas / Ninguna
-        ctk.CTkButton(
-            top_bar, text="Todas", width=70,
-            command=lambda: self._set_all_subfolders(True),
-            **theme.button_kwargs("ghost"),
-        ).pack(side="right", padx=(theme.SPACE_1, 0))
-        ctk.CTkButton(
-            top_bar, text="Ninguna", width=70,
-            command=lambda: self._set_all_subfolders(False),
-            **theme.button_kwargs("ghost"),
-        ).pack(side="right", padx=(theme.SPACE_1, 0))
+        ui.button(top_bar, "Todas", "ghost", width=70,
+                  command=lambda: self._set_all_subfolders(True)).pack(side="right", padx=(theme.SPACE_1, 0))
+        ui.button(top_bar, "Ninguna", "ghost", width=70,
+                  command=lambda: self._set_all_subfolders(False)).pack(side="right", padx=(theme.SPACE_1, 0))
 
         # Grid de checkboxes (3 columnas × ~8 filas)
         ck_grid = ctk.CTkFrame(sub_card, fg_color="transparent")

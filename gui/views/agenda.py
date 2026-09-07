@@ -64,20 +64,11 @@ class AgendaView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(parent, fg_color="transparent")
         toolbar.pack(fill="x", pady=(8, 8))
 
-        ctk.CTkButton(
-            toolbar, text="+ Nueva tarea", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=lambda: TareaEditor(self, on_save=self._reload_tareas),
-        ).pack(side="left")
+        ui.button(toolbar, "+ Nueva tarea", "primary",
+                  command=lambda: TareaEditor(self, on_save=self._reload_tareas)).pack(side="left")
 
-        ctk.CTkButton(
-            toolbar, text="↻ Sincronizar con Documentos", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._sync_tareas,
-        ).pack(side="left", padx=(8, 0))
+        ui.button(toolbar, "↻ Sincronizar con Documentos", "secondary",
+                  command=self._sync_tareas).pack(side="left", padx=(8, 0))
 
         ctk.CTkLabel(
             toolbar, text="Filtro:", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
@@ -191,18 +182,10 @@ class AgendaView(ctk.CTkFrame):
             ).pack(side="left", padx=(8, 0))
 
         # Botones (más pequeños)
-        ctk.CTkButton(
-            row, text="🗑", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: self._delete_tarea(t),
-        ).pack(side="right", padx=1)
-        ctk.CTkButton(
-            row, text="✏", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: TareaEditor(self, tarea=t, on_save=self._reload_tareas),
-        ).pack(side="right", padx=1)
+        ui.icon_button(row, "🗑", danger=True,
+                       command=lambda: self._delete_tarea(t)).pack(side="right", padx=1)
+        ui.icon_button(row, "✏",
+                       command=lambda: TareaEditor(self, tarea=t, on_save=self._reload_tareas)).pack(side="right", padx=1)
 
         # Descripción inline (truncada, solo si existe y no está completada)
         desc = (t.get("descripcion") or "").strip()
@@ -267,12 +250,8 @@ class AgendaView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(parent, fg_color="transparent")
         toolbar.pack(fill="x", pady=(8, 8))
 
-        ctk.CTkButton(
-            toolbar, text="+ Nueva nota", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=lambda: NotaEditor(self, on_save=self._reload_notas),
-        ).pack(side="left")
+        ui.button(toolbar, "+ Nueva nota", "primary",
+                  command=lambda: NotaEditor(self, on_save=self._reload_notas)).pack(side="left")
 
         self.lbl_notas_count = ctk.CTkLabel(
             toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
@@ -327,18 +306,10 @@ class AgendaView(ctk.CTkFrame):
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", fill="x", expand=True)
 
-        ctk.CTkButton(
-            row, text="🗑", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: self._delete_nota(n),
-        ).pack(side="right", padx=1)
-        ctk.CTkButton(
-            row, text="✏", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: NotaEditor(self, nota=n, on_save=self._reload_notas),
-        ).pack(side="right", padx=1)
+        ui.icon_button(row, "🗑", danger=True,
+                       command=lambda: self._delete_nota(n)).pack(side="right", padx=1)
+        ui.icon_button(row, "✏",
+                       command=lambda: NotaEditor(self, nota=n, on_save=self._reload_notas)).pack(side="right", padx=1)
 
         # Contenido truncado en 2 líneas aprox
         contenido = (n.get("contenido") or "").strip()
@@ -366,12 +337,8 @@ class AgendaView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(parent, fg_color="transparent")
         toolbar.pack(fill="x", pady=(8, 8))
 
-        ctk.CTkButton(
-            toolbar, text="+ Nueva reunión", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=lambda: ReunionEditor(self, on_save=self._reload_reuniones),
-        ).pack(side="left")
+        ui.button(toolbar, "+ Nueva reunión", "primary",
+                  command=lambda: ReunionEditor(self, on_save=self._reload_reuniones)).pack(side="left")
 
         self.lbl_reuniones_count = ctk.CTkLabel(
             toolbar, text="", font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
@@ -423,18 +390,10 @@ class AgendaView(ctk.CTkFrame):
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(side="left", fill="x", expand=True)
 
-        ctk.CTkButton(
-            row, text="🗑", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: self._delete_reunion(r),
-        ).pack(side="right", padx=1)
-        ctk.CTkButton(
-            row, text="✏", width=24, height=22, corner_radius=4,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MUTED, font=theme.font(11),
-            command=lambda: ReunionEditor(self, reunion=r, on_save=self._reload_reuniones),
-        ).pack(side="right", padx=1)
+        ui.icon_button(row, "🗑", danger=True,
+                       command=lambda: self._delete_reunion(r)).pack(side="right", padx=1)
+        ui.icon_button(row, "✏",
+                       command=lambda: ReunionEditor(self, reunion=r, on_save=self._reload_reuniones)).pack(side="right", padx=1)
 
         # Meta inline (fecha + lugar + asistentes en una sola línea compacta)
         meta_parts = []
@@ -515,19 +474,8 @@ class _BaseEditor(ctk.CTkToplevel):
     def _footer(self, parent, on_save) -> None:
         f = ctk.CTkFrame(parent, fg_color="transparent")
         f.pack(fill="x", padx=20, pady=14, side="bottom")
-        ctk.CTkButton(
-            f, text="Cancelar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            f, text="Guardar", font=theme.FONT_BUTTON,
-            height=34, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            command=on_save,
-        ).pack(side="right")
+        ui.button(f, "Cancelar", "secondary", command=self.destroy).pack(side="right", padx=(8, 0))
+        ui.button(f, "Guardar", "primary", command=on_save).pack(side="right")
 
 
 class TareaEditor(_BaseEditor):

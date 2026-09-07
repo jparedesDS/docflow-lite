@@ -121,17 +121,11 @@ class OfertasView(ctk.CTkFrame):
             button_hover_color=theme.TEXT_MUTED, text_color=theme.TEXT_MAIN, command=self._on_days)
         self.opt_days.set("Últimos 30 días")
         self.opt_days.pack(side="left", padx=(0, theme.SPACE_2))
-        self.btn_export = ctk.CTkButton(
-            actions, text="⤓  Excel", width=90, height=theme.HEIGHT_INPUT,
-            corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.GREEN,
-            border_width=1, border_color=theme.BORDER, command=self._export)
+        self.btn_export = ui.button(actions, "⤓  Excel", "outline", size="sm", width=90,
+                                    text_color=theme.GREEN, command=self._export)
         self.btn_export.pack(side="left", padx=(0, theme.SPACE_2))
-        self.btn_refresh = ctk.CTkButton(
-            actions, text="↻  Actualizar", width=120, height=theme.HEIGHT_INPUT,
-            corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            border_width=1, border_color=theme.BORDER, command=lambda: self._fetch(force=True))
+        self.btn_refresh = ui.button(actions, "↻  Actualizar", "outline", size="sm", width=120,
+                                     text_color=theme.TEXT_SUB, command=lambda: self._fetch(force=True))
         self.btn_refresh.pack(side="left")
 
     # ── No configurado ───────────────────────────────────────────────────────
@@ -546,11 +540,8 @@ class OfertasView(ctk.CTkFrame):
         if not o.get("is_read"):
             act = ctk.CTkFrame(self.detail, fg_color="transparent")
             act.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, 0))
-            ctk.CTkButton(act, text="✓ Marcar como leído", height=30, corner_radius=theme.RADIUS_MD,
-                          font=theme.FONT_SMALL_BOLD, fg_color="transparent",
-                          hover_color=theme.BG_INPUT, text_color=theme.GREEN,
-                          border_width=1, border_color=theme.BORDER,
-                          command=lambda: self._mark_read(o)).pack(side="left")
+            ui.button(act, "✓ Marcar como leído", "outline", size="sm", height=30,
+                      text_color=theme.GREEN, command=lambda: self._mark_read(o)).pack(side="left")
 
         # Estado de respuesta (con la salvedad de la bandeja compartida)
         elabel, ecolor, eicon = _engagement(o)
@@ -585,10 +576,8 @@ class OfertasView(ctk.CTkFrame):
 
         # Ver el cuerpo de la respuesta enviada (descarga bajo demanda)
         if o.get("is_answered") and o.get("answered_msgid") and o.get("answered_user"):
-            btn = ctk.CTkButton(bi, text="📄  Ver propuesta enviada", height=28,
-                                corner_radius=theme.RADIUS_MD, font=theme.FONT_TINY,
-                                fg_color="transparent", hover_color=theme.BG_INPUT,
-                                text_color=ecolor, border_width=1, border_color=theme.BORDER)
+            btn = ui.button(bi, "📄  Ver propuesta enviada", "outline", size="xs",
+                            corner_radius=theme.RADIUS_MD, font=theme.FONT_TINY, text_color=ecolor)
             btn.configure(command=lambda b=btn: self._load_reply(o, b, bi))
             btn.pack(anchor="w", pady=(theme.SPACE_2, 0))
 
@@ -660,9 +649,8 @@ class OfertasView(ctk.CTkFrame):
         if m.get("notas"):
             self._g_notas.insert("1.0", m["notas"])
 
-        ctk.CTkButton(box, text="💾  Guardar ficha", height=32, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=lambda k=key: self._save_gestion(k)).pack(
+        ui.button(box, "💾  Guardar ficha", "primary", size="sm", height=32,
+                  command=lambda k=key: self._save_gestion(k)).pack(
             anchor="e", padx=theme.SPACE_3, pady=(0, theme.SPACE_3))
 
     def _g_entry(self, parent, value="") -> ctk.CTkEntry:
@@ -758,11 +746,9 @@ class OfertasView(ctk.CTkFrame):
             ctk.CTkLabel(foot, text=f"Dominio: {dom}", font=theme.FONT_TINY,
                          text_color=theme.TEXT_MUTED, anchor="w").pack(side="left")
         if dom and not trust.get("trusted"):
-            ctk.CTkButton(foot, text="✓ Marcar dominio de confianza", height=28,
-                          corner_radius=theme.RADIUS_MD, font=theme.FONT_TINY,
-                          fg_color="transparent", hover_color=theme.BG_INPUT,
-                          text_color=theme.GREEN, border_width=1, border_color=theme.BORDER,
-                          command=lambda d=dom: self._trust_domain(d)).pack(side="right")
+            ui.button(foot, "✓ Marcar dominio de confianza", "outline", size="xs",
+                      corner_radius=theme.RADIUS_MD, font=theme.FONT_TINY, text_color=theme.GREEN,
+                      command=lambda d=dom: self._trust_domain(d)).pack(side="right")
 
     def _trust_domain(self, domain: str) -> None:
         of.add_trusted_domain(domain)

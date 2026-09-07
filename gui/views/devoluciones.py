@@ -70,23 +70,12 @@ class DevolucionesView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_4, theme.SPACE_2))
 
-        self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻  Recargar", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._reload,
-        )
+        self.btn_reload = ui.button(toolbar, "↻  Recargar", "outline", size="sm", command=self._reload)
         self.btn_reload.pack(side="left", padx=(0, theme.SPACE_2))
 
         # Botón devolución manual (acción primary)
-        ctk.CTkButton(
-            toolbar, text="+  Devolución manual", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            command=lambda: ManualDevolucionWindow(self),
-        ).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(toolbar, "+  Devolución manual", "primary", size="sm",
+                  command=lambda: ManualDevolucionWindow(self)).pack(side="left", padx=(0, theme.SPACE_2))
 
         self.var_unread = ctk.BooleanVar(value=False)
         self.chk_unread = ctk.CTkCheckBox(
@@ -289,28 +278,15 @@ class PreviewWindow(ctk.CTkToplevel):
         # que el botón Enviar quede siempre visible aunque la tabla crezca.
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=22, pady=14)
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
+        ui.button(footer, "Cancelar", "secondary", size="lg",
+                  command=self.destroy).pack(side="right", padx=(8, 0))
 
-        self.btn_send = ctk.CTkButton(
-            footer, text="Enviar notificación  →", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            state="disabled",
-            command=self._send,
-        )
+        self.btn_send = ui.button(footer, "Enviar notificación  →", "primary", size="lg",
+                                  state="disabled", command=self._send)
         self.btn_send.pack(side="right")
 
-        self.btn_preview = ctk.CTkButton(
-            footer, text="👁  Preview email", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+        self.btn_preview = ui.button(
+            footer, "👁  Preview email", "chip", size="lg",
             state="disabled",
             command=self._preview_email,
         )
@@ -720,30 +696,13 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
         # Footer (packeado primero con side=bottom)
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(theme.SPACE_2, 0))
+        ui.button(footer, "Cancelar", "outline",
+                  command=self.destroy).pack(side="right", padx=(theme.SPACE_2, 0))
 
-        self.btn_send = ctk.CTkButton(
-            footer, text="Enviar  →", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            command=self._send,
-        )
+        self.btn_send = ui.button(footer, "Enviar  →", "primary", command=self._send)
         self.btn_send.pack(side="right")
 
-        self.btn_preview = ctk.CTkButton(
-            footer, text="👁  Preview email", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._preview,
-        )
+        self.btn_preview = ui.button(footer, "👁  Preview email", "outline", command=self._preview)
         self.btn_preview.pack(side="left")
 
         # Status line encima del footer
@@ -789,13 +748,8 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             docs_head, text="DOCUMENTOS DEVUELTOS",
             font=theme.FONT_LABEL, text_color=theme.TEXT_MUTED, anchor="w",
         ).pack(side="left")
-        ctk.CTkButton(
-            docs_head, text="+ Añadir fila", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM, width=110,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.ACCENT, border_width=1, border_color=theme.BORDER,
-            command=self._add_doc_row,
-        ).pack(side="right")
+        ui.button(docs_head, "+ Añadir fila", "outline", size="xs", width=110,
+                  text_color=theme.ACCENT, command=self._add_doc_row).pack(side="right")
 
         # Cabecera de la tabla (para alinear con los campos)
         head_row = ctk.CTkFrame(scroll, fg_color="transparent")
@@ -914,13 +868,8 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             "ent_rev": ent_rev,
             "cmb_estado": cmb_estado,
         }
-        btn_del = ctk.CTkButton(
-            row, text="🗑", width=32,
-            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_SM,
-            fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=theme.FONT_BUTTON,
-            command=lambda it=item: self._remove_doc_row(it),
-        )
+        btn_del = ui.button(row, "🗑", "danger", size="xs", width=32, height=theme.HEIGHT_INPUT,
+                            font=theme.FONT_BUTTON, command=lambda it=item: self._remove_doc_row(it))
         btn_del.pack(side="left", padx=(theme.SPACE_1, 0))
 
         self._doc_rows.append(item)

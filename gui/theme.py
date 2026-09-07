@@ -367,6 +367,14 @@ BUTTON_STYLES = {
         "border_width": 1,
         "border_color": BORDER,
     },
+    # Relleno suave: acciones auxiliares (Preview, chips de añadir rápido…).
+    "chip": {
+        "fg_color": BG_INPUT,
+        "hover_color": BORDER,
+        "text_color": TEXT_MAIN,
+        "border_width": 1,
+        "border_color": BORDER,
+    },
     "ghost": {
         "fg_color": "transparent",
         "hover_color": BG_INPUT,

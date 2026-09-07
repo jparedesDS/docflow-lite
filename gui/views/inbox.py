@@ -39,13 +39,7 @@ class InboxView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_1))
 
-        self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻  Recargar", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self._reload,
-        )
+        self.btn_reload = ui.button(toolbar, "↻  Recargar", "outline", size="sm", command=self._reload)
         self.btn_reload.pack(side="left")
 
         self.cmb_filter = ctk.CTkOptionMenu(
@@ -266,22 +260,12 @@ class InboxView(ctk.CTkFrame):
         email_obj = next((e for e in self._emails if e["uid"] == d["uid"]), None)
         is_read = email_obj.get("is_read") if email_obj else True
         toggle_label = "📫 Marcar no leído" if is_read else "📬 Marcar leído"
-        ctk.CTkButton(
-            actions, text=toggle_label, font=theme.FONT_BUTTON,
-            height=30, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN,
-            command=lambda uid=d["uid"], r=is_read: self._toggle_read(uid, r),
-        ).pack(side="left")
+        ui.button(actions, toggle_label, "chip", height=30, border_width=0,
+                  command=lambda uid=d["uid"], r=is_read: self._toggle_read(uid, r)).pack(side="left")
 
         # Botón IA (deshabilitado sin key)
-        ai_btn = ctk.CTkButton(
-            actions, text="🤖 Análisis IA", font=theme.FONT_BUTTON,
-            height=30, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_MUTED, state="disabled",
-            command=lambda: None,
-        )
+        ai_btn = ui.button(actions, "🤖 Análisis IA", "chip", height=30, border_width=0,
+                           text_color=theme.TEXT_MUTED, state="disabled", command=lambda: None)
         ai_btn.pack(side="left", padx=(8, 0))
         if not ANTHROPIC_API_KEY:
             self._add_tooltip(ai_btn, "Configura ANTHROPIC_API_KEY en .env para activar.")

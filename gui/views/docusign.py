@@ -113,11 +113,8 @@ class DocusignView(ctk.CTkFrame):
         self.lbl_sync = ctk.CTkLabel(actions, text="", font=theme.FONT_TINY,
                                      text_color=theme.TEXT_MUTED)
         self.lbl_sync.pack(side="left", padx=(0, theme.SPACE_2))
-        self.btn_refresh = ctk.CTkButton(
-            actions, text="↻  Actualizar", width=120, height=theme.HEIGHT_INPUT,
-            corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            border_width=1, border_color=theme.BORDER, command=self._fetch)
+        self.btn_refresh = ui.button(actions, "↻  Actualizar", "outline", size="sm", width=120,
+                                     text_color=theme.TEXT_SUB, command=self._fetch)
         self.btn_refresh.pack(side="left")
 
     # ── Estado no configurado ────────────────────────────────────────────────
@@ -422,10 +419,9 @@ class DocusignView(ctk.CTkFrame):
                      anchor="w", justify="left", wraplength=620).pack(anchor="w")
         _badge(title_wrap, data.get("status", "")).pack(anchor="w", pady=(theme.SPACE_2, 0))
         if data.get("status") == "completed":
-            ctk.CTkButton(bar, text="⤓  Descargar PDF", width=140, height=32,
-                          corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                          fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                          text_color=theme.GREEN, command=lambda: self._download(env)).pack(side="right")
+            ui.button(bar, "⤓  Descargar PDF", "chip", size="sm", width=140, height=32,
+                      text_color=theme.GREEN, border_width=0,
+                      command=lambda: self._download(env)).pack(side="right")
         ctk.CTkFrame(head, fg_color=theme.BORDER, height=1).pack(fill="x", pady=(theme.SPACE_3, 0))
 
         body = ctk.CTkScrollableFrame(self.detail, fg_color="transparent")

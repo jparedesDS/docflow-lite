@@ -194,12 +194,45 @@ def tabview(parent, command=None, **kwargs) -> ctk.CTkTabview:
     return ctk.CTkTabview(parent, **opts)
 
 
-def button(parent, text: str, variant: str = "primary", command=None, **overrides) -> ctk.CTkButton:
-    """CTkButton con una variante del tema (primary · secondary · outline ·
-    ghost · danger). `overrides` permite ajustar font/width/height puntuales."""
+# Tamaños reales que usa la app (alto · radio · fuente).
+_BUTTON_SIZES = {
+    "md": {"height": theme.HEIGHT_BUTTON,    "corner_radius": theme.RADIUS_MD, "font": theme.FONT_BUTTON},
+    "sm": {"height": theme.HEIGHT_BUTTON,    "corner_radius": theme.RADIUS_MD, "font": theme.FONT_SMALL_BOLD},
+    "lg": {"height": 36,                     "corner_radius": theme.RADIUS_MD, "font": theme.FONT_BUTTON},
+    "xs": {"height": theme.HEIGHT_BUTTON_SM, "corner_radius": theme.RADIUS_SM, "font": theme.FONT_SMALL_BOLD},
+}
+
+
+def button(parent, text: str, variant: str = "primary", command=None,
+           size: str = "md", **overrides) -> ctk.CTkButton:
+    """CTkButton del sistema de diseño.
+
+    variant → color: primary · secondary (relleno card + borde, para Cancelar/
+              Cerrar) · outline (transparente + borde, toolbars) · chip
+              (relleno suave) · ghost · danger.
+    size    → md (34px, 12 bold) · sm (34px, 11 bold: toolbars) · lg (36px:
+              pies de diálogo) · xs (28px, radio pequeño).
+    `overrides` ajusta lo puntual (width, text_color, state, border_color…).
+    """
     kw = theme.button_kwargs(variant)
+    kw.update(_BUTTON_SIZES.get(size, _BUTTON_SIZES["md"]))
     kw.update(overrides)
+    if kw.get("font", 0) is None:      # font=None → fuente por defecto de CTk
+        kw.pop("font")
     return ctk.CTkButton(parent, text=text, command=command, **kw)
+
+
+def icon_button(parent, glyph: str, command=None, danger: bool = False, **overrides) -> ctk.CTkButton:
+    """Botón-icono discreto (✏ 🗑 ✕) de 24×22: transparente, hover suave —o
+    DELETE_HOVER si `danger`— y texto atenuado."""
+    kw = dict(
+        width=24, height=22, corner_radius=4, border_width=0,
+        fg_color="transparent",
+        hover_color=theme.DELETE_HOVER if danger else theme.BG_INPUT,
+        text_color=theme.TEXT_MUTED, font=theme.font(11),
+    )
+    kw.update(overrides)
+    return ctk.CTkButton(parent, text=glyph, command=command, **kw)
 
 
 # ── Estados vacíos ─────────────────────────────────────────────────────────────

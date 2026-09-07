@@ -358,10 +358,8 @@ class PedidosView(ctk.CTkFrame):
         ctk.CTkLabel(actions, text="Informe web completo: ficha, KPIs, predicción y tabla de toda la documentación.",
                      font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
             side="left", fill="x", expand=True)
-        btn = ctk.CTkButton(
-            actions, text="Informe del pedido  →", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT)
+        btn = ui.button(actions, "Informe del pedido  →", "primary", size="xs",
+                        corner_radius=theme.RADIUS_MD)
         btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
         btn.pack(side="right")
 
@@ -500,11 +498,8 @@ class PedidosView(ctk.CTkFrame):
         ctk.CTkLabel(foot, text=hint, font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
                      anchor="w").pack(side="left", fill="x", expand=True)
         if self._on_open_documentos and self._pedido_current:
-            ctk.CTkButton(
-                foot, text="Ver en Documentos  →", font=theme.FONT_SMALL_BOLD,
-                height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
-                fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-                command=lambda p=self._pedido_current: self._on_open_documentos(p)).pack(side="right")
+            ui.button(foot, "Ver en Documentos  →", "primary", size="xs", corner_radius=theme.RADIUS_MD,
+                      command=lambda p=self._pedido_current: self._on_open_documentos(p)).pack(side="right")
 
     # ── 4) Plazo · Curva-S (conciso) ─────────────────────────────────────────
 
@@ -773,10 +768,7 @@ class TagDetailWindow(ctk.CTkToplevel):
 
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=22, pady=(0, 14))
-        ctk.CTkButton(footer, text="Cerrar", font=theme.FONT_BUTTON, height=36,
-                      corner_radius=8, fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-                      command=self.destroy).pack(side="right")
+        ui.button(footer, "Cerrar", "secondary", size="lg", command=self.destroy).pack(side="right")
 
         scroll = ScrollFrame(self, fg_color=theme.BG_CARD)
         scroll.pack(side="top", fill="both", expand=True, padx=22, pady=(8, 12))

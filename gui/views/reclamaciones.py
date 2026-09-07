@@ -46,14 +46,6 @@ class ReclamacionesView(ctk.CTkFrame):
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_3, theme.SPACE_2))
 
-        # Secondary buttons (Recargar / Preview / Enviar todas)
-        _SECONDARY = dict(
-            font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-        )
-
         # Filtro: días mínimos desde envío
         ctk.CTkLabel(
             toolbar, text="Días ≥", font=theme.FONT_SMALL,
@@ -73,41 +65,26 @@ class ReclamacionesView(ctk.CTkFrame):
         self.entry_min_days.bind("<Return>", lambda _e: self._reload())
         self.entry_min_days.bind("<FocusOut>", lambda _e: self._reload())
 
-        ctk.CTkButton(
-            toolbar, text="Todos", width=60, **_SECONDARY,
-            command=self._show_all,
-        ).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(toolbar, "Todos", "outline", size="sm", width=60,
+                  command=self._show_all).pack(side="left", padx=(0, theme.SPACE_2))
 
-        self.btn_reload = ctk.CTkButton(
-            toolbar, text="↻  Recargar", **_SECONDARY, command=self._reload,
-        )
+        self.btn_reload = ui.button(toolbar, "↻  Recargar", "outline", size="sm", command=self._reload)
         self.btn_reload.pack(side="left")
 
-        self.btn_preview = ctk.CTkButton(
-            toolbar, text="👁  Preview", **_SECONDARY,
-            state="disabled", command=self._open_preview,
-        )
+        self.btn_preview = ui.button(toolbar, "👁  Preview", "outline", size="sm",
+                                     state="disabled", command=self._open_preview)
         self.btn_preview.pack(side="left", padx=(theme.SPACE_2, 0))
 
-        self.btn_send_selected = ctk.CTkButton(
-            toolbar, text="Enviar seleccionadas", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            state="disabled", command=self._send_selected,
-        )
+        self.btn_send_selected = ui.button(toolbar, "Enviar seleccionadas", "primary", size="sm",
+                                           state="disabled", command=self._send_selected)
         self.btn_send_selected.pack(side="left", padx=(theme.SPACE_2, 0))
 
-        self.btn_send_all = ctk.CTkButton(
-            toolbar, text="Enviar todas", **_SECONDARY,
-            state="disabled", command=self._send_all,
-        )
+        self.btn_send_all = ui.button(toolbar, "Enviar todas", "outline", size="sm",
+                                      state="disabled", command=self._send_all)
         self.btn_send_all.pack(side="left", padx=(theme.SPACE_2, 0))
 
-        ctk.CTkButton(
-            toolbar, text="📒  Comm. Matrix", **_SECONDARY,
-            command=self._open_matrix,
-        ).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(toolbar, "📒  Comm. Matrix", "outline", size="sm",
+                  command=self._open_matrix).pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.lbl_count = ctk.CTkLabel(
             toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
@@ -491,11 +468,9 @@ class ReclamacionPreview(ctk.CTkToplevel):
             text_color=theme.TEXT_MUTED, anchor="w",
         )
         self.lbl_recipients_note.pack(side="left", padx=10)
-        self.btn_reset_recipients = ctk.CTkButton(
-            addr_head, text="↺ Sugeridos por nivel", font=theme.font(10),
-            height=22, width=140, corner_radius=6,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
+        self.btn_reset_recipients = ui.button(
+            addr_head, "↺ Sugeridos por nivel", "outline", size="xs",
+            height=22, width=140, font=theme.font(10), text_color=theme.TEXT_SUB,
             command=self._apply_suggested_recipients,
         )
         self.btn_reset_recipients.pack(side="right")
@@ -531,46 +506,27 @@ class ReclamacionPreview(ctk.CTkToplevel):
             text_color=theme.TEXT_MUTED,
         )
         self.lbl_doc_counter.pack(side="left", padx=10)
-        ctk.CTkButton(
-            docs_head, text="Todos", font=theme.font(10), height=22, width=70, corner_radius=6,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            border_width=1, border_color=theme.BORDER,
-            command=lambda: self._set_all_docs(True),
-        ).pack(side="right", padx=(4, 0))
-        ctk.CTkButton(
-            docs_head, text="Ninguno", font=theme.font(10), height=22, width=70, corner_radius=6,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            border_width=1, border_color=theme.BORDER,
-            command=lambda: self._set_all_docs(False),
-        ).pack(side="right")
+        ui.button(docs_head, "Todos", "outline", size="xs", height=22, width=70,
+                  font=theme.font(10), text_color=theme.TEXT_SUB,
+                  command=lambda: self._set_all_docs(True)).pack(side="right", padx=(4, 0))
+        ui.button(docs_head, "Ninguno", "outline", size="xs", height=22, width=70,
+                  font=theme.font(10), text_color=theme.TEXT_SUB,
+                  command=lambda: self._set_all_docs(False)).pack(side="right")
 
         # Footer y status se packean PRIMERO con side="bottom" para garantizar
         # que el botón Enviar quede siempre visible aunque la tabla crezca.
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=22, pady=14)
 
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
+        ui.button(footer, "Cancelar", "secondary", size="lg",
+                  command=self.destroy).pack(side="right", padx=(8, 0))
 
-        self.btn_send = ctk.CTkButton(
-            footer, text="Enviar reclamación  →", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            state="disabled",
-            command=self._send,
-        )
+        self.btn_send = ui.button(footer, "Enviar reclamación  →", "primary", size="lg",
+                                  state="disabled", command=self._send)
         self.btn_send.pack(side="right")
 
-        self.btn_preview = ctk.CTkButton(
-            footer, text="👁  Preview email", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
+        self.btn_preview = ui.button(
+            footer, "👁  Preview email", "chip", size="lg",
             state="disabled",
             command=self._preview_email,
         )
@@ -923,21 +879,11 @@ class CommMatrixWindow(ctk.CTkToplevel):
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
         toolbar.pack(fill="x", padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_2))
 
-        ctk.CTkButton(
-            toolbar, text="📥  Importar .txt", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            command=self._import_txt,
-        ).pack(side="left")
+        ui.button(toolbar, "📥  Importar .txt", "primary", size="sm",
+                  command=self._import_txt).pack(side="left")
 
-        ctk.CTkButton(
-            toolbar, text="+  Nuevo pedido", font=theme.FONT_SMALL_BOLD,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=lambda: self._open_editor(None),
-        ).pack(side="left", padx=(theme.SPACE_2, 0))
+        ui.button(toolbar, "+  Nuevo pedido", "outline", size="sm",
+                  command=lambda: self._open_editor(None)).pack(side="left", padx=(theme.SPACE_2, 0))
 
         self.lbl_count = ctk.CTkLabel(
             toolbar, text="", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
@@ -953,13 +899,7 @@ class CommMatrixWindow(ctk.CTkToplevel):
         # Footer
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
-        ctk.CTkButton(
-            footer, text="Cerrar", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right")
+        ui.button(footer, "Cerrar", "outline", command=self.destroy).pack(side="right")
 
         # Lista scrollable
         self.list_scroll = ScrollFrame(self)
@@ -1055,20 +995,11 @@ class CommMatrixWindow(ctk.CTkToplevel):
         # IMPORTANTE: packeamos los botones (side="right") ANTES del preview
         # expandible. Si no, el preview con expand=True consume todo el espacio
         # y los botones quedan fuera del viewport.
-        ctk.CTkButton(
-            inner, text="🗑", width=32,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
-            fg_color="transparent", hover_color=theme.DELETE_HOVER,
-            text_color=theme.TEXT_MUTED, font=theme.FONT_BUTTON,
-            command=lambda ped=p["pedido"]: self._delete(ped),
-        ).pack(side="right", padx=theme.SPACE_1)
+        ui.button(inner, "🗑", "danger", size="xs", width=32, font=theme.FONT_BUTTON,
+                  command=lambda ped=p["pedido"]: self._delete(ped)).pack(side="right", padx=theme.SPACE_1)
 
-        ctk.CTkButton(
-            inner, text="Editar", width=70,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            font=theme.FONT_SMALL_BOLD,
+        ui.button(
+            inner, "Editar", "outline", size="xs", width=70,
             command=lambda ped=p["pedido"]: self._open_editor(ped),
         ).pack(side="right", padx=theme.SPACE_1)
 
@@ -1131,20 +1062,9 @@ class CommMatrixEditor(ctk.CTkToplevel):
         # Footer (side=bottom primero)
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
-        ctk.CTkButton(
-            footer, text="Cancelar", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right", padx=(theme.SPACE_2, 0))
-        ctk.CTkButton(
-            footer, text="Guardar", font=theme.FONT_BUTTON,
-            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color=theme.TEXT_ON_ACCENT,
-            command=self._save,
-        ).pack(side="right")
+        ui.button(footer, "Cancelar", "outline",
+                  command=self.destroy).pack(side="right", padx=(theme.SPACE_2, 0))
+        ui.button(footer, "Guardar", "primary", command=self._save).pack(side="right")
 
         # Body
         body = ctk.CTkFrame(self, fg_color="transparent")

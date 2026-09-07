@@ -161,21 +161,13 @@ class DocumentosView(ctk.CTkFrame):
         self.ent_resp.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_resp.bind("<KeyRelease>", lambda e: self._debounced_search())
 
-        ctk.CTkButton(
-            filters, text="Limpiar", width=70,
-            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_SUB, font=theme.FONT_SMALL_BOLD,
-            border_width=1, border_color=theme.BORDER,
+        ui.button(
+            filters, "Limpiar", "outline", size="sm", width=70, text_color=theme.TEXT_SUB,
             command=self._clear_filters,
         ).pack(side="left", padx=(0, theme.SPACE_2))
 
-        ctk.CTkButton(
-            filters, text="↻", width=36,
-            height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD,
-            fg_color="transparent", hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_SUB, font=theme.FONT_BUTTON,
-            border_width=1, border_color=theme.BORDER,
+        ui.button(
+            filters, "↻", "outline", width=36, text_color=theme.TEXT_SUB,
             command=self._hard_refresh,
         ).pack(side="left")
 
@@ -190,13 +182,9 @@ class DocumentosView(ctk.CTkFrame):
 
         pager = ctk.CTkFrame(bar, fg_color="transparent")
         pager.pack(side="right")
-        self.btn_prev = ctk.CTkButton(
-            pager, text="‹", width=30,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            font=theme.FONT_BUTTON, border_width=1, border_color=theme.BORDER,
-            command=lambda: self._goto_page(self._page - 1),
-        )
+        self.btn_prev = ui.button(pager, "‹", "outline", size="xs", width=30,
+                                  font=theme.FONT_BUTTON, text_color=theme.TEXT_SUB,
+                                  command=lambda: self._goto_page(self._page - 1))
         self.btn_prev.pack(side="left", padx=theme.SPACE_1)
 
         self.lbl_page = ctk.CTkLabel(
@@ -204,13 +192,9 @@ class DocumentosView(ctk.CTkFrame):
         )
         self.lbl_page.pack(side="left", padx=theme.SPACE_1)
 
-        self.btn_next = ctk.CTkButton(
-            pager, text="›", width=30,
-            height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_SM,
-            fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-            font=theme.FONT_BUTTON, border_width=1, border_color=theme.BORDER,
-            command=lambda: self._goto_page(self._page + 1),
-        )
+        self.btn_next = ui.button(pager, "›", "outline", size="xs", width=30,
+                                  font=theme.FONT_BUTTON, text_color=theme.TEXT_SUB,
+                                  command=lambda: self._goto_page(self._page + 1))
         self.btn_next.pack(side="left", padx=theme.SPACE_1)
 
         # Table — tabla a medida con pills de color por celda (look web)
@@ -480,10 +464,9 @@ class DocumentosView(ctk.CTkFrame):
         ctk.CTkLabel(title_wrap, text=str(doc.get("Título", "") or "Sin título"),
                      font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w",
                      justify="left", wraplength=DETAIL_W - 70).pack(anchor="w", pady=(2, 0))
-        ctk.CTkButton(top, text="✕", width=26, height=26, corner_radius=theme.RADIUS_SM,
-                      fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_MUTED, font=theme.font(13, "bold"),
-                      command=self._hide_detail).pack(side="right")
+        ui.button(top, "✕", "ghost", width=26, height=26, corner_radius=theme.RADIUS_SM,
+                  text_color=theme.TEXT_MUTED, font=theme.font(13, "bold"),
+                  command=self._hide_detail).pack(side="right")
 
         # Badges: estado + tipo + crítico
         badges = ctk.CTkFrame(head, fg_color="transparent")
@@ -504,11 +487,9 @@ class DocumentosView(ctk.CTkFrame):
         # ── Footer (Generar Reclamación) ──────────────────────────────────
         footer = ctk.CTkFrame(self.detail_panel, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
-        ctk.CTkButton(footer, text="⚠  Generar Reclamación", height=38,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.RED, border_width=1, border_color=theme.RED,
-                      command=lambda d=doc: self._goto_reclamacion(d)).pack(fill="x")
+        ui.button(footer, "⚠  Generar Reclamación", "outline", size="sm", height=38,
+                  text_color=theme.RED, border_color=theme.RED,
+                  command=lambda d=doc: self._goto_reclamacion(d)).pack(fill="x")
 
         # ── Cuerpo scrollable ─────────────────────────────────────────────
         body = ctk.CTkScrollableFrame(self.detail_panel, fg_color="transparent")
@@ -747,13 +728,7 @@ class DocDetailWindow(ctk.CTkToplevel):
         # Footer pegado al fondo (se packea primero para garantizar visibilidad)
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=22, pady=(0, 14))
-        ctk.CTkButton(
-            footer, text="Cerrar", font=theme.FONT_BUTTON,
-            height=36, corner_radius=8,
-            fg_color=theme.BG_CARD, hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, border_width=1, border_color=theme.BORDER,
-            command=self.destroy,
-        ).pack(side="right")
+        ui.button(footer, "Cerrar", "secondary", size="lg", command=self.destroy).pack(side="right")
 
         # Scrollable list de campos (toma el espacio restante)
         scroll = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD, corner_radius=10)

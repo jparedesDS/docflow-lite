@@ -148,10 +148,8 @@ class AjustesView(ctk.CTkFrame):
                      anchor="w", width=170).pack(side="left")
         ctk.CTkLabel(row, text=get_theme(), font=theme.FONT_SMALL_BOLD,
                      text_color=theme.TEXT_MAIN).pack(side="left")
-        ctk.CTkButton(row, text="Cambiar tema…", width=130, height=theme.HEIGHT_INPUT,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-                      command=self._change_theme).pack(side="right")
+        ui.button(row, "Cambiar tema…", "primary", size="sm", width=130,
+                  command=self._change_theme).pack(side="right")
 
         ui.section_header(s, "Comportamiento").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
         self.ent_refresh = self._setting_row(s, "Auto-refresco (min, 0=off)", "autorefresh_min",
@@ -175,9 +173,8 @@ class AjustesView(ctk.CTkFrame):
         self.ent_claims_l3 = self._setting_row(s, "Días → Nivel 3 (Urgente)", "claims_level3_days",
                                                default="", width=80)
 
-        ctk.CTkButton(s, text="Guardar comportamiento", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=self._save_general).pack(anchor="w", pady=theme.SPACE_3)
+        ui.button(s, "Guardar comportamiento", "primary", size="sm", height=36,
+                  command=self._save_general).pack(anchor="w", pady=theme.SPACE_3)
 
     def _change_theme(self) -> None:
         from gui.widgets.theme_picker import ThemePickerDialog
@@ -225,12 +222,10 @@ class AjustesView(ctk.CTkFrame):
             fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
         self.ent_pedidos = self._setting_row(self.datos_scroll, "Ruta base (M:\\…)",
                                              "pedidos_base_path", width=360)
-        ctk.CTkButton(self.datos_scroll, text="Guardar ruta", height=34, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT,
-                      command=lambda: (pref.set_value("pedidos_base_path", self.ent_pedidos.get().strip()),
-                                       ui.toast(self, "Guardado", "Reinicia para aplicar.", kind="success"))
-                      ).pack(anchor="w", pady=theme.SPACE_2)
+        ui.button(self.datos_scroll, "Guardar ruta", "primary", size="sm",
+                  command=lambda: (pref.set_value("pedidos_base_path", self.ent_pedidos.get().strip()),
+                                   ui.toast(self, "Guardado", "Reinicia para aplicar.", kind="success"))
+                  ).pack(anchor="w", pady=theme.SPACE_2)
 
         # ── Rutas de Apertura de pedidos (antes en la vista Apertura) ────────
         from core.services import apertura as _ap
@@ -248,10 +243,8 @@ class AjustesView(ctk.CTkFrame):
                                              "apertura_planning_tpl", default=str(_ap.DEFAULT_PLANNING_TEMPLATE), width=360)
         self.ent_ap_erp = self._setting_row(self.datos_scroll, "Plantilla VDDL ERP (.xlsx)",
                                             "apertura_erp_tpl", default=str(_ap.DEFAULT_ERP_TEMPLATE), width=360)
-        ctk.CTkButton(self.datos_scroll, text="Guardar rutas de apertura", height=34,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-                      command=self._save_apertura_paths).pack(anchor="w", pady=theme.SPACE_2)
+        ui.button(self.datos_scroll, "Guardar rutas de apertura", "primary", size="sm",
+                  command=self._save_apertura_paths).pack(anchor="w", pady=theme.SPACE_2)
 
         # ── Notificaciones Teams ─────────────────────────────────────────────
         ui.section_header(self.datos_scroll, "Notificaciones Teams").pack(
@@ -282,10 +275,8 @@ class AjustesView(ctk.CTkFrame):
             justify="left", wraplength=520).pack(anchor="w", pady=(theme.SPACE_2, theme.SPACE_1))
         self.ent_nextcloud = self._setting_row(self.datos_scroll, "Enlace público de Nextcloud",
                                                "nextcloud_share_url", default="", width=420)
-        ctk.CTkButton(self.datos_scroll, text="Guardar ajustes de Teams", height=34,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-                      command=self._save_teams_webhook).pack(anchor="w", pady=theme.SPACE_2)
+        ui.button(self.datos_scroll, "Guardar ajustes de Teams", "primary", size="sm",
+                  command=self._save_teams_webhook).pack(anchor="w", pady=theme.SPACE_2)
 
     def _save_teams_webhook(self) -> None:
         pref.set_value("teams_webhook_url", self.ent_teams.get().strip())
@@ -316,18 +307,14 @@ class AjustesView(ctk.CTkFrame):
         btns = ctk.CTkFrame(card, fg_color="transparent")
         btns.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
         k = st["kind"]
-        ctk.CTkButton(btns, text="Importar", width=90, height=28, corner_radius=theme.RADIUS_SM,
-                      font=theme.FONT_TINY, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=lambda: self._datos_import(k)).pack(side="left", padx=(0, 6))
-        ctk.CTkButton(btns, text="Vincular ruta", width=110, height=28, corner_radius=theme.RADIUS_SM,
-                      font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                      command=lambda: self._datos_link(k)).pack(side="left", padx=(0, 6))
+        ui.button(btns, "Importar", "primary", size="xs", width=90, font=theme.FONT_TINY,
+                  command=lambda: self._datos_import(k)).pack(side="left", padx=(0, 6))
+        ui.button(btns, "Vincular ruta", "outline", size="xs", width=110, font=theme.FONT_TINY,
+                  text_color=theme.TEXT_SUB, command=lambda: self._datos_link(k)).pack(side="left", padx=(0, 6))
         if st.get("linked_path"):
-            ctk.CTkButton(btns, text="Quitar vínculo", width=110, height=28, corner_radius=theme.RADIUS_SM,
-                          font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
-                          text_color=theme.TEXT_MUTED, border_width=1, border_color=theme.BORDER,
-                          command=lambda: (data_source.clear_link(k), self._render_datos())).pack(side="left")
+            ui.button(btns, "Quitar vínculo", "outline", size="xs", width=110, font=theme.FONT_TINY,
+                      text_color=theme.TEXT_MUTED,
+                      command=lambda: (data_source.clear_link(k), self._render_datos())).pack(side="left")
 
     def _datos_import(self, kind: str) -> None:
         path = filedialog.askopenfilename(parent=self, title=f"Importar {kind}",
@@ -373,17 +360,12 @@ class AjustesView(ctk.CTkFrame):
 
         btns = ctk.CTkFrame(s, fg_color="transparent")
         btns.pack(anchor="w", pady=theme.SPACE_3)
-        ctk.CTkButton(btns, text="Guardar correo", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=self._save_correo).pack(side="left", padx=(0, theme.SPACE_2))
-        ctk.CTkButton(btns, text="Probar IMAP", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                      command=self._test_imap).pack(side="left", padx=(0, theme.SPACE_2))
-        ctk.CTkButton(btns, text="Probar SMTP", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                      command=self._test_smtp).pack(side="left")
+        ui.button(btns, "Guardar correo", "primary", size="sm", height=36,
+                  command=self._save_correo).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(btns, "Probar IMAP", "outline", size="sm", height=36, text_color=theme.TEXT_SUB,
+                  command=self._test_imap).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(btns, "Probar SMTP", "outline", size="sm", height=36, text_color=theme.TEXT_SUB,
+                  command=self._test_smtp).pack(side="left")
 
     def _save_correo(self) -> None:
         for key, ent in [("imap_host", self.imap_host), ("imap_port", self.imap_port),
@@ -436,9 +418,8 @@ class AjustesView(ctk.CTkFrame):
             ue = self._setting_row(s, "Usuario", ukey, defaults.get(label, ""))
             pe, ps = self._secret_row(s, "Contraseña", pkey, env)
             self._ofertas_fields.append((ukey, ue, pkey, pe, ps))
-        ctk.CTkButton(s, text="Guardar buzones", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=self._save_ofertas).pack(anchor="w", pady=theme.SPACE_3)
+        ui.button(s, "Guardar buzones", "primary", size="sm", height=36,
+                  command=self._save_ofertas).pack(anchor="w", pady=theme.SPACE_3)
 
         # ── Seguimiento de respuestas de comerciales (opt-in) ────────────────
         ui.section_header(s, "Seguimiento de comerciales (opt-in)").pack(
@@ -465,10 +446,8 @@ class AjustesView(ctk.CTkFrame):
         self.trk_user.pack(side="left", padx=(0, theme.SPACE_2))
         self.trk_pass = _entry(row, placeholder="contraseña", show="•")
         self.trk_pass.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
-        ctk.CTkButton(row, text="+ Añadir", width=90, height=theme.HEIGHT_INPUT,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
-                      command=self._add_tracked).pack(side="left")
+        ui.button(row, "+ Añadir", "primary", size="sm", width=90,
+                  command=self._add_tracked).pack(side="left")
 
     def _render_tracked(self) -> None:
         from core.services import ofertas as ofsvc
@@ -489,10 +468,9 @@ class AjustesView(ctk.CTkFrame):
                          text_color=theme.TEXT_MAIN).pack(side="left")
             ctk.CTkLabel(inner, text=mb["user"], font=theme.FONT_TINY,
                          text_color=theme.TEXT_MUTED).pack(side="left", padx=(theme.SPACE_2, 0))
-            ctk.CTkButton(inner, text="Quitar", width=70, height=26, corner_radius=theme.RADIUS_SM,
-                          font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
-                          text_color=theme.RED, border_width=1, border_color=theme.RED,
-                          command=lambda u=mb["user"]: self._remove_tracked(u)).pack(side="right")
+            ui.button(inner, "Quitar", "outline", size="xs", width=70, height=26, font=theme.FONT_TINY,
+                      text_color=theme.RED, border_color=theme.RED,
+                      command=lambda u=mb["user"]: self._remove_tracked(u)).pack(side="right")
 
     def _add_tracked(self) -> None:
         from core.services import ofertas as ofsvc
@@ -535,9 +513,8 @@ class AjustesView(ctk.CTkFrame):
         self.ds_aid, self.ds_aid_s = self._secret_row(s, "Account ID", "docusign_account_id", "DOCUSIGN_ACCOUNT_ID")
         self.ds_url = self._setting_row(s, "Base URL", "docusign_base_url", "https://demo.docusign.net", width=320)
         self.ds_pem = self._setting_row(s, "Ruta clave RSA (.pem)", "docusign_rsa_path", "docusign_private.pem", width=320)
-        ctk.CTkButton(s, text="Guardar DocuSign", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=self._save_docusign).pack(anchor="w", pady=theme.SPACE_3)
+        ui.button(s, "Guardar DocuSign", "primary", size="sm", height=36,
+                  command=self._save_docusign).pack(anchor="w", pady=theme.SPACE_3)
 
     def _save_docusign(self) -> None:
         self._save_secret(self.ds_ik, self.ds_ik_s, "docusign_integration_key")
@@ -551,19 +528,15 @@ class AjustesView(ctk.CTkFrame):
         s = self._scroll(parent)
         ui.section_header(s, "Anthropic (Claude)").pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_2))
         self.ia_key, self.ia_key_s = self._secret_row(s, "API Key", "anthropic_api_key", "ANTHROPIC_API_KEY")
-        ctk.CTkButton(s, text="Guardar API Key", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT,
-                      command=lambda: self._save_secret(self.ia_key, self.ia_key_s, "anthropic_api_key")).pack(
+        ui.button(s, "Guardar API Key", "primary", size="sm", height=36,
+                  command=lambda: self._save_secret(self.ia_key, self.ia_key_s, "anthropic_api_key")).pack(
             anchor="w", pady=theme.SPACE_3)
 
         ui.section_header(s, "Migración de credenciales").pack(fill="x", pady=(theme.SPACE_4, theme.SPACE_2))
         ctk.CTkLabel(s, text="Mueve las credenciales que aún estén en .env al almacén seguro.",
                      font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
-        ctk.CTkButton(s, text="Importar credenciales del .env", height=36, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color="transparent", hover_color=theme.BG_INPUT,
-                      text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
-                      command=self._migrate_env).pack(anchor="w", pady=theme.SPACE_2)
+        ui.button(s, "Importar credenciales del .env", "outline", size="sm", height=36,
+                  text_color=theme.TEXT_SUB, command=self._migrate_env).pack(anchor="w", pady=theme.SPACE_2)
 
     def _migrate_env(self) -> None:
         import os
@@ -584,9 +557,8 @@ class AjustesView(ctk.CTkFrame):
         bar.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
         ctk.CTkLabel(bar, text="Cuentas y permisos por sección", font=theme.FONT_SMALL_BOLD,
                      text_color=theme.TEXT_MAIN).pack(side="left")
-        ctk.CTkButton(bar, text="+ Nuevo usuario", height=32, corner_radius=theme.RADIUS_MD,
-                      font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color=theme.TEXT_ON_ACCENT, command=lambda: self._edit_user(None)).pack(side="right")
+        ui.button(bar, "+ Nuevo usuario", "primary", size="sm", height=32,
+                  command=lambda: self._edit_user(None)).pack(side="right")
         self.users_scroll = self._scroll(parent)
         self._render_users()
 
@@ -617,16 +589,13 @@ class AjustesView(ctk.CTkFrame):
             ctk.CTkLabel(info, text=f"Gestiona {len(gestion)} · Ve {len(ver)} sección(es)",
                          font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         if not admin:
-            ctk.CTkButton(top, text="Editar", width=70, height=28, corner_radius=theme.RADIUS_SM,
-                          font=theme.FONT_TINY, fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                          text_color=theme.TEXT_SUB, command=lambda: self._edit_user(u)).pack(side="right", padx=(4, 0))
-            ctk.CTkButton(top, text="Reset clave", width=90, height=28, corner_radius=theme.RADIUS_SM,
-                          font=theme.FONT_TINY, fg_color=theme.BG_INPUT, hover_color=theme.BORDER,
-                          text_color=theme.TEXT_SUB, command=lambda: self._reset_pwd(u)).pack(side="right", padx=(4, 0))
-            ctk.CTkButton(top, text="Eliminar", width=80, height=28, corner_radius=theme.RADIUS_SM,
-                          font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
-                          text_color=theme.RED, border_width=1, border_color=theme.RED,
-                          command=lambda: self._delete_user(u)).pack(side="right", padx=(4, 0))
+            ui.button(top, "Editar", "chip", size="xs", width=70, font=theme.FONT_TINY, border_width=0,
+                      text_color=theme.TEXT_SUB, command=lambda: self._edit_user(u)).pack(side="right", padx=(4, 0))
+            ui.button(top, "Reset clave", "chip", size="xs", width=90, font=theme.FONT_TINY, border_width=0,
+                      text_color=theme.TEXT_SUB, command=lambda: self._reset_pwd(u)).pack(side="right", padx=(4, 0))
+            ui.button(top, "Eliminar", "outline", size="xs", width=80, font=theme.FONT_TINY,
+                      text_color=theme.RED, border_color=theme.RED,
+                      command=lambda: self._delete_user(u)).pack(side="right", padx=(4, 0))
 
     def _reset_pwd(self, u: dict) -> None:
         UserPasswordDialog(self, u, on_done=self._render_users)
@@ -703,12 +672,10 @@ class UserEditDialog(ctk.CTkToplevel):
 
         foot = ctk.CTkFrame(self, fg_color="transparent")
         foot.pack(fill="x", padx=pad, pady=(0, 14))
-        ctk.CTkButton(foot, text="Cancelar", height=36, corner_radius=8, fg_color=theme.BG_CARD,
-                      hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB, border_width=1,
-                      border_color=theme.BORDER, command=self.destroy).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(foot, text="Guardar", height=36, corner_radius=8, fg_color=theme.ACCENT,
-                      hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT, font=theme.FONT_SMALL_BOLD,
-                      command=self._save).pack(side="right")
+        ui.button(foot, "Cancelar", "secondary", size="lg", font=None, text_color=theme.TEXT_SUB,
+                  command=self.destroy).pack(side="right", padx=(8, 0))
+        ui.button(foot, "Guardar", "primary", size="lg", font=theme.FONT_SMALL_BOLD,
+                  command=self._save).pack(side="right")
 
     def _save(self) -> None:
         permisos = {k: v.get() for k, v in self._perm_vars.items()}
@@ -741,12 +708,10 @@ class UserPasswordDialog(ctk.CTkToplevel):
         self.e.pack(fill="x", padx=20)
         foot = ctk.CTkFrame(self, fg_color="transparent")
         foot.pack(fill="x", padx=20, pady=20)
-        ctk.CTkButton(foot, text="Cancelar", height=36, corner_radius=8, fg_color=theme.BG_CARD,
-                      hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB, border_width=1,
-                      border_color=theme.BORDER, command=self.destroy).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(foot, text="Guardar", height=36, corner_radius=8, fg_color=theme.ACCENT,
-                      hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT, font=theme.FONT_SMALL_BOLD,
-                      command=self._save).pack(side="right")
+        ui.button(foot, "Cancelar", "secondary", size="lg", font=None, text_color=theme.TEXT_SUB,
+                  command=self.destroy).pack(side="right", padx=(8, 0))
+        ui.button(foot, "Guardar", "primary", size="lg", font=theme.FONT_SMALL_BOLD,
+                  command=self._save).pack(side="right")
 
     def _save(self) -> None:
         ok, err = auth.reset_password(self._user["initials"], self.e.get().strip())
