@@ -1,6 +1,6 @@
 import re
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ═══════════════════════════════════════════════════════
 #  MAPPINGS COMPARTIDOS (migrados de DocuControl)
@@ -512,7 +512,6 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
     # ── Paleta EIPSA ──
     NAVY   = "#1B3A5C"   # azul corporativo EIPSA
     CYAN   = "#00AEEF"   # azul claro del logo
-    NAVY_L = "#234B73"   # navy más claro para hover/stripe
 
     # Colores por estado
     STATUS_BG   = {"Rechazado": "#FFEBEE", "Com. Menores": "#FFF3E0", "Com. Mayores": "#FCE4EC",

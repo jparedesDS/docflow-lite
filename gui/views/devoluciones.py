@@ -183,7 +183,6 @@ class DevolucionesView(ctk.CTkFrame):
         self.status_label.configure(text=f"✗  {friendly}", text_color=theme.RED)
 
     def _on_row_double(self, item) -> None:
-        iid = item.get("text") or None
         # En treeview con iid custom, el item viene con id real:
         sel = self.table.selected_iid()
         if not sel:

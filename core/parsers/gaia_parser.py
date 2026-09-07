@@ -4,7 +4,7 @@ from io import StringIO
 from core.parsers.base_parser import (
     GAIA_MATERIAL_MAP, GAIA_STATUS_MAP,
     DOC_TYPE_MAP, apply_critico, fill_supp_nulls, apply_fecha, FINAL_COLUMNS,
-    identify_client, get_responsable_initials, PO_CLIENT_MAP,
+    identify_client, get_responsable_initials,
 )
 
 

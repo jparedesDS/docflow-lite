@@ -2,9 +2,9 @@
 import pandas as pd
 from io import StringIO
 from core.parsers.base_parser import (
-    PRODOC_PO_MAP, PRODOC_MATERIAL_MAP, ACONEX_STATUS_MAP, ACONEX_PO_MAP,
+    PRODOC_PO_MAP, ACONEX_PO_MAP,
     DOC_TYPE_MAP, apply_critico, fill_supp_nulls, apply_fecha, FINAL_COLUMNS,
-    identify_client, get_responsable_initials, lookup_erp,
+    get_responsable_initials, lookup_erp,
 )
 
 SENDER_MATCH = "noreply@aconex.com"

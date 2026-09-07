@@ -49,10 +49,6 @@ EXCEL_REPORTS = [
     },
 ]
 
-# El Reporte Ejecutivo en PDF se sustituyó por el informe interactivo HTML
-# (pestaña «Informe interactivo» → modo «Ejecutivo»). El servicio pdf_report
-# sigue disponible para uso programático si se necesitara.
-
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Vista principal
@@ -422,15 +418,11 @@ class ReportesView(ctk.CTkFrame):
     def _on_download_excel(self, report: dict) -> None:
         if self._busy_id is not None:
             return
-        kind = report.get("kind", "excel")
-        is_pdf = kind == "pdf"
-        ext = ".pdf" if is_pdf else ".xlsx"
-        types = [("PDF", "*.pdf")] if is_pdf else [("Excel", "*.xlsx")]
         default_name = report["filename"].format(date=datetime.now().strftime("%Y-%m-%d"))
         path = filedialog.asksaveasfilename(
             parent=self, title=f"Guardar {report['title']}",
-            defaultextension=ext, initialfile=default_name,
-            filetypes=types + [("Todos", "*.*")],
+            defaultextension=".xlsx", initialfile=default_name,
+            filetypes=[("Excel", "*.xlsx"), ("Todos", "*.*")],
         )
         if not path:
             return
@@ -438,23 +430,16 @@ class ReportesView(ctk.CTkFrame):
         self._busy_id = report["id"]
         card = self._excel_cards[report["id"]]
         card["btn"].configure(state="disabled", text="Generando…")
-        card["lbl"].configure(text=f"⏳  Generando {'PDF' if is_pdf else 'Excel'}…",
+        card["lbl"].configure(text="⏳  Generando Excel…",
                               text_color=theme.TEXT_MUTED)
         self.lbl_status.configure(text=f"Generando {report['title']}…", text_color=theme.TEXT_MUTED)
 
         rid = report["id"]
         title = report["title"]
-        variant = report.get("variant", "completo")
 
         def worker():
             try:
-                if is_pdf:
-                    from core.services import pdf_report
-                    summary = monitoring_service.get_monitoring_data()
-                    if not summary:
-                        raise RuntimeError("No hay documentos en data_erp.xlsx")
-                    data = pdf_report.generate_executive_pdf(variant)
-                elif rid == "monitoring":
+                if rid == "monitoring":
                     sections = monitoring_service.get_monitoring_report_sections()
                     if not sections.get("all_docs"):
                         raise RuntimeError("No hay documentos en data_erp.xlsx")
@@ -791,7 +776,7 @@ class ReportesView(ctk.CTkFrame):
         recipients = sched.get("recipients") or {}
         to = recipients.get("to") or []
         cc = recipients.get("cc") or []
-        if sched["type"] in ("executive", "executive_pdf", "interactive",
+        if sched["type"] in ("executive", "interactive",
                               "interactive_executive") and (to or cc):
             recip_text = f"To: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else "")
             ctk.CTkLabel(
@@ -1440,10 +1425,9 @@ class EditScheduleDialog(ctk.CTkToplevel):
         self.ent_min.insert(0, f"{schedule.get('minute', 0):02d}")
         self.ent_min.pack(side="left")
 
-        # Recipients (executive / executive_pdf / interactive usan To/Cc)
+        # Recipients (executive / interactive usan To/Cc)
         recipients = sched.get("recipients") or {}
-        self.cmb_variant = None
-        if sched["type"] in ("executive", "executive_pdf", "interactive", "interactive_executive"):
+        if sched["type"] in ("executive", "interactive", "interactive_executive"):
             ctk.CTkLabel(self, text="Destinatarios To",
                          font=theme.font(10, "bold"),
                          text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
@@ -1481,20 +1465,6 @@ class EditScheduleDialog(ctk.CTkToplevel):
             self.ent_cc.insert(0, ", ".join(recipients.get("cc") or []))
             self.ent_cc.pack(fill="x", padx=22, pady=(0, 12))
             self.ent_filter = None
-
-            # Selector de variante (solo PDF)
-            if sched["type"] == "executive_pdf":
-                ctk.CTkLabel(self, text="Variante del PDF",
-                             font=theme.font(10, "bold"),
-                             text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w", padx=22, pady=(0, 4))
-                self.cmb_variant = ctk.CTkOptionMenu(
-                    self, values=["completo", "esencial"], width=180, height=34, corner_radius=8,
-                    fg_color=theme.BG_INPUT, button_color=theme.BG_INPUT,
-                    button_hover_color=theme.BG_CARD, text_color=theme.TEXT_MAIN,
-                    font=theme.FONT_BODY, dropdown_font=theme.FONT_BODY,
-                )
-                self.cmb_variant.set((sched.get("options") or {}).get("variant", "completo"))
-                self.cmb_variant.pack(anchor="w", padx=22, pady=(0, 12))
         else:
             # Personal: filtro de usuarios
             options = sched.get("options") or {}
@@ -1623,11 +1593,9 @@ class EditScheduleDialog(ctk.CTkToplevel):
         cc = ([s.strip() for s in self.ent_cc.get().split(",") if s.strip()]
               if self.ent_cc is not None else [])
 
-        if self.ent_to is not None:  # executive / executive_pdf
+        if self.ent_to is not None:  # executive / interactive
             to = [s.strip() for s in self.ent_to.get().split(",") if s.strip()]
             changes["recipients"] = {"to": to, "cc": cc}
-            if self.cmb_variant is not None:  # executive_pdf
-                changes["options"] = {"variant": self.cmb_variant.get()}
         else:  # personal
             raw = self.ent_filter.get().strip()
             if not raw or raw.lower() == "all":

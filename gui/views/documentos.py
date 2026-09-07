@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 
 import customtkinter as ctk
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 
 from core.services import monitoring as monitoring_service
 from gui import cell_format

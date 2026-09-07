@@ -13,7 +13,6 @@ from datetime import date, datetime
 
 import pandas as pd
 
-from core.config import CONSULTA_ERP_PATH, DATA_ERP_PATH
 
 logger = logging.getLogger(__name__)
 

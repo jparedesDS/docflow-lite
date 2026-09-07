@@ -301,7 +301,7 @@ class AgendaView(ctk.CTkFrame):
     def _reload_notas(self) -> None:
         try:
             self._notas = agenda_service.get_all("notas")
-        except Exception as exc:
+        except Exception:
             logger.exception("Error cargando notas")
             self._notas = []
         self._render_notas()
@@ -400,7 +400,7 @@ class AgendaView(ctk.CTkFrame):
     def _reload_reuniones(self) -> None:
         try:
             self._reuniones = agenda_service.get_all("reuniones")
-        except Exception as exc:
+        except Exception:
             logger.exception("Error cargando reuniones")
             self._reuniones = []
         self._render_reuniones()

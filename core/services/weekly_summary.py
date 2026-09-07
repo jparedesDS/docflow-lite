@@ -378,7 +378,6 @@ def _render_executive_html(data: dict, ai_paragraph: str) -> str:
 def _render_personal_html(data: dict) -> str:
     pending_count = data.get("my_pending_total", len(data["my_pending"]))
     devol = data.get("my_devol_count", 0)
-    enviado = data.get("my_enviado_count", 0)
     sin_enviar = data.get("my_sin_enviar_count", 0)
 
     cards = [

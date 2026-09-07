@@ -3,7 +3,7 @@ import pandas as pd
 from io import StringIO
 from core.parsers.base_parser import (
     DOC_TYPE_MAP, apply_critico, fill_supp_nulls, apply_fecha, FINAL_COLUMNS,
-    identify_client, get_responsable_initials, lookup_erp,
+    identify_client, get_responsable_initials,
 )
 
 SENDER_MATCH = "hec.co.kr"

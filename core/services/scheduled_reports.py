@@ -1,6 +1,7 @@
 """Servicio de Reportes Programados — CRUD JSON + APScheduler.
 
-Versión LITE: solo dos tipos de schedule (executive, personal).
+Tipos de schedule: executive, personal, interactive, interactive_executive,
+teams_personal.
 APScheduler corre en BackgroundScheduler dentro de la app; los jobs solo se
 ejecutan mientras la app esté abierta.
 """
@@ -219,14 +220,6 @@ def execute_schedule(schedule_id: str) -> dict:
                 uf = [s.strip() for s in uf.split(",") if s.strip()]
             result = send_personal_emails(to_cc=cc, user_filter=uf)
             count = result.get("count", 0)
-        elif sched["type"] == "executive_pdf":
-            from core.services.pdf_report import send_executive_pdf_email
-            if not to:
-                record_run(schedule_id, "error", error="Sin destinatarios (To)")
-                return {"status": "error", "error": "Indica al menos un destinatario en To"}
-            variant = options.get("variant", "completo")
-            result = send_executive_pdf_email(to=to, cc=cc, variant=variant)
-            count = len(result.get("recipients", []))
         elif sched["type"] == "interactive":
             from core.services.interactive_report import send_email
             if not to:

@@ -3,7 +3,7 @@ import pandas as pd
 from io import StringIO
 from core.parsers.base_parser import (
     SENDOC_PO_MAP, SENDOC_MATERIAL_MAP, SENDOC_STATUS_MAP,
-    DOC_TYPE_MAP, apply_critico, fill_supp_nulls, apply_fecha, FINAL_COLUMNS,
+    DOC_TYPE_MAP, apply_critico, apply_fecha, FINAL_COLUMNS,
     identify_client, get_responsable_initials, lookup_erp, lookup_erp_by_npo,
 )
 

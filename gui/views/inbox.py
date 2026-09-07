@@ -1,7 +1,6 @@
 """Vista Bandeja AI — listado IMAP + panel de detalle (sin clasificación IA aún)."""
 
 import logging
-import os
 import threading
 from email.utils import parsedate_to_datetime
 
@@ -342,7 +341,7 @@ class InboxView(ctk.CTkFrame):
         def worker():
             try:
                 target(uid)
-            except Exception as exc:
+            except Exception:
                 logger.exception("Error toggle read")
                 self.after(0, lambda: messagebox.showerror("Error", str(exc)))
 
