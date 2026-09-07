@@ -34,7 +34,7 @@ def _cfg(pref_key: str, env_key: str, default: str) -> str:
 # ── Rutas a Excels ────────────────────────────────────────────────────────────
 DATA_ERP_PATH = os.getenv("DATA_ERP_PATH") or str(data_dir() / "data_erp.xlsx")
 CONSULTA_ERP_PATH = os.getenv("CONSULTA_ERP_PATH") or str(data_dir() / "consulta_erp.xlsx")
-TAGS_PATH = os.getenv("TAGS_PATH") or str(data_dir() / "data_tags.xlsx")
+# Los tags/equipos se leen del ERP (core.services.erp_tags), ya no de un Excel.
 
 # ── IMAP ──────────────────────────────────────────────────────────────────────
 IMAP_HOST = _cfg("imap_host", "IMAP_HOST", "imap.soljem.com")

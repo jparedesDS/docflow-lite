@@ -121,12 +121,11 @@ class DocFlowLiteApp(ctk.CTk):
                 monitoring.get_monitoring_data()
             except Exception as exc:  # noqa: BLE001 — best-effort
                 logger.debug("Prewarm monitoring falló: %s", exc)
-            # consulta_erp + data_tags (Pedidos: detalle instantáneo)
+            # consulta_erp + ping al ERP (Seguimiento: detalle instantáneo)
             try:
-                from core.services import erp
+                from core.services import erp, erp_tags
                 erp.consulta()
-                if erp.tags_available():
-                    erp.get_tags()
+                erp_tags.is_available()
             except Exception as exc:  # noqa: BLE001 — best-effort
                 logger.debug("Prewarm erp/tags falló: %s", exc)
 
@@ -376,7 +375,8 @@ class DocFlowLiteApp(ctk.CTk):
             view = DocumentosView(self.content, on_navigate=self.navigate)
         elif key == "pedidos":
             from gui.views.pedidos import PedidosView
-            view = PedidosView(self.content, on_open_documentos=self._open_doc_pedido)
+            view = PedidosView(self.content, on_open_documentos=self._open_doc_pedido,
+                               on_open_documento=self.open_documento)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)

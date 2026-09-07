@@ -5,8 +5,8 @@ Combina, sin DB ni API, las tres áreas del DocFlow grande que la sección
 
   1. Consulta ERP   → ficha del pedido (consulta_erp.xlsx): proyecto, cliente,
                        fases Fabricación/Montaje/Envío con % y observaciones.
-  2. Tags & Insp.   → líneas/equipos del pedido (data_tags.xlsx): 121 columnas
-                       agrupadas en secciones de detalle.
+  2. Tags & Insp.   → equipos del pedido desde el ERP (erp_tags: tags_data.*
+                       + órdenes de fabricación); secciones de detalle aquí.
   3. Proyectos      → tabla por pedido (reutiliza monitoring.get_status_global)
                        + dashboard por pedido + analítica (curva-S, predicciones,
                        urgencias, heatmap) portada de analytics_service.
@@ -172,23 +172,20 @@ def consulta_phases(row: dict) -> list[dict]:
 # 2) Tags & Inspecciones
 # ════════════════════════════════════════════════════════════════════════════
 
-def _tags_path() -> str:
-    from core.config import TAGS_PATH
-    return _effective_path("tags", TAGS_PATH)
-
-
 def tags_available() -> bool:
-    return os.path.exists(_tags_path())
+    """¿Responde el ERP (PostgreSQL local)? Los tags ya no vienen de un Excel."""
+    from core.services import erp_tags
+    return erp_tags.is_available()
 
 
 def tags_status() -> dict:
-    path = _tags_path()
-    return {"path": path, "exists": os.path.exists(path)}
+    return {"source": "ERP · PostgreSQL local (tags_data.*)", "available": tags_available()}
 
 
-# Columnas resumen mostradas en la tabla de tags
+# Columnas resumen mostradas en la tabla de tags (Seguimiento ▸ Equipos & Tags)
 TAGS_SUMMARY_COLUMNS = [
-    "TAG", "Nº Pedido", "Tipo", "Tamaño Línea", "Rating", "Facing", "Schedule", "Estado Fab.",
+    "Familia", "TAG", "Tipo", "Tamaño", "Rating", "Facing", "Estado", "Fab.",
+    "Insp.", "Plano Dim.", "OTs", "Docs",
 ]
 
 # Secciones de detalle (réplica de ErpTags.js DETAIL_SECTIONS)
@@ -235,38 +232,14 @@ TAGS_DETAIL_SECTIONS = [
 ]
 
 
-def _is_descriptor_row(r: dict) -> bool:
-    """La data_tags trae una fila descriptora con los nombres internos de campo
-    (TAG='tag', Nº Pedido='num_order', Estado Fab.='fab_state'). La descartamos."""
-    return (
-        str(r.get("Nº Pedido", "")).strip().lower() == "num_order"
-        or str(r.get("TAG", "")).strip().lower() == "tag"
-    )
-
-
-def get_tags(pedido: str = "", estado: str = "") -> list[dict]:
-    """Tags de data_tags.xlsx, filtrados por Nº Pedido (substring) y Estado Fab."""
-    df = _read_excel_cached(_tags_path())
-    rows = [r for r in _clean_records(df) if not _is_descriptor_row(r)]
-    if pedido:
-        q = pedido.strip().lower()
-        rows = [r for r in rows if q in str(r.get("Nº Pedido", "")).lower()]
+def get_tags(pedido: str, estado: str = "") -> list[dict]:
+    """Equipos del pedido desde el ERP (4 familias), opcionalmente por Estado Fab."""
+    from core.services import erp_tags
+    rows = erp_tags.fetch_tags(pedido)
     if estado:
         e = estado.strip().lower()
         rows = [r for r in rows if str(r.get("Estado Fab.", "")).strip().lower() == e]
     return rows
-
-
-def tags_estado_options() -> list[str]:
-    """Valores distintos de 'Estado Fab.' para el filtro."""
-    df = _read_excel_cached(_tags_path())
-    if df.empty or "Estado Fab." not in df.columns:
-        return []
-    vals = {
-        str(v).strip() for v in df["Estado Fab."].dropna().tolist()
-        if str(v).strip() and str(v).strip().lower() != "fab_state"
-    }
-    return sorted(vals)
 
 
 # ════════════════════════════════════════════════════════════════════════════
