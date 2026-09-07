@@ -225,12 +225,56 @@ class AjustesView(ctk.CTkFrame):
         self.datos_scroll = self._scroll(parent)
         self._render_datos()
 
+    def _refresh_consulta_from_erp(self) -> None:
+        """Regenera consulta_erp desde el Postgres local del ERP (en un hilo)."""
+        self._erp_btn.configure(state="disabled", text="↻  Actualizando…")
+        self._erp_status.configure(text="Conectando al ERP…", text_color=theme.TEXT_SUB)
+
+        def _work():
+            from core.services import erp_db
+            try:
+                res = erp_db.refresh_consulta_erp(make_backup=True)
+                self.after(0, lambda: self._erp_done(res, None))
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
+                self.after(0, lambda: self._erp_done(None, msg))
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _erp_done(self, res, error) -> None:
+        if error:
+            self._erp_btn.configure(state="normal", text="↻  Actualizar consulta desde ERP")
+            self._erp_status.configure(text=f"Error: {error}", text_color=theme.RED)
+            ui.toast(self, "ERP", f"No se pudo actualizar: {error}", kind="error")
+            return
+        ui.toast(self, "Consulta actualizada",
+                 f"{res['rows']} pedidos desde el ERP. Ya aplicado a Documentos y reportes.",
+                 kind="success")
+        self._render_datos()   # refresca fechas de los Excel (recrea el botón)
+
     def _render_datos(self) -> None:
         for w in self.datos_scroll.winfo_children():
             w.destroy()
         ui.section_header(self.datos_scroll, "Excels de datos").pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_2))
         for st in data_source.get_all_status():
             self._datos_card(st)
+
+        # ── Consulta del ERP (PostgreSQL local) ──────────────────────────────
+        ui.section_header(self.datos_scroll, "Consulta del ERP").pack(
+            fill="x", pady=(theme.SPACE_3, theme.SPACE_1))
+        ctk.CTkLabel(self.datos_scroll,
+                     text="consulta_erp.xlsx se regenera solo desde el ERP al abrir la app y cada hora. "
+                          "Aquí puedes forzarlo.",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
+            anchor="w", pady=(0, theme.SPACE_1))
+        erp_row = ctk.CTkFrame(self.datos_scroll, fg_color="transparent")
+        erp_row.pack(fill="x", pady=(0, theme.SPACE_2))
+        self._erp_btn = ui.button(erp_row, "↻  Actualizar consulta desde ERP", "primary", size="sm",
+                                  command=self._refresh_consulta_from_erp)
+        self._erp_btn.pack(side="left")
+        self._erp_status = ctk.CTkLabel(erp_row, text="", font=theme.FONT_SMALL,
+                                        text_color=theme.TEXT_MUTED, anchor="w")
+        self._erp_status.pack(side="left", padx=theme.SPACE_3)
 
         ui.section_header(self.datos_scroll, "Carpeta de pedidos (red)").pack(
             fill="x", pady=(theme.SPACE_3, theme.SPACE_2))

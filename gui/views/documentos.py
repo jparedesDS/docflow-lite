@@ -356,6 +356,16 @@ class DocumentosView(ctk.CTkFrame):
         self._save_filters()
         self._apply_filters_and_render()
 
+    def set_kpi(self, key: str | None) -> None:
+        """Filtra por una tarjeta KPI (salto desde Inicio); None = sin filtro."""
+        for ent in (self.ent_q, self.ent_pedido, self.ent_cliente, self.ent_resp):
+            ent.delete(0, "end")
+        self._active_kpi = key or None
+        self._page = 0
+        self._save_filters()
+        self._sync_filters_visibility()
+        self._apply_filters_and_render()
+
     # ── Filtros + render ──────────────────────────────────────────────────────
 
     def _debounced_search(self) -> None:

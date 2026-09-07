@@ -16,11 +16,11 @@ from gui import theme
 HELP: dict[str, dict] = {
     "home": {
         "titulo": "Inicio",
-        "que": "Tu panel del día: los números que importan y accesos directos a cada sección.",
+        "que": "Tu panel del día: los tres números que importan, qué hacer ahora y accesos directos.",
         "pasos": [
-            "Mira los indicadores de arriba: críticos, reclamables y pendientes son lo urgente.",
-            "Pulsa cualquier tarjeta para ir directo a esa sección.",
-            "Los números se actualizan solos cada pocos minutos.",
+            "«Hoy»: urgente (críticos +15 días), por responder (devoluciones) y pendientes. Clic en una tarjeta abre Documentos ya filtrado.",
+            "«Qué hacer ahora»: cada línea es una acción concreta con su botón (Reclamar, Ver, Agenda…).",
+            "«Accesos rápidos»: pulsa cualquier tarjeta para ir a esa sección. Los números se actualizan solos.",
         ],
         "atajos": ["H · volver a Inicio", "Ctrl+K · buscar un pedido, documento o sección"],
     },
@@ -68,7 +68,7 @@ HELP: dict[str, dict] = {
         "atajos": ["R · abrir Reclamaciones", "Desde la ficha de un documento también puedes generar su reclamación"],
     },
     "inbox": {
-        "titulo": "Bandeja AI",
+        "titulo": "Correo",
         "que": "El buzón de documentación, con resumen y clasificación por IA cuando está configurada.",
         "pasos": [
             "«Recargar» lee los correos recientes.",
@@ -98,7 +98,7 @@ HELP: dict[str, dict] = {
         "atajos": ["Las credenciales de DocuSign se guardan en Ajustes ▸ DocuSign"],
     },
     "apertura": {
-        "titulo": "Apertura de pedidos",
+        "titulo": "Nuevo pedido",
         "que": "Crea en un clic la estructura de carpetas de un pedido nuevo: plantilla, Planning y VDDL.",
         "pasos": [
             "Escribe el Nº de pedido (P-26/048): cliente y material se completan solos desde el ERP.",
@@ -131,11 +131,11 @@ HELP: dict[str, dict] = {
         "titulo": "Centro de Reportes",
         "que": "Genera Excels e informes web, envía resúmenes por email o Teams y programa envíos automáticos.",
         "pasos": [
-            "«Excels»: descarga el Monitoring Report o el export completo.",
-            "«Informe interactivo»: informe web semanal, mensual, ejecutivo o por pedido, con botón para PDF.",
-            "«Resúmenes por email» y «Programados»: envía ahora o deja programado el envío (email o Teams).",
+            "«Informes»: descarga el Monitoring Report en Excel o genera el informe web (semanal, mensual, ejecutivo o por pedido, con botón para PDF).",
+            "«Resúmenes por email»: envía ahora el resumen ejecutivo o el personal, por email o Teams.",
+            "«Programados»: deja los envíos automáticos (día, hora y destinatarios).",
         ],
-        "atajos": ["P · abrir el Centro de Reportes", "La consulta del ERP se actualiza sola al abrir la app y cada hora"],
+        "atajos": ["P · abrir el Centro de Reportes", "Los Excel y la conexión al ERP se gestionan en Ajustes ▸ Fuentes de datos"],
     },
     "ajustes": {
         "titulo": "Ajustes",
@@ -143,7 +143,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "Cada pestaña tiene su botón «Guardar»; los cambios de conexión se aplican al reiniciar.",
             "Las contraseñas se guardan cifradas (nunca en texto plano).",
-            "«Fuentes de datos» controla de dónde se leen los Excel y la conexión al ERP.",
+            "«Fuentes de datos»: de dónde se leen los Excel y el botón para regenerar la consulta desde el ERP.",
         ],
         "atajos": ["«↻ Reiniciar app» aplica los cambios de conexión"],
     },

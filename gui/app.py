@@ -25,13 +25,13 @@ class DocFlowLiteApp(ctk.CTk):
         {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
         {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
         {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
-            {"key": "apertura",   "label": "Apertura",    "icon": "✚", "hint": "N"},
+            {"key": "apertura",   "label": "Nuevo pedido", "icon": "✚", "hint": "N"},
             {"key": "ofertas",    "label": "Ofertas",     "icon": "✉"},
             {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
             {"key": "documentos", "label": "Documentos",  "icon": "◫", "hint": "O"},
         ]},
         {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
-            {"key": "inbox",         "label": "Bandeja AI",         "icon": "✦", "hint": "I"},
+            {"key": "inbox",         "label": "Correo",             "icon": "✦", "hint": "I"},
             {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩", "hint": "D"},
             {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠", "hint": "R"},
             {"key": "docusign",      "label": "DocuSign",           "icon": "✒"},
@@ -368,7 +368,8 @@ class DocFlowLiteApp(ctk.CTk):
         # Lazy import para que un fallo en una vista no impida cargar las otras
         if key == "home":
             from gui.views.home import HomeView
-            view = HomeView(self.content, on_navigate=self.navigate)
+            view = HomeView(self.content, on_navigate=self.navigate,
+                            on_open_documentos_kpi=self.open_documentos_kpi)
         elif key == "devoluciones":
             from gui.views.devoluciones import DevolucionesView
             view = DevolucionesView(self.content)
@@ -445,6 +446,16 @@ class DocFlowLiteApp(ctk.CTk):
                 view.select_pedido(pedido)
             except Exception:
                 logger.debug("select_pedido falló", exc_info=True)
+
+    def open_documentos_kpi(self, kpi: str | None) -> None:
+        """Abre Documentos filtrado por una tarjeta KPI (desde Inicio); None = sin filtro."""
+        view = self._views.get("documentos") or self._make_view("documentos")
+        self.navigate("documentos")
+        if view is not None and hasattr(view, "set_kpi"):
+            try:
+                view.set_kpi(kpi)
+            except Exception:
+                logger.debug("set_kpi falló", exc_info=True)
 
     def open_documento(self, num_doc: str) -> None:
         """Abre Documentos filtrado por un Nº de documento (desde la paleta)."""

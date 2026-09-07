@@ -1,4 +1,4 @@
-"""Vista Bandeja AI — listado IMAP + panel de detalle (sin clasificación IA aún)."""
+"""Vista Correo (buzón de documentación) — listado IMAP + panel de detalle."""
 
 import logging
 import threading
@@ -32,7 +32,7 @@ class InboxView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         ui.page_header(
-            self, "Bandeja AI",
+            self, "Correo",
             "El buzón de documentación: lee los correos y, con la IA configurada en Ajustes, "
             "resume cada uno.",
             help_key="inbox")

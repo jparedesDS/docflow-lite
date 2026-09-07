@@ -82,24 +82,22 @@ class ReportesView(ctk.CTkFrame):
 
         # Pestañas perezosas: cada una se construye la primera vez que se abre
         # (abrir la vista pasa de ~530 ms a construir solo "Excels").
+        # 3 pestañas: Informes (Excel + web) · Resúmenes por email · Programados.
+        # Las fuentes de datos y el refresco del ERP viven en Ajustes ▸ Fuentes de datos.
         frames = ui.lazy_tabs(self.tabs, {
-            "Excels": self._build_tab_excels,
-            "Informe interactivo": self._build_tab_interactive,
+            "Informes": self._build_tab_informes,
             "Resúmenes por email": self._build_tab_summaries,
             "Programados": self._build_tab_scheduled,
-            "Fuente de datos": self._build_tab_data,
         })
-        self.tab_excels = frames["Excels"]
-        self.tab_interactive = frames["Informe interactivo"]
+        self.tab_informes = frames["Informes"]
         self.tab_summaries = frames["Resúmenes por email"]
         self.tab_scheduled = frames["Programados"]
-        self.tab_data = frames["Fuente de datos"]
 
     # ════════════════════════════════════════════════════════════════════════
     #  INFORME INTERACTIVO (HTML semanal / mensual / por pedido)
     # ════════════════════════════════════════════════════════════════════════
 
-    def _build_tab_interactive(self, tab) -> None:
+    def _build_tab_interactive(self, tab, container=None) -> None:
         from core.services import interactive_report as ir
         self._ir = ir
         self._ir_mode = "period"          # "period" | "pedido"
@@ -108,8 +106,9 @@ class ReportesView(ctk.CTkFrame):
         self._ir_pedidos: dict[str, str] = {}
         self._ir_last_path = None
 
-        wrap = ScrollFrame(tab)
-        wrap.pack(fill="both", expand=True, padx=theme.SPACE_2, pady=theme.SPACE_2)
+        wrap = container or ScrollFrame(tab)
+        if container is None:
+            wrap.pack(fill="both", expand=True, padx=theme.SPACE_2, pady=theme.SPACE_2)
 
         ctk.CTkLabel(
             wrap, text="Genera un informe web interactivo (un único archivo .html con "
@@ -349,9 +348,18 @@ class ReportesView(ctk.CTkFrame):
     #  TAB 1: EXCELS
     # ════════════════════════════════════════════════════════════════════════
 
-    def _build_tab_excels(self, parent) -> None:
-        scroll = ScrollFrame(parent)
-        scroll.pack(fill="both", expand=True)
+    def _build_tab_informes(self, tab) -> None:
+        """Pestaña única «Informes»: Excel + informe web, en un solo scroll."""
+        scroll = ScrollFrame(tab)
+        scroll.pack(fill="both", expand=True, padx=theme.SPACE_2, pady=theme.SPACE_2)
+        self._build_tab_excels(tab, container=scroll)
+        ui.section_header(scroll, "Informe web interactivo").pack(fill="x", pady=(theme.SPACE_5, theme.SPACE_1))
+        self._build_tab_interactive(tab, container=scroll)
+
+    def _build_tab_excels(self, parent, container=None) -> None:
+        scroll = container or ScrollFrame(parent)
+        if container is None:
+            scroll.pack(fill="both", expand=True)
 
         # Excel
         ctk.CTkLabel(scroll, text="HOJAS DE CÁLCULO (EXCEL)", font=theme.font(10, "bold"),
@@ -793,251 +801,6 @@ class ReportesView(ctk.CTkFrame):
 
     def _open_edit_dialog(self, sched: dict) -> None:
         EditScheduleDialog(self, sched=sched, on_save=self._reload_schedules)
-
-    # ════════════════════════════════════════════════════════════════════════
-    #  TAB 4: FUENTE DE DATOS
-    # ════════════════════════════════════════════════════════════════════════
-
-    def _build_tab_data(self, parent) -> None:
-        # Aviso
-        info = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD,
-                            border_width=1, border_color=theme.BORDER)
-        info.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_3))
-        ctk.CTkLabel(
-            info,
-            text=("ℹ  Estos archivos alimentan Documentos, Reclamaciones y todos los reportes. "
-                  "Importa una copia local o vincula una ruta de red para que se actualice automáticamente."),
-            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
-            anchor="w", justify="left", wraplength=820,
-        ).pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
-
-        # Acción: regenerar consulta_erp desde el ERP (Postgres local, solo lectura)
-        erp_row = ctk.CTkFrame(parent, fg_color="transparent")
-        erp_row.pack(fill="x", pady=(0, theme.SPACE_3))
-        self._erp_btn = ui.button(erp_row, "↻  Actualizar consulta desde ERP", "primary", size="sm",
-                                  command=self._refresh_consulta_from_erp)
-        self._erp_btn.pack(side="left")
-        self._erp_status = ctk.CTkLabel(
-            erp_row, text="Se actualiza sola al abrir y cada hora.",
-            font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
-        )
-        self._erp_status.pack(side="left", padx=theme.SPACE_3)
-
-        # Container con scroll
-        self.data_scroll = ScrollFrame(parent)
-        self.data_scroll.pack(fill="both", expand=True)
-
-        self._data_cards: dict[str, dict] = {}
-        self._reload_data_cards()
-
-    def _refresh_consulta_from_erp(self) -> None:
-        """Regenera consulta_erp desde el Postgres local del ERP (en un hilo)."""
-        self._erp_btn.configure(state="disabled", text="↻  Actualizando…")
-        self._erp_status.configure(text="Conectando al ERP…", text_color=theme.TEXT_SUB)
-
-        def _work():
-            from core.services import erp_db
-            try:
-                res = erp_db.refresh_consulta_erp(make_backup=True)
-                self.after(0, lambda: self._erp_done(res, None))
-            except Exception as exc:  # noqa: BLE001
-                msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
-                self.after(0, lambda: self._erp_done(None, msg))
-
-        threading.Thread(target=_work, daemon=True).start()
-
-    def _erp_done(self, res: dict | None, error: str | None) -> None:
-        self._erp_btn.configure(state="normal", text="↻  Actualizar consulta desde ERP")
-        if error:
-            self._erp_status.configure(text=f"Error: {error}", text_color=theme.RED)
-            ui.toast(self, "ERP", f"No se pudo actualizar: {error}", kind="error")
-            return
-        self._erp_status.configure(
-            text=f"✓ {res['rows']} pedidos · {res['con_responsable']} con responsable",
-            text_color=theme.GREEN,
-        )
-        ui.toast(self, "Consulta actualizada",
-                 f"{res['rows']} pedidos desde el ERP. Ya aplicado a Documentos y reportes.",
-                 kind="success")
-        self._reload_data_cards()
-
-    def _reload_data_cards(self) -> None:
-        for w in self.data_scroll.winfo_children():
-            w.destroy()
-        self._data_cards.clear()
-        try:
-            from core import data_source
-            statuses = data_source.get_all_status()
-        except Exception as exc:
-            logger.exception("Error data_source.get_all_status")
-            ctk.CTkLabel(
-                self.data_scroll, text=f"Error cargando estado: {exc}",
-                font=theme.FONT_SMALL, text_color=theme.RED,
-            ).pack(pady=theme.SPACE_3)
-            return
-        for st in statuses:
-            self._data_cards[st["kind"]] = self._render_data_card(st)
-
-    def _render_data_card(self, st: dict) -> dict:
-        kind = st["kind"]
-        card = ctk.CTkFrame(
-            self.data_scroll, fg_color=theme.BG_CARD,
-            corner_radius=theme.RADIUS_LG,
-            border_width=1, border_color=theme.BORDER,
-        )
-        card.pack(fill="x", pady=(0, theme.SPACE_3))
-
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=theme.SPACE_4)
-
-        # Header: icono + título + badge de modo
-        title_row = ctk.CTkFrame(inner, fg_color="transparent")
-        title_row.pack(fill="x")
-
-        ctk.CTkLabel(
-            title_row, text="◫", font=theme.font(18, "bold"),
-            text_color=theme.BLUE, width=28,
-        ).pack(side="left")
-
-        ctk.CTkLabel(
-            title_row, text=st["label"],
-            font=theme.font(14, "bold"),
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(side="left", padx=(theme.SPACE_1, theme.SPACE_2))
-
-        # Badge de estado
-        mode = st["mode"]
-        if not st["exists"]:
-            badge_text, badge_color = "● No encontrado", theme.RED
-        elif mode == "linked":
-            badge_text, badge_color = "● Vinculado", theme.BLUE
-        elif mode == "linked_broken":
-            badge_text, badge_color = "● Vínculo roto", theme.RED
-        else:
-            badge_text, badge_color = "● Local", theme.GREEN
-
-        ctk.CTkLabel(
-            title_row, text=badge_text,
-            font=theme.FONT_SMALL_BOLD, text_color=badge_color,
-        ).pack(side="left")
-
-        # Path actual
-        path_lbl = ctk.CTkLabel(
-            inner, text=st["path"] or "(sin configurar)",
-            font=theme.FONT_MONO, text_color=theme.TEXT_SUB,
-            anchor="w", justify="left", wraplength=820,
-        )
-        path_lbl.pack(anchor="w", fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
-
-        # Tamaño + fecha modificación
-        if st["exists"]:
-            from datetime import datetime
-            try:
-                dt = datetime.fromisoformat(st["modified"])
-                mod_label = dt.strftime("%d %b %Y · %H:%M")
-            except Exception:
-                mod_label = st.get("modified", "—")
-            meta = f"{_fmt_size_bytes(st['size'])}  ·  modificado {mod_label}"
-        else:
-            meta = "Archivo no disponible"
-
-        ctk.CTkLabel(
-            inner, text=meta,
-            font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w",
-        ).pack(anchor="w", pady=(0, theme.SPACE_3))
-
-        # Acciones
-        actions = ctk.CTkFrame(inner, fg_color="transparent")
-        actions.pack(fill="x")
-
-        ui.button(actions, "📥  Importar archivo…", "primary", size="sm",
-                  command=lambda k=kind: self._import_file(k)).pack(side="left")
-
-        ui.button(actions, "🔗  Vincular ruta…", "outline", size="sm",
-                  command=lambda k=kind: self._link_path(k)).pack(side="left", padx=(theme.SPACE_2, 0))
-
-        if st["mode"] in ("linked", "linked_broken"):
-            ui.button(actions, "Quitar vínculo", "outline", size="sm", text_color=theme.TEXT_SUB,
-                      command=lambda k=kind: self._clear_link(k)).pack(side="left", padx=(theme.SPACE_2, 0))
-
-        if st["exists"]:
-            ui.button(actions, "Abrir carpeta", "outline", size="sm", text_color=theme.TEXT_SUB,
-                      command=lambda p=st["path"]: _open_path(str(Path(p).parent)),
-                      ).pack(side="left", padx=(theme.SPACE_2, 0))
-
-        return {"card": card}
-
-    # ── Acciones del tab Datos ───────────────────────────────────────────────
-
-    def _import_file(self, kind: str) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title=f"Importar {kind}.xlsx",
-            filetypes=[("Excel", "*.xlsx *.xlsm *.xls"), ("Todos", "*.*")],
-        )
-        if not path:
-            return
-        from core import data_source
-        from core.services import monitoring as monitoring_service
-        try:
-            target = data_source.import_file(kind, path)
-            monitoring_service.invalidate_cache()
-            self.lbl_status.configure(
-                text=f"✓  {data_source.label(kind)} importado · {target}",
-                text_color=theme.GREEN,
-            )
-            messagebox.showinfo(
-                "Importado",
-                f"✓ Archivo importado correctamente.\n\n"
-                f"Origen:  {path}\n"
-                f"Destino: {target}",
-                parent=self,
-            )
-        except Exception as exc:
-            logger.exception("Error importando %s", kind)
-            messagebox.showerror("Error", str(exc), parent=self)
-        self._reload_data_cards()
-
-    def _link_path(self, kind: str) -> None:
-        path = filedialog.askopenfilename(
-            parent=self,
-            title=f"Vincular {kind}.xlsx (ruta externa)",
-            filetypes=[("Excel", "*.xlsx *.xlsm *.xls"), ("Todos", "*.*")],
-        )
-        if not path:
-            return
-        from core import data_source
-        from core.services import monitoring as monitoring_service
-        try:
-            data_source.set_linked_path(kind, path)
-            monitoring_service.invalidate_cache()
-            self.lbl_status.configure(
-                text=f"✓  {data_source.label(kind)} vinculado · {path}",
-                text_color=theme.GREEN,
-            )
-        except Exception as exc:
-            logger.exception("Error vinculando %s", kind)
-            messagebox.showerror("Error", str(exc), parent=self)
-        self._reload_data_cards()
-
-    def _clear_link(self, kind: str) -> None:
-        from core import data_source
-        from core.services import monitoring as monitoring_service
-        if not messagebox.askyesno(
-            "Quitar vínculo",
-            f"¿Quitar el vínculo de {data_source.label(kind)}?\n\n"
-            "La app volverá a usar la copia local (si existe).",
-            parent=self,
-        ):
-            return
-        data_source.clear_link(kind)
-        monitoring_service.invalidate_cache()
-        self.lbl_status.configure(
-            text=f"✓  Vínculo de {data_source.label(kind)} eliminado",
-            text_color=theme.TEXT_MUTED,
-        )
-        self._reload_data_cards()
-
 
 # ════════════════════════════════════════════════════════════════════════════
 #  Diálogos

@@ -182,7 +182,7 @@ def _build_merged_dataset() -> list[dict]:
                     _logging.getLogger(__name__).warning(
                         "Merge con consulta_erp: columna %r quedó 100%% vacía. "
                         "Revisa que consulta_erp.xlsx cubra el rango de pedidos de "
-                        "data_erp.xlsx (Centro de Reportes → Fuente de datos).", c,
+                        "data_erp.xlsx (Ajustes → Fuentes de datos).", c,
                     )
                     break  # un solo warning basta
         for col in ("Fecha Pedido", "Fecha Prevista"):

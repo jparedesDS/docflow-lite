@@ -189,7 +189,7 @@ class ThemePickerDialog(ctk.CTkToplevel):
         body = ctk.CTkFrame(preview, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         ctk.CTkLabel(
-            body, text="Apertura de pedidos",
+            body, text="Nuevo pedido",
             font=(t["font"], 11, "bold"),
             text_color=t["text"], anchor="w",
         ).pack(anchor="w")

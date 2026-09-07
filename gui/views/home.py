@@ -19,13 +19,13 @@ PORTFOLIO_URL = "https://jparedesds.github.io/"
 # Cards de navegación
 NAV_CARDS = [
     {"key": "apertura",      "icon": "✚",  "color": theme.ACCENT,
-     "title": "Apertura pedidos","base_desc": "Crea carpetas, Planning y VDDL"},
+     "title": "Nuevo pedido",    "base_desc": "Crea carpetas, Planning y VDDL"},
     {"key": "documentos",    "icon": "◫",  "color": theme.BLUE,
      "title": "Documentos",      "base_desc": "Vista global con KPIs y filtros"},
     {"key": "agenda",        "icon": "▣",  "color": theme.AMBER,
      "title": "Agenda",          "base_desc": "Tareas, notas y reuniones"},
     {"key": "inbox",         "icon": "✦",  "color": theme.ACCENT,
-     "title": "Bandeja AI",      "base_desc": "Correos del buzón IMAP"},
+     "title": "Correo",          "base_desc": "Buzón de documentación"},
     {"key": "devoluciones",  "icon": "✉",  "color": theme.GREEN,
      "title": "Devoluciones",    "base_desc": "Procesar emails TR/GAIA/ACONEX/SENDOC"},
     {"key": "reclamaciones", "icon": "⚠",  "color": theme.RED,
@@ -34,29 +34,25 @@ NAV_CARDS = [
      "title": "Centro de Reportes", "base_desc": "Excels y resúmenes por email"},
 ]
 
-# (clave, etiqueta, color, explicación en lenguaje llano — tooltip)
+# Los 3 números que importan hoy: (clave, etiqueta, color, explicación — tooltip).
+# Clic en la tarjeta → Documentos filtrado por ese estado.
 KPI_DEFS = [
-    ("total",       "Total Docs",       theme.ACCENT,
-     "Documentos registrados en total."),
-    ("pendientes",  "Pendientes",       theme.AMBER,
-     "Documentos que aún no están aprobados: enviados, devueltos o sin enviar."),
-    ("criticos",    "Críticos",         theme.RED,
-     "Documentos críticos pendientes de aprobación."),
-    ("reclamables", "Reclamables",      theme.ROSE,
-     "Pedidos con documentos enviados hace más de 15 días sin respuesta: toca reclamar."),
-    ("tareas",      "Tareas pdtes.",    theme.BLUE,
-     "Tareas de tu Agenda sin completar."),
-    ("inbox",       "Inbox no leídos",  theme.GREEN,
-     "Correos sin leer en el buzón de documentación."),
+    ("criticos_15d", "Urgente · críticos +15 d", theme.RED,
+     "Documentos críticos enviados hace más de 15 días sin respuesta del cliente. Clic para verlos."),
+    ("devoluciones", "Por responder",             theme.AMBER,
+     "Documentos devueltos por el cliente con comentarios que hay que resolver. Clic para verlos."),
+    ("pendientes",   "Pendientes",                theme.ACCENT,
+     "Todo lo que aún no está aprobado: enviados, devueltos o sin enviar. Clic para ir a Documentos."),
 ]
 
 
 class HomeView(ctk.CTkFrame):
     auto_refresh_safe = True  # el dashboard puede recargarse en background sin molestar
 
-    def __init__(self, master, on_navigate, **kwargs):
+    def __init__(self, master, on_navigate, on_open_documentos_kpi=None, **kwargs):
         super().__init__(master, fg_color=theme.BG_PAGE, **kwargs)
         self._on_navigate = on_navigate
+        self._on_open_documentos_kpi = on_open_documentos_kpi   # → Documentos filtrado por KPI
         self._kpi_widgets: dict[str, ctk.CTkLabel] = {}
         self._card_descs: dict[str, ctk.CTkLabel] = {}
         self._build()
@@ -94,16 +90,25 @@ class HomeView(ctk.CTkFrame):
             font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
         ).pack(anchor="w", pady=(theme.SPACE_1, 0))
 
-        # ─── KPIs en vivo ─────────────────────────────────────────────────
-        self._section_label(wrapper, "RESUMEN DEL DÍA", pady_top=theme.SPACE_6)
+        # ─── Hoy: los 3 números que importan ─────────────────────────────
+        self._section_label(wrapper, "HOY", pady_top=theme.SPACE_6)
 
         kpis_grid = ctk.CTkFrame(wrapper, fg_color="transparent")
         kpis_grid.pack(fill="x", padx=theme.SPACE_6)
-        for col in range(6):
+        for col in range(len(KPI_DEFS)):
             kpis_grid.grid_columnconfigure(col, weight=1, uniform="kpi")
 
         for col, (key, label, color, hint) in enumerate(KPI_DEFS):
-            self._kpi_widgets[key] = self._build_kpi_card(kpis_grid, col, label, color, hint)
+            self._kpi_widgets[key] = self._build_kpi_card(kpis_grid, col, key, label, color, hint)
+
+        # ─── Qué hacer ahora: acciones concretas con su botón ─────────────
+        self._section_label(wrapper, "QUÉ HACER AHORA", pady_top=theme.SPACE_6)
+        self.actions_box = ctk.CTkFrame(wrapper, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_LG,
+                                        border_width=1, border_color=theme.BORDER)
+        self.actions_box.pack(fill="x", padx=theme.SPACE_6)
+        ctk.CTkLabel(self.actions_box, text="⏳  Calculando…", font=theme.FONT_SMALL,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(fill="x", padx=theme.SPACE_4,
+                                                                   pady=theme.SPACE_3)
 
         # ─── Accesos rápidos ──────────────────────────────────────────────
         self._section_label(wrapper, "ACCESOS RÁPIDOS", pady_top=theme.SPACE_6)
@@ -153,17 +158,74 @@ class HomeView(ctk.CTkFrame):
 
     # ── KPI Card ─────────────────────────────────────────────────────────────
 
-    def _build_kpi_card(self, parent, col: int, label: str, color: str, hint: str = "") -> ctk.CTkLabel:
+    # KPIs de monitoring que Documentos sabe filtrar con una tarjeta
+    _DOC_KPIS = ("criticos_15d", "devoluciones", "enviados", "sin_enviar", "criticos")
+
+    def _build_kpi_card(self, parent, col: int, key: str, label: str, color: str,
+                        hint: str = "") -> ctk.CTkLabel:
         tile = ui.kpi_tile(parent, label, color, variant="dashboard")
         tile["card"].grid(
             row=0, column=col, sticky="nsew",
             padx=(0 if col == 0 else theme.SPACE_2, 0),
             pady=0,
         )
-        if hint:
-            for w in tile["widgets"]:
+        kpi = key if key in self._DOC_KPIS else None
+        for w in tile["widgets"]:
+            if hint:
                 ui.tooltip(w, hint)
+            if self._on_open_documentos_kpi is not None:
+                w.bind("<Button-1>", lambda _e, k=kpi: self._on_open_documentos_kpi(k))
         return tile["value"]
+
+    # ── Qué hacer ahora ──────────────────────────────────────────────────────
+
+    def _render_actions(self, r: dict) -> None:
+        """Lista corta de acciones concretas según los datos (máx. 5), con botón."""
+        box = self.actions_box
+        for w in box.winfo_children():
+            w.destroy()
+        docs = self._on_open_documentos_kpi
+        items: list[tuple] = []   # (icono, color, texto, etiqueta botón, acción)
+        n = r.get("criticos_15d", 0)
+        if n:
+            items.append(("⚠", theme.RED,
+                          f"{n} documento(s) crítico(s) llevan más de 15 días sin respuesta del cliente.",
+                          "Reclamar →", lambda: self._on_navigate("reclamaciones")))
+        n = r.get("devoluciones", 0)
+        if n and docs:
+            items.append(("↩", theme.AMBER, f"{n} documento(s) devuelto(s) con comentarios por responder.",
+                          "Ver →", lambda: docs("devoluciones")))
+        n = r.get("sin_enviar", 0)
+        if n and docs:
+            items.append(("○", theme.TEXT_SUB, f"{n} documento(s) todavía sin enviar al cliente.",
+                          "Ver →", lambda: docs("sin_enviar")))
+        n = r.get("tareas", 0)
+        if n:
+            items.append(("▣", theme.BLUE, f"{n} tarea(s) pendiente(s) en tu agenda.",
+                          "Agenda →", lambda: self._on_navigate("agenda")))
+        n = r.get("inbox", 0)
+        if n:
+            items.append(("✦", theme.GREEN, f"{n} correo(s) sin leer en el buzón.",
+                          "Correo →", lambda: self._on_navigate("inbox")))
+        n = r.get("enviados", 0)
+        if n and docs:
+            items.append(("➤", theme.BLUE, f"{n} documento(s) enviado(s) a la espera del cliente.",
+                          "Ver →", lambda: docs("enviados")))
+        if not items:
+            ctk.CTkLabel(box, text="✓  Todo al día: nada urgente, nada por responder.",
+                         font=theme.FONT_SMALL_BOLD, text_color=theme.GREEN, anchor="w").pack(
+                fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+            return
+        for icon, color, text, btn_text, cmd in items[:5]:
+            row = ctk.CTkFrame(box, fg_color="transparent")
+            row.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_1, 0))
+            ctk.CTkLabel(row, text=icon, font=theme.font(14, "bold"), text_color=color,
+                         width=24).pack(side="left")
+            ctk.CTkLabel(row, text=text, font=theme.FONT_SMALL, text_color=theme.TEXT_MAIN,
+                         anchor="w").pack(side="left", fill="x", expand=True)
+            ui.button(row, btn_text, "outline", size="xs", width=100,
+                      command=cmd).pack(side="right", padx=(theme.SPACE_2, 0))
+        ctk.CTkFrame(box, fg_color="transparent", height=theme.SPACE_2).pack()
 
     # ── Nav Card ─────────────────────────────────────────────────────────────
 
@@ -243,6 +305,8 @@ class HomeView(ctk.CTkFrame):
                     + kpis.get("sin_enviar", 0)
                 )
                 results["criticos"] = kpis.get("criticos", 0)
+                for k in ("criticos_15d", "devoluciones", "enviados", "sin_enviar"):
+                    results[k] = kpis.get(k, 0)
             except Exception as exc:
                 logger.warning("KPIs documentos fallaron: %s", exc)
 
@@ -274,6 +338,7 @@ class HomeView(ctk.CTkFrame):
         for key, lbl in self._kpi_widgets.items():
             val = results.get(key)
             lbl.configure(text=str(val) if val is not None else "—")
+        self._render_actions(results)
 
         # Enriquecer descripciones de cards con datos vivos
         if "tareas" in results:

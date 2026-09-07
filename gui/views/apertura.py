@@ -1,4 +1,4 @@
-"""Vista Apertura de pedidos — formulario + creación automática de carpetas, Planning y VDDL."""
+"""Vista Nuevo pedido — formulario + creación automática de carpetas, Planning y VDDL."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ class AperturaView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         # Header
         ui.page_header(
-            self, "Apertura de pedidos",
+            self, "Nuevo pedido",
             "Crea en un clic la estructura de un pedido nuevo: carpetas, plantilla "
             "00 DOCUMENTACIÓN, Planning y VDDL.",
             help_key="apertura")
