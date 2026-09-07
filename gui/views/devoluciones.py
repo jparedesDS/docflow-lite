@@ -62,17 +62,9 @@ class DevolucionesView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Devoluciones", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header,
-            text="Correos parseables del buzón IMAP · doble click para previsualizar y enviar",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(
+            self, "Devoluciones",
+            "Correos parseables del buzón IMAP · doble click para previsualizar y enviar")
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -92,7 +84,7 @@ class DevolucionesView(ctk.CTkFrame):
             toolbar, text="+  Devolución manual", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=lambda: ManualDevolucionWindow(self),
         ).pack(side="left", padx=(0, theme.SPACE_2))
 
@@ -740,7 +732,7 @@ class ManualDevolucionWindow(ctk.CTkToplevel):
             footer, text="Enviar  →", font=theme.FONT_BUTTON,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=self._send,
         )
         self.btn_send.pack(side="right")

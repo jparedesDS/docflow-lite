@@ -64,16 +64,7 @@ class ReportesView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Centro de Reportes", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header, text="Excels · resúmenes por email · programación automática",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(self, "Centro de Reportes", "Excels · resúmenes por email · programación automática")
 
         # Status line global
         self.lbl_status = ctk.CTkLabel(
@@ -82,17 +73,9 @@ class ReportesView(ctk.CTkFrame):
         self.lbl_status.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, 0))
 
         # Tabs
-        self.tabs = ctk.CTkTabview(
-            self, fg_color=theme.BG_PAGE,
-            segmented_button_fg_color=theme.BG_CARD,
-            segmented_button_selected_color=theme.ACCENT,
-            segmented_button_selected_hover_color=theme.ACCENT_HOVER,
-            segmented_button_unselected_color=theme.BG_CARD,
-            segmented_button_unselected_hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN,
-        )
+        self.tabs = ui.tabview(self)
         self.tabs.pack(fill="both", expand=True,
-                        padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
+                       padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 
         self.tab_excels = self.tabs.add("Excels")
         self.tab_interactive = self.tabs.add("Informe interactivo")
@@ -856,7 +839,7 @@ class ReportesView(ctk.CTkFrame):
         self._erp_btn = ctk.CTkButton(
             erp_row, text="↻  Actualizar consulta desde ERP", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
             command=self._refresh_consulta_from_erp,
         )
         self._erp_btn.pack(side="left")
@@ -997,7 +980,7 @@ class ReportesView(ctk.CTkFrame):
             actions, text="📥  Importar archivo…", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=lambda k=kind: self._import_file(k),
         ).pack(side="left")
 

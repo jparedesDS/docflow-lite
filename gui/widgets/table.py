@@ -77,7 +77,7 @@ class DataTable(ctk.CTkFrame):
         style.map(
             self._style_name,
             background=[("selected", theme.ACCENT)],
-            foreground=[("selected", "#FFFFFF")],
+            foreground=[("selected", theme.TEXT_ON_ACCENT)],
         )
         heading_style = f"{self._style_name}.Heading"
         style.configure(
@@ -244,7 +244,7 @@ class DataTable(ctk.CTkFrame):
         menu = tk.Menu(
             self, tearoff=0,
             bg=theme.BG_CARD, fg=theme.TEXT_MAIN,
-            activebackground=theme.ACCENT, activeforeground="#FFFFFF",
+            activebackground=theme.ACCENT, activeforeground=theme.TEXT_ON_ACCENT,
             bd=0, relief="flat", font=theme.FONT_BODY,
         )
         for label, cmd in items:

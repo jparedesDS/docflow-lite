@@ -10,6 +10,7 @@ from tkinter import messagebox
 from core.config import ANTHROPIC_API_KEY
 from core.services import inbox as inbox_service
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
@@ -30,17 +31,9 @@ class InboxView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Bandeja AI", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header,
-            text="Lectura de correos del buzón IMAP · análisis con IA al configurar ANTHROPIC_API_KEY",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(
+            self, "Bandeja AI",
+            "Lectura de correos del buzón IMAP · análisis con IA al configurar ANTHROPIC_API_KEY")
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -341,9 +334,12 @@ class InboxView(ctk.CTkFrame):
         def worker():
             try:
                 target(uid)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Error toggle read")
-                self.after(0, lambda: messagebox.showerror("Error", str(exc)))
+                # Capturar el texto ANTES de la lambda: `exc` se borra al salir
+                # del except y la lambda corre después (after) → NameError.
+                msg = str(exc)
+                self.after(0, lambda: messagebox.showerror("Error", msg))
 
         threading.Thread(target=worker, daemon=True).start()
         # Re-render del detalle si es el mismo email

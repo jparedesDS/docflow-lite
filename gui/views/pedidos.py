@@ -67,14 +67,9 @@ class PedidosView(ctk.CTkFrame):
     # ── Layout raíz ─────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(header, text="Seguimiento", font=theme.FONT_TITLE,
-                     text_color=theme.TEXT_MAIN, anchor="w").pack(anchor="w")
-        ctk.CTkLabel(
-            header, text="El estado del pedido de un vistazo: avance, plazo, fabricación y qué requiere acción",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(
+            self, "Seguimiento",
+            "El estado del pedido de un vistazo: avance, plazo, fabricación y qué requiere acción")
 
         # ── Barra de filtros (encontrar el pedido) ───────────────────────
         bar = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=12,
@@ -195,8 +190,7 @@ class PedidosView(ctk.CTkFrame):
         for w in self.detail.winfo_children():
             w.destroy()
         if not dash:
-            ctk.CTkLabel(self.detail, text="Sin datos para este pedido.",
-                         font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED).pack(pady=40)
+            ui.empty_state(self.detail, "Sin datos para este pedido.", icon="▦")
             return
         scroll = self.detail
         kpis = dash["kpis"]
@@ -318,7 +312,7 @@ class PedidosView(ctk.CTkFrame):
         right.pack(side="right", padx=(theme.SPACE_3, 0))
         col = verdict["color"]
         ctk.CTkLabel(right, text=f"  {verdict['label']}  ", font=theme.font(13, "bold"),
-                     text_color="#FFFFFF" if col != theme.TEXT_MUTED else theme.TEXT_MAIN,
+                     text_color=theme.TEXT_ON_ACCENT if col != theme.TEXT_MUTED else theme.TEXT_MAIN,
                      fg_color=col, corner_radius=8, height=30).pack(anchor="e")
         ctk.CTkLabel(right, text=verdict["reason"], font=theme.FONT_TINY,
                      text_color=theme.TEXT_SUB, anchor="e", justify="right",
@@ -367,7 +361,7 @@ class PedidosView(ctk.CTkFrame):
         btn = ctk.CTkButton(
             actions, text="Informe del pedido  →", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
-            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF")
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT)
         btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
         btn.pack(side="right")
 
@@ -509,7 +503,7 @@ class PedidosView(ctk.CTkFrame):
             ctk.CTkButton(
                 foot, text="Ver en Documentos  →", font=theme.FONT_SMALL_BOLD,
                 height=theme.HEIGHT_BUTTON_SM, corner_radius=theme.RADIUS_MD,
-                fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
                 command=lambda p=self._pedido_current: self._on_open_documentos(p)).pack(side="right")
 
     # ── 4) Plazo · Curva-S (conciso) ─────────────────────────────────────────

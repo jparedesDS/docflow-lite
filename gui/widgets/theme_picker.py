@@ -202,7 +202,7 @@ class ThemePickerDialog(ctk.CTkToplevel):
         pill.pack(anchor="w", pady=(4, 0))
         ctk.CTkLabel(
             pill, text="  Procesar  ", font=(t["font"], 9, "bold"),
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
         ).pack(padx=2)
 
         # ─── Header de la card ────────────────────────────────────────────

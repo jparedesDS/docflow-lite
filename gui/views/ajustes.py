@@ -43,26 +43,15 @@ class AjustesView(ctk.CTkFrame):
         self._build()
 
     def _build(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(header, text="Ajustes", font=theme.FONT_TITLE,
-                     text_color=theme.TEXT_MAIN, anchor="w").pack(side="left")
-        ctk.CTkButton(header, text="↻  Reiniciar app", width=140, height=theme.HEIGHT_INPUT,
-                      corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color="transparent", hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB,
-                      border_width=1, border_color=theme.BORDER,
-                      command=self._restart).pack(side="right")
-        ctk.CTkLabel(self, text=f"Los cambios de conexión se aplican al reiniciar · almacén de secretos: {credentials.backend_name()}",
-                     font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w").pack(
-            anchor="w", padx=theme.SPACE_6, pady=(0, theme.SPACE_2))
+        hdr = ui.page_header(
+            self, "Ajustes",
+            f"Los cambios de conexión se aplican al reiniciar · almacén de secretos: {credentials.backend_name()}",
+            pad_bottom=theme.SPACE_2)
+        ui.button(hdr.actions, "↻  Reiniciar app", "outline", command=self._restart,
+                  width=140, height=theme.HEIGHT_INPUT, font=theme.FONT_SMALL_BOLD,
+                  text_color=theme.TEXT_SUB).pack()
 
-        self.tabs = ctk.CTkTabview(
-            self, fg_color=theme.BG_PAGE,
-            segmented_button_fg_color=theme.BG_CARD,
-            segmented_button_selected_color=theme.ACCENT,
-            segmented_button_selected_hover_color=theme.ACCENT_HOVER,
-            segmented_button_unselected_color=theme.BG_CARD,
-            segmented_button_unselected_hover_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN)
+        self.tabs = ui.tabview(self)
         self.tabs.pack(fill="both", expand=True, padx=theme.SPACE_5, pady=(theme.SPACE_2, theme.SPACE_4))
 
         self._secret_rows: list[tuple] = []
@@ -161,7 +150,7 @@ class AjustesView(ctk.CTkFrame):
                      text_color=theme.TEXT_MAIN).pack(side="left")
         ctk.CTkButton(row, text="Cambiar tema…", width=130, height=theme.HEIGHT_INPUT,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
                       command=self._change_theme).pack(side="right")
 
         ui.section_header(s, "Comportamiento").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
@@ -188,7 +177,7 @@ class AjustesView(ctk.CTkFrame):
 
         ctk.CTkButton(s, text="Guardar comportamiento", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=self._save_general).pack(anchor="w", pady=theme.SPACE_3)
+                      text_color=theme.TEXT_ON_ACCENT, command=self._save_general).pack(anchor="w", pady=theme.SPACE_3)
 
     def _change_theme(self) -> None:
         from gui.widgets.theme_picker import ThemePickerDialog
@@ -238,7 +227,7 @@ class AjustesView(ctk.CTkFrame):
                                              "pedidos_base_path", width=360)
         ctk.CTkButton(self.datos_scroll, text="Guardar ruta", height=34, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF",
+                      text_color=theme.TEXT_ON_ACCENT,
                       command=lambda: (pref.set_value("pedidos_base_path", self.ent_pedidos.get().strip()),
                                        ui.toast(self, "Guardado", "Reinicia para aplicar.", kind="success"))
                       ).pack(anchor="w", pady=theme.SPACE_2)
@@ -261,7 +250,7 @@ class AjustesView(ctk.CTkFrame):
                                             "apertura_erp_tpl", default=str(_ap.DEFAULT_ERP_TEMPLATE), width=360)
         ctk.CTkButton(self.datos_scroll, text="Guardar rutas de apertura", height=34,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
                       command=self._save_apertura_paths).pack(anchor="w", pady=theme.SPACE_2)
 
         # ── Notificaciones Teams ─────────────────────────────────────────────
@@ -295,7 +284,7 @@ class AjustesView(ctk.CTkFrame):
                                                "nextcloud_share_url", default="", width=420)
         ctk.CTkButton(self.datos_scroll, text="Guardar ajustes de Teams", height=34,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
                       command=self._save_teams_webhook).pack(anchor="w", pady=theme.SPACE_2)
 
     def _save_teams_webhook(self) -> None:
@@ -329,7 +318,7 @@ class AjustesView(ctk.CTkFrame):
         k = st["kind"]
         ctk.CTkButton(btns, text="Importar", width=90, height=28, corner_radius=theme.RADIUS_SM,
                       font=theme.FONT_TINY, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=lambda: self._datos_import(k)).pack(side="left", padx=(0, 6))
+                      text_color=theme.TEXT_ON_ACCENT, command=lambda: self._datos_import(k)).pack(side="left", padx=(0, 6))
         ctk.CTkButton(btns, text="Vincular ruta", width=110, height=28, corner_radius=theme.RADIUS_SM,
                       font=theme.FONT_TINY, fg_color="transparent", hover_color=theme.BG_INPUT,
                       text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
@@ -386,7 +375,7 @@ class AjustesView(ctk.CTkFrame):
         btns.pack(anchor="w", pady=theme.SPACE_3)
         ctk.CTkButton(btns, text="Guardar correo", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=self._save_correo).pack(side="left", padx=(0, theme.SPACE_2))
+                      text_color=theme.TEXT_ON_ACCENT, command=self._save_correo).pack(side="left", padx=(0, theme.SPACE_2))
         ctk.CTkButton(btns, text="Probar IMAP", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color="transparent", hover_color=theme.BG_INPUT,
                       text_color=theme.TEXT_SUB, border_width=1, border_color=theme.BORDER,
@@ -449,7 +438,7 @@ class AjustesView(ctk.CTkFrame):
             self._ofertas_fields.append((ukey, ue, pkey, pe, ps))
         ctk.CTkButton(s, text="Guardar buzones", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=self._save_ofertas).pack(anchor="w", pady=theme.SPACE_3)
+                      text_color=theme.TEXT_ON_ACCENT, command=self._save_ofertas).pack(anchor="w", pady=theme.SPACE_3)
 
         # ── Seguimiento de respuestas de comerciales (opt-in) ────────────────
         ui.section_header(s, "Seguimiento de comerciales (opt-in)").pack(
@@ -478,7 +467,7 @@ class AjustesView(ctk.CTkFrame):
         self.trk_pass.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
         ctk.CTkButton(row, text="+ Añadir", width=90, height=theme.HEIGHT_INPUT,
                       corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL_BOLD,
-                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+                      fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT,
                       command=self._add_tracked).pack(side="left")
 
     def _render_tracked(self) -> None:
@@ -548,7 +537,7 @@ class AjustesView(ctk.CTkFrame):
         self.ds_pem = self._setting_row(s, "Ruta clave RSA (.pem)", "docusign_rsa_path", "docusign_private.pem", width=320)
         ctk.CTkButton(s, text="Guardar DocuSign", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=self._save_docusign).pack(anchor="w", pady=theme.SPACE_3)
+                      text_color=theme.TEXT_ON_ACCENT, command=self._save_docusign).pack(anchor="w", pady=theme.SPACE_3)
 
     def _save_docusign(self) -> None:
         self._save_secret(self.ds_ik, self.ds_ik_s, "docusign_integration_key")
@@ -564,7 +553,7 @@ class AjustesView(ctk.CTkFrame):
         self.ia_key, self.ia_key_s = self._secret_row(s, "API Key", "anthropic_api_key", "ANTHROPIC_API_KEY")
         ctk.CTkButton(s, text="Guardar API Key", height=36, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF",
+                      text_color=theme.TEXT_ON_ACCENT,
                       command=lambda: self._save_secret(self.ia_key, self.ia_key_s, "anthropic_api_key")).pack(
             anchor="w", pady=theme.SPACE_3)
 
@@ -597,7 +586,7 @@ class AjustesView(ctk.CTkFrame):
                      text_color=theme.TEXT_MAIN).pack(side="left")
         ctk.CTkButton(bar, text="+ Nuevo usuario", height=32, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=lambda: self._edit_user(None)).pack(side="right")
+                      text_color=theme.TEXT_ON_ACCENT, command=lambda: self._edit_user(None)).pack(side="right")
         self.users_scroll = self._scroll(parent)
         self._render_users()
 
@@ -616,7 +605,7 @@ class AjustesView(ctk.CTkFrame):
         col = ui.avatar_color(u["initials"])
         av = ctk.CTkFrame(top, width=32, height=32, corner_radius=16, fg_color=col)
         av.pack(side="left", padx=(0, theme.SPACE_2)); av.pack_propagate(False)
-        ctk.CTkLabel(av, text=u["initials"], font=theme.font(11, "bold"), text_color="#FFFFFF").pack(expand=True)
+        ctk.CTkLabel(av, text=u["initials"], font=theme.font(11, "bold"), text_color=theme.TEXT_ON_ACCENT).pack(expand=True)
         info = ctk.CTkFrame(top, fg_color="transparent")
         info.pack(side="left", fill="x", expand=True)
         admin = u.get("is_admin")
@@ -718,7 +707,7 @@ class UserEditDialog(ctk.CTkToplevel):
                       hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB, border_width=1,
                       border_color=theme.BORDER, command=self.destroy).pack(side="right", padx=(8, 0))
         ctk.CTkButton(foot, text="Guardar", height=36, corner_radius=8, fg_color=theme.ACCENT,
-                      hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF", font=theme.FONT_SMALL_BOLD,
+                      hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT, font=theme.FONT_SMALL_BOLD,
                       command=self._save).pack(side="right")
 
     def _save(self) -> None:
@@ -756,7 +745,7 @@ class UserPasswordDialog(ctk.CTkToplevel):
                       hover_color=theme.BG_INPUT, text_color=theme.TEXT_SUB, border_width=1,
                       border_color=theme.BORDER, command=self.destroy).pack(side="right", padx=(8, 0))
         ctk.CTkButton(foot, text="Guardar", height=36, corner_radius=8, fg_color=theme.ACCENT,
-                      hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF", font=theme.FONT_SMALL_BOLD,
+                      hover_color=theme.ACCENT_HOVER, text_color=theme.TEXT_ON_ACCENT, font=theme.FONT_SMALL_BOLD,
                       command=self._save).pack(side="right")
 
     def _save(self) -> None:

@@ -106,22 +106,11 @@ class OfertasView(ctk.CTkFrame):
     # ── Cabecera ─────────────────────────────────────────────────────────────
 
     def _build_header(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_2))
-        left = ctk.CTkFrame(header, fg_color="transparent")
-        left.pack(side="left", fill="x", expand=True)
-        tr = ctk.CTkFrame(left, fg_color="transparent")
-        tr.pack(anchor="w")
-        ctk.CTkLabel(tr, text="✉", font=theme.font(20, "bold"),
-                     text_color=ACCENT_OF).pack(side="left", padx=(0, theme.SPACE_2))
-        ctk.CTkLabel(tr, text="Ofertas", font=theme.FONT_TITLE,
-                     text_color=theme.TEXT_MAIN).pack(side="left")
-        ctk.CTkLabel(left, text="Bandejas comercial · dptocomercial · info  ·  control de entrada por portal",
-                     font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w").pack(
-            anchor="w", pady=(theme.SPACE_1, 0))
-
-        actions = ctk.CTkFrame(header, fg_color="transparent")
-        actions.pack(side="right")
+        hdr = ui.page_header(
+            self, "Ofertas",
+            "Bandejas comercial · dptocomercial · info  ·  control de entrada por portal",
+            icon="✉", icon_color=ACCENT_OF, pad_bottom=theme.SPACE_2)
+        actions = hdr.actions
         self.lbl_sync = ctk.CTkLabel(actions, text="", font=theme.FONT_TINY,
                                      text_color=theme.TEXT_MUTED)
         self.lbl_sync.pack(side="left", padx=(0, theme.SPACE_2))
@@ -339,7 +328,7 @@ class OfertasView(ctk.CTkFrame):
             active = self._estado_filter == estado
             chip = ctk.CTkLabel(
                 chips, text=f"  {estado}: {n}  ", font=theme.FONT_TINY,
-                text_color="#FFFFFF" if active else col,
+                text_color=theme.TEXT_ON_ACCENT if active else col,
                 fg_color=col if active else ui.blend(col, theme.BG_CARD, 0.16),
                 corner_radius=8, height=24, cursor="hand2")
             chip.pack(side="left", padx=(0, theme.SPACE_1))
@@ -673,7 +662,7 @@ class OfertasView(ctk.CTkFrame):
 
         ctk.CTkButton(box, text="💾  Guardar ficha", height=32, corner_radius=theme.RADIUS_MD,
                       font=theme.FONT_SMALL_BOLD, fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-                      text_color="#FFFFFF", command=lambda k=key: self._save_gestion(k)).pack(
+                      text_color=theme.TEXT_ON_ACCENT, command=lambda k=key: self._save_gestion(k)).pack(
             anchor="e", padx=theme.SPACE_3, pady=(0, theme.SPACE_3))
 
     def _g_entry(self, parent, value="") -> ctk.CTkEntry:

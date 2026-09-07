@@ -66,22 +66,9 @@ class InformesView(ctk.CTkFrame):
         self._loaded["Resumen"] = True
 
     def _build_layout(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(header, text="Analítica", font=theme.FONT_TITLE,
-                     text_color=theme.TEXT_MAIN, anchor="w").pack(anchor="w")
-        ctk.CTkLabel(header, text="Analítica de documentación · rendimiento · predicción",
-                     font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w").pack(
-            anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(self, "Analítica", "Analítica de documentación · rendimiento · predicción")
 
-        self.tabs = ctk.CTkTabview(
-            self, fg_color=theme.BG_PAGE,
-            segmented_button_fg_color=theme.BG_CARD,
-            segmented_button_selected_color=theme.ACCENT,
-            segmented_button_selected_hover_color=theme.ACCENT_HOVER,
-            segmented_button_unselected_color=theme.BG_CARD,
-            segmented_button_unselected_hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN, command=self._on_tab)
+        self.tabs = ui.tabview(self, command=self._on_tab)
         self.tabs.pack(fill="both", expand=True, padx=theme.SPACE_5,
                        pady=(theme.SPACE_3, theme.SPACE_4))
 
@@ -186,8 +173,7 @@ class InformesView(ctk.CTkFrame):
                          c["media_dias"] / cmax, _days_color(c["media_dias"]),
                          value_text=f"{c['media_dias']}d")
         else:
-            ctk.CTkLabel(cinner, text="Sin datos", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_MUTED).pack()
+            ui.empty_state(cinner, "Sin datos", compact=True, pady=0)
 
         # Por tipo de documento
         _section_header(p, "Por tipo de documento").pack(fill="x", pady=(0, theme.SPACE_2))
@@ -207,8 +193,7 @@ class InformesView(ctk.CTkFrame):
 
     def _heatmap_grid(self, parent, rows: list[dict]) -> None:
         if not rows:
-            ctk.CTkLabel(parent, text="Sin datos.", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_MUTED).pack(anchor="w", pady=(0, theme.SPACE_3))
+            ui.empty_state(parent, "Sin datos.", compact=True, anchor="w", pady=(0, theme.SPACE_3))
             return
         cols = [("aprobado", "Aprob.", theme.GREEN), ("enviado", "Enviado", theme.BLUE),
                 ("com_menores", "Coment.", theme.AMBER), ("rechazado", "Rechaz.", theme.RED),
@@ -242,7 +227,7 @@ class InformesView(ctk.CTkFrame):
                 val = r.get(key, 0)
                 intensity = val / maxc[key]
                 bg = _blend(ccol, theme.BG_CARD, 0.12 + intensity * 0.78) if val > 0 else theme.BG_PAGE
-                txt_col = "#FFFFFF" if (val > 0 and intensity > 0.45) else (
+                txt_col = theme.TEXT_ON_ACCENT if (val > 0 and intensity > 0.45) else (
                     theme.TEXT_MAIN if val > 0 else theme.TEXT_MUTED)
                 ctk.CTkLabel(grid, text=str(val), font=theme.font(11, "bold" if val > 0 else "normal"),
                              text_color=txt_col, fg_color=bg, corner_radius=6,
@@ -352,7 +337,7 @@ class InformesView(ctk.CTkFrame):
         av.pack(side="left", padx=(0, theme.SPACE_2))
         av.pack_propagate(False)
         ctk.CTkLabel(av, text=w["iniciales"], font=theme.font(11, "bold"),
-                     text_color="#FFFFFF").pack(expand=True)
+                     text_color=theme.TEXT_ON_ACCENT).pack(expand=True)
         nm = ctk.CTkFrame(head, fg_color="transparent")
         nm.pack(side="left", fill="x", expand=True)
         ctk.CTkLabel(nm, text=w["nombre"], font=theme.FONT_SMALL_BOLD,
@@ -424,8 +409,7 @@ class InformesView(ctk.CTkFrame):
 
     def _matriz_grid(self, parent, matriz: list[dict]) -> None:
         if not matriz:
-            ctk.CTkLabel(parent, text="Sin datos.", font=theme.FONT_SMALL,
-                         text_color=theme.TEXT_MUTED).pack(anchor="w", pady=(0, theme.SPACE_3))
+            ui.empty_state(parent, "Sin datos.", compact=True, anchor="w", pady=(0, theme.SPACE_3))
             return
         comerciales = sorted({r["comercial"] for r in matriz})
         resp_docs = sorted({r["resp_doc"] for r in matriz})

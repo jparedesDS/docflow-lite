@@ -130,3 +130,150 @@ def confirm(parent, title: str, message: str) -> bool:
     """Diálogo de confirmación Sí/No (para acciones sensibles)."""
     from tkinter import messagebox
     return bool(messagebox.askyesno(title, message, parent=parent))
+
+
+# ── Estructura de página ───────────────────────────────────────────────────────
+
+class PageHeader:
+    """Referencias de una cabecera de página: `frame`, `title`, `subtitle`
+    (puede ser None) y `actions` (frame a la derecha para botones/estado)."""
+
+    __slots__ = ("frame", "title", "subtitle", "actions")
+
+    def __init__(self, frame, title, subtitle, actions):
+        self.frame = frame
+        self.title = title
+        self.subtitle = subtitle
+        self.actions = actions
+
+
+def page_header(parent, title: str, subtitle: str = "", icon: str | None = None,
+                icon_color: str | None = None, pad_bottom: int = theme.SPACE_1) -> PageHeader:
+    """Cabecera estándar de sección: título (+icono opcional), subtítulo y una
+    zona de acciones a la derecha. Misma respiración en todas las vistas:
+    padx SPACE_6 · pady (SPACE_5, pad_bottom)."""
+    header = ctk.CTkFrame(parent, fg_color="transparent")
+    header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, pad_bottom))
+
+    left = ctk.CTkFrame(header, fg_color="transparent")
+    left.pack(side="left", fill="x", expand=True)
+    title_row = ctk.CTkFrame(left, fg_color="transparent")
+    title_row.pack(anchor="w")
+    if icon:
+        ctk.CTkLabel(title_row, text=icon, font=theme.font(20, "bold"),
+                     text_color=icon_color or theme.ACCENT).pack(side="left", padx=(0, theme.SPACE_2))
+    lbl_title = ctk.CTkLabel(title_row, text=title, font=theme.FONT_TITLE,
+                             text_color=theme.TEXT_MAIN, anchor="w")
+    lbl_title.pack(side="left")
+
+    lbl_sub = None
+    if subtitle:
+        lbl_sub = ctk.CTkLabel(left, text=subtitle, font=theme.FONT_SUBTITLE,
+                               text_color=theme.TEXT_SUB, anchor="w")
+        lbl_sub.pack(anchor="w", pady=(theme.SPACE_1, 0))
+
+    actions = ctk.CTkFrame(header, fg_color="transparent")
+    actions.pack(side="right", anchor="n")
+    return PageHeader(header, lbl_title, lbl_sub, actions)
+
+
+def tabview(parent, command=None, **kwargs) -> ctk.CTkTabview:
+    """CTkTabview con el estilo de la app (antes copiado a mano en 4 vistas)."""
+    opts = dict(
+        fg_color=theme.BG_PAGE,
+        segmented_button_fg_color=theme.BG_CARD,
+        segmented_button_selected_color=theme.ACCENT,
+        segmented_button_selected_hover_color=theme.ACCENT_HOVER,
+        segmented_button_unselected_color=theme.BG_CARD,
+        segmented_button_unselected_hover_color=theme.BG_INPUT,
+        text_color=theme.TEXT_MAIN,
+    )
+    if command is not None:
+        opts["command"] = command
+    opts.update(kwargs)
+    return ctk.CTkTabview(parent, **opts)
+
+
+def button(parent, text: str, variant: str = "primary", command=None, **overrides) -> ctk.CTkButton:
+    """CTkButton con una variante del tema (primary · secondary · outline ·
+    ghost · danger). `overrides` permite ajustar font/width/height puntuales."""
+    kw = theme.button_kwargs(variant)
+    kw.update(overrides)
+    return ctk.CTkButton(parent, text=text, command=command, **kw)
+
+
+# ── Estados vacíos ─────────────────────────────────────────────────────────────
+
+def empty_state(parent, title: str, hint: str = "", icon: str = "○",
+                compact: bool = False, pady=40, anchor: str = "center"):
+    """Estado vacío consistente.
+
+    compact=True → una sola línea discreta (para huecos dentro de una tarjeta).
+    compact=False → icono grande + título en negrita + pista opcional, centrado
+    (para listas/paneles enteros sin resultados). Devuelve el widget raíz.
+    """
+    if compact:
+        lbl = ctk.CTkLabel(parent, text=title, font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED)
+        lbl.pack(anchor=anchor, pady=pady)
+        return lbl
+    box = ctk.CTkFrame(parent, fg_color="transparent")
+    box.pack(fill="x", pady=pady)
+    ctk.CTkLabel(box, text=icon, font=theme.font(26, "bold"),
+                 text_color=theme.BORDER_STRONG).pack()
+    ctk.CTkLabel(box, text=title, font=theme.FONT_SMALL_BOLD,
+                 text_color=theme.TEXT_SUB).pack(pady=(theme.SPACE_2, 0))
+    if hint:
+        ctk.CTkLabel(box, text=hint, font=theme.FONT_SMALL,
+                     text_color=theme.TEXT_MUTED).pack(pady=(theme.SPACE_1, 0))
+    return box
+
+
+# ── KPI ────────────────────────────────────────────────────────────────────────
+
+def kpi_tile(parent, label: str, color: str, variant: str = "dashboard",
+             icon: str | None = None, height: int | None = None) -> dict:
+    """Tarjeta KPI con valor actualizable (devuelve sus widgets, no la coloca).
+
+    variant="dashboard" → tarjeta amplia (Inicio): radio LG, valor 24.
+    variant="tile"      → tile compacto clicable (Documentos): franja de color
+                          arriba, icono a la derecha, alto fijo, valor 21.
+    Devuelve {card, value, label, icon, accent, widgets}; `widgets` sirve para
+    enlazar el click a toda la tarjeta.
+    """
+    tile = variant == "tile"
+    card = ctk.CTkFrame(
+        parent, fg_color=theme.BG_CARD,
+        corner_radius=theme.RADIUS_MD if tile else theme.RADIUS_LG,
+        border_width=1, border_color=theme.BORDER,
+        **({"height": height, "cursor": "hand2"} if tile else {}),
+    )
+    accent = None
+    if tile:
+        if height:
+            card.grid_propagate(False)
+        accent = ctk.CTkFrame(card, fg_color=color, height=4, corner_radius=theme.RADIUS_MD)
+        accent.pack(fill="x", padx=2, pady=(2, 0))
+
+    inner = ctk.CTkFrame(card, fg_color="transparent")
+    if tile:
+        inner.pack(fill="both", expand=True, padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_2))
+    else:
+        inner.pack(fill="both", expand=True, padx=theme.SPACE_4, pady=theme.SPACE_4)
+
+    head = ctk.CTkFrame(inner, fg_color="transparent")
+    head.pack(fill="x")
+    lbl_label = ctk.CTkLabel(head, text=str(label).upper(), font=theme.FONT_LABEL,
+                             text_color=theme.TEXT_MUTED, anchor="w")
+    lbl_label.pack(side="left")
+    lbl_icon = None
+    if icon:
+        lbl_icon = ctk.CTkLabel(head, text=icon, font=theme.font(13, "bold"), text_color=color)
+        lbl_icon.pack(side="right")
+
+    lbl_value = ctk.CTkLabel(inner, text="—", font=theme.font(21 if tile else 24, "bold"),
+                             text_color=color, anchor="w")
+    lbl_value.pack(anchor="w", pady=(theme.SPACE_1 if tile else theme.SPACE_2, 0))
+
+    widgets = [w for w in (card, inner, head, lbl_label, lbl_icon, lbl_value) if w is not None]
+    return {"card": card, "value": lbl_value, "label": lbl_label, "icon": lbl_icon,
+            "accent": accent, "widgets": widgets}

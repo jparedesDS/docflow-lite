@@ -217,6 +217,10 @@ NOTE_GREEN      = _PALETTE["NOTE_GREEN"]
 NOTE_AMBER      = _PALETTE["NOTE_AMBER"]
 NOTE_ROSE       = _PALETTE["NOTE_ROSE"]
 
+# Texto sobre fondos de acento (botones primarios, avatares). Es blanco en los
+# 4 temas: el acento siempre es lo bastante oscuro/saturado para contrastar.
+TEXT_ON_ACCENT  = "#FFFFFF"
+
 
 def current_mode() -> str:
     """Devuelve el modo activo: 'light' | 'dark' | 'light-coral' | 'dark-coral'."""
@@ -344,11 +348,20 @@ BUTTON_STYLES = {
     "primary": {
         "fg_color": ACCENT,
         "hover_color": ACCENT_HOVER,
-        "text_color": "#FFFFFF",
+        "text_color": TEXT_ON_ACCENT,
         "border_width": 0,
     },
     "secondary": {
         "fg_color": BG_CARD,
+        "hover_color": BG_INPUT,
+        "text_color": TEXT_MAIN,
+        "border_width": 1,
+        "border_color": BORDER,
+    },
+    # Secundario "de contorno": transparente + borde. Es el que usan de facto
+    # las toolbars de todas las vistas (Recargar, Vincular, Actualizar…).
+    "outline": {
+        "fg_color": "transparent",
         "hover_color": BG_INPUT,
         "text_color": TEXT_MAIN,
         "border_width": 1,

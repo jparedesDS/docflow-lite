@@ -17,6 +17,7 @@ import re
 from core.services import apertura as apertura_service
 from core.services import comm_matrix as comm_matrix_service
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
 
 
@@ -82,17 +83,9 @@ class AperturaView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Apertura de pedidos", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header,
-            text="Genera carpetas, copia plantilla 00 DOCUMENTACIÓN, Planning y VDDL automáticamente.",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(
+            self, "Apertura de pedidos",
+            "Genera carpetas, copia plantilla 00 DOCUMENTACIÓN, Planning y VDDL automáticamente.")
 
         # Wrapper scrollable
         wrapper = ScrollFrame(self)

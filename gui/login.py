@@ -132,7 +132,7 @@ class LoginWindow(ctk.CTk):
             inner, text="Iniciar sesión", font=theme.FONT_BUTTON,
             height=theme.HEIGHT_BUTTON + 4, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=self._submit,
         )
         self.btn_submit.pack(fill="x")
@@ -281,7 +281,7 @@ class ChangePasswordDialog(ctk.CTkToplevel):
             footer, text="Cambiar y entrar", font=theme.FONT_BUTTON,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=self._submit,
         ).pack(side="right")
 

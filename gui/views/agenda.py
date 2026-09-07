@@ -10,6 +10,7 @@ from tkinter import messagebox
 from core.services import agenda as agenda_service
 from core.services import monitoring as monitoring_service
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,10 @@ class AgendaView(ctk.CTkFrame):
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Agenda", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header, text=f"Notas, reuniones y tareas · owner {DEFAULT_OWNER}",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(self, "Agenda", f"Notas, reuniones y tareas · owner {DEFAULT_OWNER}")
 
         # Tabs
-        self.tabs = ctk.CTkTabview(
-            self, fg_color=theme.BG_PAGE,
-            segmented_button_fg_color=theme.BG_CARD,
-            segmented_button_selected_color=theme.ACCENT,
-            segmented_button_selected_hover_color=theme.ACCENT_HOVER,
-            segmented_button_unselected_color=theme.BG_CARD,
-            segmented_button_unselected_hover_color=theme.BG_INPUT,
-            text_color=theme.TEXT_MAIN,
-        )
+        self.tabs = ui.tabview(self)
         self.tabs.pack(fill="both", expand=True,
                         padx=theme.SPACE_5, pady=(theme.SPACE_3, theme.SPACE_4))
 

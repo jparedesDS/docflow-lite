@@ -255,7 +255,7 @@ class PillTable(ctk.CTkFrame):
         if not items:
             return
         menu = tk.Menu(self, tearoff=0, bg=theme.BG_CARD, fg=theme.TEXT_MAIN,
-                       activebackground=theme.ACCENT, activeforeground="#FFFFFF",
+                       activebackground=theme.ACCENT, activeforeground=theme.TEXT_ON_ACCENT,
                        bd=0, relief="flat")
         for label, cmd in items:
             if label == "-" or cmd is None:

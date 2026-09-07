@@ -105,22 +105,9 @@ class DocusignView(ctk.CTkFrame):
     # ── Cabecera ─────────────────────────────────────────────────────────────
 
     def _build_header(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_2))
-
-        left = ctk.CTkFrame(header, fg_color="transparent")
-        left.pack(side="left", fill="x", expand=True)
-        title_row = ctk.CTkFrame(left, fg_color="transparent")
-        title_row.pack(anchor="w")
-        ctk.CTkLabel(title_row, text="✒", font=theme.font(20, "bold"),
-                     text_color=ACCENT_DS).pack(side="left", padx=(0, theme.SPACE_2))
-        ctk.CTkLabel(title_row, text="DocuSign", font=theme.FONT_TITLE,
-                     text_color=theme.TEXT_MAIN).pack(side="left")
-        ctk.CTkLabel(left, text="DocuSign eSignature", font=theme.FONT_SUBTITLE,
-                     text_color=theme.TEXT_SUB, anchor="w").pack(anchor="w", pady=(theme.SPACE_1, 0))
-
-        actions = ctk.CTkFrame(header, fg_color="transparent")
-        actions.pack(side="right")
+        hdr = ui.page_header(self, "DocuSign", "DocuSign eSignature",
+                             icon="✒", icon_color=ACCENT_DS, pad_bottom=theme.SPACE_2)
+        actions = hdr.actions
         self.lbl_api = ctk.CTkLabel(actions, text="", font=theme.FONT_SMALL_BOLD)
         self.lbl_api.pack(side="left", padx=(0, theme.SPACE_2))
         self.lbl_sync = ctk.CTkLabel(actions, text="", font=theme.FONT_TINY,
@@ -320,12 +307,7 @@ class DocusignView(ctk.CTkFrame):
         self._card_widgets = {}  # id sobre → frame de la tarjeta
         rows = self._filtered()
         if not rows:
-            empty = ctk.CTkFrame(self.list_scroll, fg_color="transparent")
-            empty.pack(fill="x", pady=40)
-            ctk.CTkLabel(empty, text="✒", font=theme.font(26, "bold"),
-                         text_color=theme.BORDER_STRONG).pack()
-            ctk.CTkLabel(empty, text="No se encontraron sobres", font=theme.FONT_SMALL_BOLD,
-                         text_color=theme.TEXT_SUB).pack(pady=(theme.SPACE_2, 0))
+            ui.empty_state(self.list_scroll, "No se encontraron sobres", icon="✒")
             self.list_status.configure(text="0 sobres", text_color=theme.TEXT_MUTED)
             return
         for env in rows:

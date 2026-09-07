@@ -134,16 +134,7 @@ class DocumentosView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Documentos", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header, text="Vista de monitorización · data_erp + consulta_erp",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        ).pack(anchor="w", pady=(theme.SPACE_1, 0))
+        ui.page_header(self, "Documentos", "Vista de monitorización · data_erp + consulta_erp")
 
         # KPIs
         self.kpi_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -249,45 +240,14 @@ class DocumentosView(ctk.CTkFrame):
     def _build_kpi_cards(self) -> None:
         self.kpi_widgets: dict[str, dict] = {}
         for col, (key, label, color, icon) in enumerate(KPI_DEFS):
-            card = ctk.CTkFrame(
-                self.kpi_row, fg_color=theme.BG_CARD,
-                corner_radius=theme.RADIUS_MD,
-                border_width=1, border_color=theme.BORDER,
-                height=82, cursor="hand2",
-            )
-            card.grid(row=0, column=col, sticky="nsew",
-                      padx=(0 if col == 0 else theme.SPACE_2, 0))
-            card.grid_propagate(False)
-
-            # Franja superior de color (como la web)
-            accent = ctk.CTkFrame(card, fg_color=color, height=4, corner_radius=theme.RADIUS_MD)
-            accent.pack(fill="x", padx=2, pady=(2, 0))
-
-            inner = ctk.CTkFrame(card, fg_color="transparent")
-            inner.pack(fill="both", expand=True, padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_2))
-
-            # Cabecera: etiqueta + icono a la derecha
-            head = ctk.CTkFrame(inner, fg_color="transparent")
-            head.pack(fill="x")
-            lbl_label = ctk.CTkLabel(
-                head, text=label.upper(), font=theme.FONT_LABEL,
-                text_color=theme.TEXT_MUTED, anchor="w",
-            )
-            lbl_label.pack(side="left")
-            lbl_icon = ctk.CTkLabel(head, text=icon, font=theme.font(13, "bold"), text_color=color)
-            lbl_icon.pack(side="right")
-
-            lbl_value = ctk.CTkLabel(
-                inner, text="—", font=theme.font(21, "bold"),
-                text_color=color, anchor="w",
-            )
-            lbl_value.pack(anchor="w", pady=(theme.SPACE_1, 0))
-
-            for w in (card, inner, head, lbl_label, lbl_icon, lbl_value):
+            tile = ui.kpi_tile(self.kpi_row, label, color, variant="tile", icon=icon, height=82)
+            tile["card"].grid(row=0, column=col, sticky="nsew",
+                              padx=(0 if col == 0 else theme.SPACE_2, 0))
+            for w in tile["widgets"]:
                 w.bind("<Button-1>", lambda e, k=key: self._toggle_kpi(k))
 
-            self.kpi_widgets[key] = {"card": card, "value": lbl_value, "color": color,
-                                     "label": lbl_label, "accent": accent}
+            self.kpi_widgets[key] = {"card": tile["card"], "value": tile["value"], "color": color,
+                                     "label": tile["label"], "accent": tile["accent"]}
 
         for col in range(len(KPI_DEFS)):
             self.kpi_row.grid_columnconfigure(col, weight=1, uniform="kpi")
@@ -529,7 +489,7 @@ class DocumentosView(ctk.CTkFrame):
         badges = ctk.CTkFrame(head, fg_color="transparent")
         badges.pack(fill="x", pady=(theme.SPACE_2, 0))
         ctk.CTkLabel(badges, text=f"  {estado.upper()}  ", font=theme.FONT_TINY,
-                     text_color="#FFFFFF", fg_color=ecol, corner_radius=8, height=22).pack(side="left")
+                     text_color=theme.TEXT_ON_ACCENT, fg_color=ecol, corner_radius=8, height=22).pack(side="left")
         tipo = str(doc.get("Tipo Doc.", "") or "")
         if tipo:
             ctk.CTkLabel(badges, text=f"  {tipo}  ", font=theme.FONT_TINY,

@@ -37,18 +37,10 @@ class ReclamacionesView(ctk.CTkFrame):
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
-        header = ctk.CTkFrame(self, fg_color="transparent")
-        header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, theme.SPACE_1))
-        ctk.CTkLabel(
-            header, text="Reclamaciones", font=theme.FONT_TITLE,
-            text_color=theme.TEXT_MAIN, anchor="w",
-        ).pack(anchor="w")
-        self.lbl_header_sub = ctk.CTkLabel(
-            header,
-            text="Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente",
-            font=theme.FONT_SUBTITLE, text_color=theme.TEXT_SUB, anchor="w",
-        )
-        self.lbl_header_sub.pack(anchor="w", pady=(theme.SPACE_1, 0))
+        hdr = ui.page_header(
+            self, "Reclamaciones",
+            "Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente")
+        self.lbl_header_sub = hdr.subtitle
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -101,7 +93,7 @@ class ReclamacionesView(ctk.CTkFrame):
             toolbar, text="Enviar seleccionadas", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             state="disabled", command=self._send_selected,
         )
         self.btn_send_selected.pack(side="left", padx=(theme.SPACE_2, 0))
@@ -935,7 +927,7 @@ class CommMatrixWindow(ctk.CTkToplevel):
             toolbar, text="📥  Importar .txt", font=theme.FONT_SMALL_BOLD,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=self._import_txt,
         ).pack(side="left")
 
@@ -1026,11 +1018,9 @@ class CommMatrixWindow(ctk.CTkToplevel):
         self.lbl_count.configure(text=f"{len(pedidos)} pedido(s)")
 
         if not pedidos:
-            ctk.CTkLabel(
-                self.list_scroll,
-                text="No hay pedidos en la matrix. Importa un .txt o añade uno manualmente.",
-                font=theme.FONT_BODY, text_color=theme.TEXT_MUTED,
-            ).pack(pady=theme.SPACE_8)
+            ui.empty_state(self.list_scroll, "No hay pedidos en la matrix",
+                           hint="Importa un .txt o añade uno manualmente.",
+                           icon="⚠", pady=theme.SPACE_8)
             return
 
         for p in pedidos:
@@ -1152,7 +1142,7 @@ class CommMatrixEditor(ctk.CTkToplevel):
             footer, text="Guardar", font=theme.FONT_BUTTON,
             height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
             fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER,
-            text_color="#FFFFFF",
+            text_color=theme.TEXT_ON_ACCENT,
             command=self._save,
         ).pack(side="right")
 

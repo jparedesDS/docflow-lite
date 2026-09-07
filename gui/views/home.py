@@ -8,6 +8,7 @@ from datetime import datetime
 import customtkinter as ctk
 
 from gui import theme
+from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
 
 logger = logging.getLogger(__name__)
@@ -139,38 +140,13 @@ class HomeView(ctk.CTkFrame):
     # ── KPI Card ─────────────────────────────────────────────────────────────
 
     def _build_kpi_card(self, parent, col: int, label: str, color: str) -> ctk.CTkLabel:
-        card = ctk.CTkFrame(
-            parent,
-            fg_color=theme.BG_CARD,
-            corner_radius=theme.RADIUS_LG,
-            border_width=1,
-            border_color=theme.BORDER,
-        )
-        card.grid(
+        tile = ui.kpi_tile(parent, label, color, variant="dashboard")
+        tile["card"].grid(
             row=0, column=col, sticky="nsew",
             padx=(0 if col == 0 else theme.SPACE_2, 0),
             pady=0,
         )
-
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="both", expand=True, padx=theme.SPACE_4, pady=theme.SPACE_4)
-
-        # Etiqueta uppercase arriba
-        ctk.CTkLabel(
-            inner, text=label.upper(),
-            font=theme.FONT_LABEL,
-            text_color=theme.TEXT_MUTED, anchor="w",
-        ).pack(anchor="w")
-
-        # Valor grande
-        value_lbl = ctk.CTkLabel(
-            inner, text="—",
-            font=theme.font(24, "bold"),
-            text_color=color, anchor="w",
-        )
-        value_lbl.pack(anchor="w", pady=(theme.SPACE_2, 0))
-
-        return value_lbl
+        return tile["value"]
 
     # ── Nav Card ─────────────────────────────────────────────────────────────
 
