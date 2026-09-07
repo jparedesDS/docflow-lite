@@ -865,11 +865,58 @@ class ReportesView(ctk.CTkFrame):
             anchor="w", justify="left", wraplength=820,
         ).pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
 
+        # Acción: regenerar consulta_erp desde el ERP (Postgres local, solo lectura)
+        erp_row = ctk.CTkFrame(parent, fg_color="transparent")
+        erp_row.pack(fill="x", pady=(0, theme.SPACE_3))
+        self._erp_btn = ctk.CTkButton(
+            erp_row, text="↻  Actualizar consulta desde ERP", font=theme.FONT_SMALL_BOLD,
+            height=theme.HEIGHT_BUTTON, corner_radius=theme.RADIUS_MD,
+            fg_color=theme.ACCENT, hover_color=theme.ACCENT_HOVER, text_color="#FFFFFF",
+            command=self._refresh_consulta_from_erp,
+        )
+        self._erp_btn.pack(side="left")
+        self._erp_status = ctk.CTkLabel(
+            erp_row, text="Se actualiza sola al abrir y cada hora.",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED, anchor="w",
+        )
+        self._erp_status.pack(side="left", padx=theme.SPACE_3)
+
         # Container con scroll
         self.data_scroll = ScrollFrame(parent)
         self.data_scroll.pack(fill="both", expand=True)
 
         self._data_cards: dict[str, dict] = {}
+        self._reload_data_cards()
+
+    def _refresh_consulta_from_erp(self) -> None:
+        """Regenera consulta_erp desde el Postgres local del ERP (en un hilo)."""
+        self._erp_btn.configure(state="disabled", text="↻  Actualizando…")
+        self._erp_status.configure(text="Conectando al ERP…", text_color=theme.TEXT_SUB)
+
+        def _work():
+            from core.services import erp_db
+            try:
+                res = erp_db.refresh_consulta_erp(make_backup=True)
+                self.after(0, lambda: self._erp_done(res, None))
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
+                self.after(0, lambda: self._erp_done(None, msg))
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _erp_done(self, res: dict | None, error: str | None) -> None:
+        self._erp_btn.configure(state="normal", text="↻  Actualizar consulta desde ERP")
+        if error:
+            self._erp_status.configure(text=f"Error: {error}", text_color=theme.RED)
+            ui.toast(self, "ERP", f"No se pudo actualizar: {error}", kind="error")
+            return
+        self._erp_status.configure(
+            text=f"✓ {res['rows']} pedidos · {res['con_responsable']} con responsable",
+            text_color=theme.GREEN,
+        )
+        ui.toast(self, "Consulta actualizada",
+                 f"{res['rows']} pedidos desde el ERP. Ya aplicado a Documentos y reportes.",
+                 kind="success")
         self._reload_data_cards()
 
     def _reload_data_cards(self) -> None:

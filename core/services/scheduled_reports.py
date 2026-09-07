@@ -288,9 +288,27 @@ def start_background_scheduler():
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler()
     sync_scheduler_jobs(scheduler)
+    _add_erp_refresh_job(scheduler)
     scheduler.start()
     logger.info("BackgroundScheduler arrancado (%d jobs)", len(scheduler.get_jobs()))
     return scheduler
+
+
+def _add_erp_refresh_job(scheduler) -> None:
+    """Refresco de consulta_erp desde el Postgres local del ERP: una pasada al
+    arrancar y luego cada hora mientras la app esté abierta. Silencioso si el
+    ERP no está disponible."""
+    try:
+        from core.services import erp_db
+        scheduler.add_job(
+            erp_db.auto_refresh, "interval", hours=1,
+            next_run_time=datetime.now(),   # pasada inmediata al iniciar el programa
+            id="erp_consulta_refresh", replace_existing=True,
+            max_instances=1, coalesce=True,
+        )
+        logger.info("Job ERP consulta_refresh añadido (al inicio + cada hora)")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo programar el refresco de consulta ERP: %s", exc)
 
 
 def sync_scheduler_jobs(scheduler) -> None:
