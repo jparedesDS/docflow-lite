@@ -38,7 +38,9 @@ class AgendaView(ctk.CTkFrame):
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _build_layout(self) -> None:
-        ui.page_header(self, "Agenda", f"Notas, reuniones y tareas · owner {DEFAULT_OWNER}")
+        ui.page_header(self, "Agenda",
+                       f"Tus tareas, notas y reuniones en un solo sitio · {DEFAULT_OWNER}",
+                       help_key="agenda")
 
         # Tabs
         self.tabs = ui.tabview(self)

@@ -105,8 +105,9 @@ class DocusignView(ctk.CTkFrame):
     # ── Cabecera ─────────────────────────────────────────────────────────────
 
     def _build_header(self) -> None:
-        hdr = ui.page_header(self, "DocuSign", "DocuSign eSignature",
-                             icon="✒", icon_color=ACCENT_DS, pad_bottom=theme.SPACE_2)
+        hdr = ui.page_header(self, "DocuSign",
+                             "Sobres de firma electrónica: estado, firmantes y descarga del PDF firmado.",
+                             icon="✒", icon_color=ACCENT_DS, pad_bottom=theme.SPACE_2, help_key="docusign")
         actions = hdr.actions
         self.lbl_api = ctk.CTkLabel(actions, text="", font=theme.FONT_SMALL_BOLD)
         self.lbl_api.pack(side="left", padx=(0, theme.SPACE_2))

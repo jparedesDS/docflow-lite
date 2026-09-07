@@ -39,7 +39,8 @@ class ReclamacionesView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         hdr = ui.page_header(
             self, "Reclamaciones",
-            "Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente")
+            "Pedidos con documentos enviados hace ≥ 15 días sin respuesta del cliente",
+            help_key="reclamaciones")
         self.lbl_header_sub = hdr.subtitle
 
         # Toolbar

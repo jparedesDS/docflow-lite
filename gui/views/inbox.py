@@ -33,7 +33,9 @@ class InboxView(ctk.CTkFrame):
         # Header
         ui.page_header(
             self, "Bandeja AI",
-            "Lectura de correos del buzón IMAP · análisis con IA al configurar ANTHROPIC_API_KEY")
+            "El buzón de documentación: lee los correos y, con la IA configurada en Ajustes, "
+            "resume cada uno.",
+            help_key="inbox")
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -268,7 +270,7 @@ class InboxView(ctk.CTkFrame):
                            text_color=theme.TEXT_MUTED, state="disabled", command=lambda: None)
         ai_btn.pack(side="left", padx=(8, 0))
         if not ANTHROPIC_API_KEY:
-            self._add_tooltip(ai_btn, "Configura ANTHROPIC_API_KEY en .env para activar.")
+            ui.tooltip(ai_btn, "Guarda la clave de IA en Ajustes ▸ IA para activar el análisis.")
 
         # Body
         ctk.CTkLabel(
@@ -349,34 +351,6 @@ class InboxView(ctk.CTkFrame):
         total_visible = len(self.table.tree.get_children())
         self.lbl_count.configure(text=f"{total_visible} mostrados · {unread} no leídos")
 
-    # ── Tooltip simple ───────────────────────────────────────────────────────
-
-    def _add_tooltip(self, widget, text: str) -> None:
-        tip = {"win": None}
-
-        def show(_evt=None):
-            if tip["win"]:
-                return
-            x = widget.winfo_rootx() + 10
-            y = widget.winfo_rooty() + widget.winfo_height() + 4
-            tw = ctk.CTkToplevel(self)
-            tw.wm_overrideredirect(True)
-            tw.geometry(f"+{x}+{y}")
-            tw.configure(fg_color=theme.BG_SIDEBAR)
-            ctk.CTkLabel(
-                tw, text=text, font=theme.font(10),
-                text_color=theme.TEXT_MAIN, fg_color=theme.BG_SIDEBAR,
-                corner_radius=6,
-            ).pack(padx=8, pady=4)
-            tip["win"] = tw
-
-        def hide(_evt=None):
-            if tip["win"]:
-                tip["win"].destroy()
-                tip["win"] = None
-
-        widget.bind("<Enter>", show)
-        widget.bind("<Leave>", hide)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

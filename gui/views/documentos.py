@@ -42,15 +42,22 @@ DOC_COLS = [
 PAGE_SIZE = 30
 
 
-# KPI cards: (key, label, color)
+# KPI cards: (key, label, color, icono, explicación en lenguaje llano — tooltip)
 KPI_DEFS = [
-    ("total",        "Total",         theme.ACCENT,     "▦"),
-    ("aprobados",    "Aprobados",     theme.GREEN,      "✓"),
-    ("enviados",     "Enviados",      theme.BLUE,       "➤"),
-    ("devoluciones", "Devoluciones",  theme.AMBER,      "↩"),
-    ("criticos",     "Críticos",      theme.RED,        "⚠"),
-    ("criticos_15d", "Críticos +15d", theme.ROSE,       "⏱"),
-    ("sin_enviar",   "Sin enviar",    theme.TEXT_MUTED, "○"),
+    ("total",        "Total",         theme.ACCENT,     "▦",
+     "Todos los documentos del filtro actual."),
+    ("aprobados",    "Aprobados",     theme.GREEN,      "✓",
+     "Aprobados por el cliente. Clic para ver solo estos."),
+    ("enviados",     "Enviados",      theme.BLUE,       "➤",
+     "Enviados al cliente y pendientes de su respuesta. Clic para filtrar."),
+    ("devoluciones", "Devoluciones",  theme.AMBER,      "↩",
+     "Devueltos con comentarios (menores, mayores o rechazado): hay que responder. Clic para filtrar."),
+    ("criticos",     "Críticos",      theme.RED,        "⚠",
+     "Documentos marcados como críticos en el ERP. Clic para filtrar."),
+    ("criticos_15d", "Críticos +15d", theme.ROSE,       "⏱",
+     "Críticos enviados hace más de 15 días sin respuesta: candidatos a reclamación. Clic para filtrar."),
+    ("sin_enviar",   "Sin enviar",    theme.TEXT_MUTED, "○",
+     "Aún no enviados al cliente. Clic para filtrar."),
 ]
 
 
@@ -100,6 +107,31 @@ class DocumentosView(ctk.CTkFrame):
             if val:
                 ent.insert(0, val)
         self._active_kpi = f.get("kpi") or None
+        self._sync_filters_visibility()
+
+    # ── Filtros finos plegables ───────────────────────────────────────────────
+
+    def _fine_filters_active(self) -> int:
+        return sum(1 for e in (self.ent_pedido, self.ent_cliente, self.ent_resp) if e.get().strip())
+
+    def _toggle_filters(self) -> None:
+        self._filters_open = not self._filters_open
+        self._sync_filters_visibility()
+
+    def _sync_filters_visibility(self) -> None:
+        """Muestra la fila de filtros finos si está abierta o si alguno está activo;
+        el botón indica cuántos hay activos."""
+        n = self._fine_filters_active()
+        show = self._filters_open or n > 0
+        if show and not self.filters_row.winfo_manager():
+            self.filters_row.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, 0),
+                                  after=self._filters_bar)
+        elif not show and self.filters_row.winfo_manager():
+            self.filters_row.pack_forget()
+        self._filters_open = show
+        self.btn_filters.configure(
+            text=(f"Filtros ▴ ({n})" if n else "Filtros ▴") if show else "Filtros ▾",
+            text_color=theme.ACCENT if n else theme.TEXT_SUB)
 
     def _save_filters(self, delay: int = 0) -> None:
         """Persiste los filtros. delay>0 lo difiere (evita escribir en disco —
@@ -134,42 +166,56 @@ class DocumentosView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        ui.page_header(self, "Documentos", "Vista de monitorización · data_erp + consulta_erp")
+        ui.page_header(
+            self, "Documentos",
+            "Todos los documentos de todos los pedidos. Busca, pulsa una tarjeta para filtrar "
+            "por estado y abre la ficha con doble clic.",
+            help_key="documentos")
 
         # KPIs
         self.kpi_row = ctk.CTkFrame(self, fg_color="transparent")
         self.kpi_row.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_4, theme.SPACE_2))
         self._build_kpi_cards()
 
-        # Filtros (caja minimal, sin background card)
+        # Buscador siempre visible; los filtros finos (pedido, cliente, responsable)
+        # se pliegan tras «Filtros» y se abren solos cuando alguno está activo.
         filters = ctk.CTkFrame(self, fg_color="transparent")
-        filters.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_2))
+        filters.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, 0))
+        self._filters_bar = filters
 
-        self.ent_q = self._make_entry(filters, "Buscar (Nº Doc, Título, Cliente…)")
+        self.ent_q = self._make_entry(filters, "Buscar por Nº de documento, título o cliente…")
         self.ent_q.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
         self.ent_q.bind("<KeyRelease>", lambda e: self._debounced_search())
 
-        self.ent_pedido = self._make_entry(filters, "Nº Pedido", width=130)
+        self.btn_filters = ui.button(
+            filters, "Filtros ▾", "outline", size="sm", width=110, text_color=theme.TEXT_SUB,
+            command=self._toggle_filters)
+        self.btn_filters.pack(side="left", padx=(0, theme.SPACE_2))
+        ui.tooltip(self.btn_filters, "Acotar por Nº de pedido, cliente o responsable")
+
+        btn_clear = ui.button(
+            filters, "Limpiar", "outline", size="sm", width=70, text_color=theme.TEXT_SUB,
+            command=self._clear_filters)
+        btn_clear.pack(side="left", padx=(0, theme.SPACE_2))
+        ui.tooltip(btn_clear, "Quita la búsqueda, los filtros y la tarjeta seleccionada")
+
+        btn_refresh = ui.button(filters, "↻", "outline", width=36, text_color=theme.TEXT_SUB,
+                                command=self._hard_refresh)
+        btn_refresh.pack(side="left")
+        ui.tooltip(btn_refresh, "Recargar los documentos desde los Excel")
+
+        # Fila plegable de filtros finos
+        self._filters_open = False
+        self.filters_row = ctk.CTkFrame(self, fg_color="transparent")
+        self.ent_pedido = self._make_entry(self.filters_row, "Nº Pedido (P-26/048)", width=170)
         self.ent_pedido.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_pedido.bind("<KeyRelease>", lambda e: self._debounced_search())
-
-        self.ent_cliente = self._make_entry(filters, "Cliente", width=130)
+        self.ent_cliente = self._make_entry(self.filters_row, "Cliente", width=170)
         self.ent_cliente.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_cliente.bind("<KeyRelease>", lambda e: self._debounced_search())
-
-        self.ent_resp = self._make_entry(filters, "Responsable (JP)", width=140)
+        self.ent_resp = self._make_entry(self.filters_row, "Responsable (iniciales, p.ej. JP)", width=220)
         self.ent_resp.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_resp.bind("<KeyRelease>", lambda e: self._debounced_search())
-
-        ui.button(
-            filters, "Limpiar", "outline", size="sm", width=70, text_color=theme.TEXT_SUB,
-            command=self._clear_filters,
-        ).pack(side="left", padx=(0, theme.SPACE_2))
-
-        ui.button(
-            filters, "↻", "outline", width=36, text_color=theme.TEXT_SUB,
-            command=self._hard_refresh,
-        ).pack(side="left")
 
         # Status + paginación
         bar = ctk.CTkFrame(self, fg_color="transparent")
@@ -223,12 +269,13 @@ class DocumentosView(ctk.CTkFrame):
 
     def _build_kpi_cards(self) -> None:
         self.kpi_widgets: dict[str, dict] = {}
-        for col, (key, label, color, icon) in enumerate(KPI_DEFS):
+        for col, (key, label, color, icon, hint) in enumerate(KPI_DEFS):
             tile = ui.kpi_tile(self.kpi_row, label, color, variant="tile", icon=icon, height=82)
             tile["card"].grid(row=0, column=col, sticky="nsew",
                               padx=(0 if col == 0 else theme.SPACE_2, 0))
             for w in tile["widgets"]:
                 w.bind("<Button-1>", lambda e, k=key: self._toggle_kpi(k))
+                ui.tooltip(w, hint)
 
             self.kpi_widgets[key] = {"card": tile["card"], "value": tile["value"], "color": color,
                                      "label": tile["label"], "accent": tile["accent"]}
@@ -319,6 +366,7 @@ class DocumentosView(ctk.CTkFrame):
     def _on_filter_change(self) -> None:
         self._page = 0
         self._save_filters(delay=1200)  # diferido: no escribir en disco por tecla
+        self._sync_filters_visibility()
         self._apply_filters_and_render()
 
     def _clear_filters(self) -> None:
@@ -326,7 +374,9 @@ class DocumentosView(ctk.CTkFrame):
             ent.delete(0, "end")
         self._active_kpi = None
         self._page = 0
+        self._filters_open = False
         self._save_filters()
+        self._sync_filters_visibility()
         self._apply_filters_and_render()
 
     def set_pedido_filter(self, pedido: str) -> None:
@@ -338,6 +388,7 @@ class DocumentosView(ctk.CTkFrame):
         self._active_kpi = None
         self._page = 0
         self._save_filters()
+        self._sync_filters_visibility()
         self._apply_filters_and_render()
 
     def set_query(self, text: str) -> None:
@@ -350,6 +401,7 @@ class DocumentosView(ctk.CTkFrame):
         self._active_kpi = None
         self._page = 0
         self._save_filters()
+        self._sync_filters_visibility()
         self._apply_filters_and_render()
 
     def _apply_filters_and_render(self) -> None:

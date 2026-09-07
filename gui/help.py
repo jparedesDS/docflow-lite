@@ -1,0 +1,218 @@
+"""Ayuda contextual por sección — «?» en la cabecera y tecla F1.
+
+Cada entrada explica, en lenguaje llano y en tres bloques, lo que un usuario
+nuevo necesita para usar la sección sin leer ningún manual:
+  · qué es (una frase)
+  · cómo se usa (3-4 pasos)
+  · atajos y trucos
+"""
+
+from __future__ import annotations
+
+import customtkinter as ctk
+
+from gui import theme
+
+HELP: dict[str, dict] = {
+    "home": {
+        "titulo": "Inicio",
+        "que": "Tu panel del día: los números que importan y accesos directos a cada sección.",
+        "pasos": [
+            "Mira los indicadores de arriba: críticos, reclamables y pendientes son lo urgente.",
+            "Pulsa cualquier tarjeta para ir directo a esa sección.",
+            "Los números se actualizan solos cada pocos minutos.",
+        ],
+        "atajos": ["H · volver a Inicio", "Ctrl+K · buscar un pedido, documento o sección"],
+    },
+    "documentos": {
+        "titulo": "Documentos",
+        "que": "Todos los documentos de todos los pedidos, con su estado actual frente al cliente.",
+        "pasos": [
+            "Escribe en «Buscar» un Nº de documento, título o cliente.",
+            "Pulsa una tarjeta de arriba (Aprobados, Devoluciones, Críticos…) para filtrar por estado; vuelve a pulsarla para quitar el filtro.",
+            "Doble clic en una fila abre la ficha: revisiones, fechas y acciones.",
+            "Botón «Filtros» para acotar por pedido, cliente o responsable.",
+        ],
+        "atajos": ["O · abrir Documentos", "Ctrl+K · saltar a un documento por su número", "↻ · recargar desde los Excel"],
+    },
+    "pedidos": {
+        "titulo": "Seguimiento",
+        "que": "El estado de un pedido de un vistazo: documentación, fabricación, equipos y qué requiere acción.",
+        "pasos": [
+            "Escribe el Nº de pedido o el cliente y elígelo en la lista.",
+            "«Estado del pedido»: veredicto, avance documental, fabricación (fases y órdenes de trabajo) y plazo.",
+            "«Equipos & Tags»: cada equipo con su plano, su cálculo y su estado de fabricación; doble clic abre la ficha.",
+            "«Informe del pedido →» genera un informe web completo para compartir.",
+        ],
+        "atajos": ["Ctrl+K · escribe P-26/048 y Enter", "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas"],
+    },
+    "devoluciones": {
+        "titulo": "Devoluciones",
+        "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA…).",
+        "pasos": [
+            "«Recargar» trae los correos del buzón.",
+            "Doble clic en un correo: la app lo interpreta y muestra los documentos y su estado.",
+            "Revisa, corrige un estado si hace falta y pulsa «Enviar notificación».",
+            "«+ Devolución manual» si el correo no es de un portal reconocido: escribe el pedido y se autocompleta.",
+        ],
+        "atajos": ["D · abrir Devoluciones", "El pedido, cliente y PO se completan solos desde el ERP"],
+    },
+    "reclamaciones": {
+        "titulo": "Reclamaciones",
+        "que": "Documentos enviados al cliente hace más de 15 días sin respuesta: los que toca reclamar.",
+        "pasos": [
+            "La lista se calcula sola al abrir; ajusta los días mínimos si quieres ser más o menos estricto.",
+            "Marca los pedidos y pulsa «Enviar seleccionadas» (o «Preview» para ver el correo antes).",
+            "Los destinatarios salen de la Comm. Matrix del pedido; edítala con el botón «Comm. Matrix».",
+        ],
+        "atajos": ["R · abrir Reclamaciones", "Desde la ficha de un documento también puedes generar su reclamación"],
+    },
+    "inbox": {
+        "titulo": "Bandeja AI",
+        "que": "El buzón de documentación, con resumen y clasificación por IA cuando está configurada.",
+        "pasos": [
+            "«Recargar» lee los correos recientes.",
+            "Selecciona uno para leerlo; márcalo como leído o no leído.",
+            "Con la clave de IA en Ajustes, cada correo trae un resumen automático.",
+        ],
+        "atajos": ["I · abrir la bandeja"],
+    },
+    "ofertas": {
+        "titulo": "Ofertas",
+        "que": "Ofertas recibidas en los buzones comerciales y control de su entrada por portal.",
+        "pasos": [
+            "Elige el rango de días y pulsa «Actualizar».",
+            "Abre una oferta para ver el correo, marcarla como leída o registrar su gestión.",
+            "«Excel» exporta la lista para el seguimiento comercial.",
+        ],
+        "atajos": ["Los buzones y el seguimiento de comerciales se configuran en Ajustes ▸ Ofertas"],
+    },
+    "docusign": {
+        "titulo": "DocuSign",
+        "que": "Sobres de firma electrónica: quién ha firmado, qué falta y descarga del PDF firmado.",
+        "pasos": [
+            "«Actualizar» trae los sobres de tu cuenta.",
+            "Selecciona un sobre para ver firmantes y estado.",
+            "«Descargar PDF» guarda el documento firmado.",
+        ],
+        "atajos": ["Las credenciales de DocuSign se guardan en Ajustes ▸ DocuSign"],
+    },
+    "apertura": {
+        "titulo": "Apertura de pedidos",
+        "que": "Crea en un clic la estructura de carpetas de un pedido nuevo: plantilla, Planning y VDDL.",
+        "pasos": [
+            "Escribe el Nº de pedido (P-26/048): cliente y material se completan solos desde el ERP.",
+            "«Localizar pedido» comprueba si ya existe la carpeta.",
+            "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo.",
+        ],
+        "atajos": ["N · abrir Apertura"],
+    },
+    "agenda": {
+        "titulo": "Agenda",
+        "que": "Tus tareas, notas y reuniones, en un solo sitio.",
+        "pasos": [
+            "«+ Nueva tarea» crea una tarea; márcala con el check cuando esté hecha.",
+            "«Sincronizar con Documentos» crea tareas a partir de los documentos pendientes.",
+            "Las notas y reuniones tienen su propia pestaña.",
+        ],
+        "atajos": ["A · abrir la Agenda"],
+    },
+    "informes": {
+        "titulo": "Analítica",
+        "que": "Cómo va la documentación en conjunto: rendimiento por cliente y equipo, y previsión.",
+        "pasos": [
+            "«Resumen»: distribución por estado, tiempos de respuesta y mapa de calor por cliente.",
+            "«Equipo»: carga y ritmo de cada responsable.",
+            "«Predicción & Scorecard»: fechas estimadas de cierre y puntuación por cliente.",
+        ],
+        "atajos": ["Para un informe compartible usa Centro de Reportes ▸ Informe interactivo"],
+    },
+    "reportes": {
+        "titulo": "Centro de Reportes",
+        "que": "Genera Excels e informes web, envía resúmenes por email o Teams y programa envíos automáticos.",
+        "pasos": [
+            "«Excels»: descarga el Monitoring Report o el export completo.",
+            "«Informe interactivo»: informe web semanal, mensual, ejecutivo o por pedido, con botón para PDF.",
+            "«Resúmenes por email» y «Programados»: envía ahora o deja programado el envío (email o Teams).",
+        ],
+        "atajos": ["P · abrir el Centro de Reportes", "La consulta del ERP se actualiza sola al abrir la app y cada hora"],
+    },
+    "ajustes": {
+        "titulo": "Ajustes",
+        "que": "Conexiones, fuentes de datos, credenciales y usuarios. Solo administradores.",
+        "pasos": [
+            "Cada pestaña tiene su botón «Guardar»; los cambios de conexión se aplican al reiniciar.",
+            "Las contraseñas se guardan cifradas (nunca en texto plano).",
+            "«Fuentes de datos» controla de dónde se leen los Excel y la conexión al ERP.",
+        ],
+        "atajos": ["«↻ Reiniciar app» aplica los cambios de conexión"],
+    },
+}
+
+
+class HelpDialog(ctk.CTkToplevel):
+    """Ventana de ayuda de una sección: qué es · cómo se usa · atajos."""
+
+    def __init__(self, master, key: str):
+        super().__init__(master, fg_color=theme.BG_CARD)
+        info = HELP.get(key) or {"titulo": key.capitalize(), "que": "", "pasos": [], "atajos": []}
+        self.title(f"Ayuda · {info['titulo']}")
+        self.resizable(False, False)
+        self.transient(master)
+        self._build(info)
+        self._center(master)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.after(40, self.lift)
+        try:
+            self.grab_set()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _build(self, info: dict) -> None:
+        pad = theme.SPACE_5
+        ctk.CTkLabel(self, text=info["titulo"], font=theme.FONT_HEADING, text_color=theme.TEXT_MAIN,
+                     anchor="w").pack(anchor="w", padx=pad, pady=(pad, 0))
+        if info.get("que"):
+            ctk.CTkLabel(self, text=info["que"], font=theme.FONT_BODY, text_color=theme.TEXT_SUB,
+                         anchor="w", justify="left", wraplength=520).pack(anchor="w", padx=pad, pady=(theme.SPACE_1, 0))
+
+        if info.get("pasos"):
+            self._section("Cómo se usa")
+            for i, paso in enumerate(info["pasos"], 1):
+                row = ctk.CTkFrame(self, fg_color="transparent")
+                row.pack(fill="x", padx=pad, pady=1)
+                ctk.CTkLabel(row, text=str(i), font=theme.FONT_SMALL_BOLD, text_color=theme.TEXT_ON_ACCENT,
+                             fg_color=theme.ACCENT, corner_radius=10, width=20, height=20).pack(side="left", anchor="n", pady=2)
+                ctk.CTkLabel(row, text=paso, font=theme.FONT_SMALL, text_color=theme.TEXT_MAIN,
+                             anchor="w", justify="left", wraplength=480).pack(side="left", padx=(theme.SPACE_2, 0))
+
+        if info.get("atajos"):
+            self._section("Atajos y trucos")
+            for a in info["atajos"]:
+                ctk.CTkLabel(self, text=f"•  {a}", font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+                             anchor="w", justify="left", wraplength=500).pack(anchor="w", padx=pad + 4, pady=1)
+
+        foot = ctk.CTkFrame(self, fg_color="transparent")
+        foot.pack(fill="x", padx=pad, pady=(theme.SPACE_4, pad))
+        ctk.CTkLabel(foot, text="F1 abre esta ayuda en cualquier sección", font=theme.FONT_TINY,
+                     text_color=theme.TEXT_MUTED).pack(side="left")
+        from gui.widgets import ui
+        ui.button(foot, "Entendido", "primary", size="sm", command=self.destroy).pack(side="right")
+
+    def _section(self, text: str) -> None:
+        from gui.widgets import ui
+        ui.section_header(self, text).pack(fill="x", padx=theme.SPACE_5, pady=(theme.SPACE_4, theme.SPACE_1))
+
+    def _center(self, master) -> None:
+        try:
+            self.update_idletasks()
+            w, h = max(self.winfo_reqwidth(), 560), self.winfo_reqheight()
+            x = master.winfo_rootx() + (master.winfo_width() - w) // 2
+            y = master.winfo_rooty() + 100
+            self.geometry(f"{w}x{h}+{max(x, 0)}+{max(y, 0)}")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def open_help(master, key: str) -> HelpDialog:
+    return HelpDialog(master, key)

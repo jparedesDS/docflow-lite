@@ -100,6 +100,8 @@ class DocFlowLiteApp(ctk.CTk):
         # Paleta de comandos: funciona también con el foco en un Entry
         self.bind_all("<Control-k>", lambda _e: self.open_palette())
         self.bind_all("<Control-K>", lambda _e: self.open_palette())
+        # Ayuda contextual de la sección actual
+        self.bind_all("<F1>", lambda _e: self.open_help())
 
         startup_warnings()
 
@@ -428,6 +430,11 @@ class DocFlowLiteApp(ctk.CTk):
             return
         from gui.widgets.palette import CommandPalette
         self._palette = CommandPalette(self)
+
+    def open_help(self) -> None:
+        """Ayuda de la sección actual (F1 o botón «?» de la cabecera)."""
+        from gui.help import open_help
+        open_help(self, self._current or "home")
 
     def open_pedido(self, pedido: str) -> None:
         """Abre Seguimiento con un pedido seleccionado (desde la paleta)."""

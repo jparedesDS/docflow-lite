@@ -79,7 +79,9 @@ class PedidosView(ctk.CTkFrame):
     def _build_layout(self) -> None:
         ui.page_header(
             self, "Seguimiento",
-            "El estado del pedido de un vistazo: avance, plazo, fabricación y qué requiere acción")
+            "Elige un pedido y mira de un vistazo cómo va: documentación, fabricación, "
+            "equipos y qué requiere acción.",
+            help_key="pedidos")
 
         # ── Barra de filtros (encontrar el pedido) ───────────────────────
         bar = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=12,

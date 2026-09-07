@@ -64,7 +64,10 @@ class ReportesView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         # Header
-        ui.page_header(self, "Centro de Reportes", "Excels · resúmenes por email · programación automática")
+        ui.page_header(
+            self, "Centro de Reportes",
+            "Genera Excels e informes web, envía resúmenes por email o Teams y programa envíos automáticos.",
+            help_key="reportes")
 
         # Status line global
         self.lbl_status = ctk.CTkLabel(

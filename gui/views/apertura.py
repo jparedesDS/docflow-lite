@@ -85,7 +85,9 @@ class AperturaView(ctk.CTkFrame):
         # Header
         ui.page_header(
             self, "Apertura de pedidos",
-            "Genera carpetas, copia plantilla 00 DOCUMENTACIÓN, Planning y VDDL automáticamente.")
+            "Crea en un clic la estructura de un pedido nuevo: carpetas, plantilla "
+            "00 DOCUMENTACIÓN, Planning y VDDL.",
+            help_key="apertura")
 
         # Wrapper scrollable
         wrapper = ScrollFrame(self)

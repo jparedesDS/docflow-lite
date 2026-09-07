@@ -66,7 +66,10 @@ class InformesView(ctk.CTkFrame):
         self._loaded["Resumen"] = True
 
     def _build_layout(self) -> None:
-        ui.page_header(self, "Analítica", "Analítica de documentación · rendimiento · predicción")
+        ui.page_header(
+            self, "Analítica",
+            "Cómo va la documentación en conjunto: rendimiento por cliente y equipo, y previsión de cierre.",
+            help_key="informes")
 
         self.tabs = ui.tabview(self, command=self._on_tab)
         self.tabs.pack(fill="both", expand=True, padx=theme.SPACE_5,

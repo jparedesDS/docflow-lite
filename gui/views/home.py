@@ -34,13 +34,20 @@ NAV_CARDS = [
      "title": "Centro de Reportes", "base_desc": "Excels y resúmenes por email"},
 ]
 
+# (clave, etiqueta, color, explicación en lenguaje llano — tooltip)
 KPI_DEFS = [
-    ("total",       "Total Docs",       theme.ACCENT),
-    ("pendientes",  "Pendientes",       theme.AMBER),
-    ("criticos",    "Críticos",         theme.RED),
-    ("reclamables", "Reclamables",      theme.ROSE),
-    ("tareas",      "Tareas pdtes.",    theme.BLUE),
-    ("inbox",       "Inbox no leídos",  theme.GREEN),
+    ("total",       "Total Docs",       theme.ACCENT,
+     "Documentos registrados en total."),
+    ("pendientes",  "Pendientes",       theme.AMBER,
+     "Documentos que aún no están aprobados: enviados, devueltos o sin enviar."),
+    ("criticos",    "Críticos",         theme.RED,
+     "Documentos críticos pendientes de aprobación."),
+    ("reclamables", "Reclamables",      theme.ROSE,
+     "Pedidos con documentos enviados hace más de 15 días sin respuesta: toca reclamar."),
+    ("tareas",      "Tareas pdtes.",    theme.BLUE,
+     "Tareas de tu Agenda sin completar."),
+    ("inbox",       "Inbox no leídos",  theme.GREEN,
+     "Correos sin leer en el buzón de documentación."),
 ]
 
 
@@ -74,6 +81,13 @@ class HomeView(ctk.CTkFrame):
             font=theme.FONT_DISPLAY,
             text_color=theme.TEXT_MAIN, anchor="w",
         ).pack(anchor="w")
+        # Ayuda de la sección (también F1)
+        help_btn = ui.button(header, "?", "outline", size="xs", width=30, font=theme.FONT_SMALL_BOLD,
+                             text_color=theme.TEXT_SUB,
+                             command=lambda: __import__("gui.help", fromlist=["open_help"]).open_help(
+                                 self.winfo_toplevel(), "home"))
+        help_btn.place(relx=1.0, y=0, anchor="ne")
+        ui.tooltip(help_btn, "Ayuda de esta sección (F1)")
 
         ctk.CTkLabel(
             header, text=_today_long(),
@@ -88,8 +102,8 @@ class HomeView(ctk.CTkFrame):
         for col in range(6):
             kpis_grid.grid_columnconfigure(col, weight=1, uniform="kpi")
 
-        for col, (key, label, color) in enumerate(KPI_DEFS):
-            self._kpi_widgets[key] = self._build_kpi_card(kpis_grid, col, label, color)
+        for col, (key, label, color, hint) in enumerate(KPI_DEFS):
+            self._kpi_widgets[key] = self._build_kpi_card(kpis_grid, col, label, color, hint)
 
         # ─── Accesos rápidos ──────────────────────────────────────────────
         self._section_label(wrapper, "ACCESOS RÁPIDOS", pady_top=theme.SPACE_6)
@@ -139,13 +153,16 @@ class HomeView(ctk.CTkFrame):
 
     # ── KPI Card ─────────────────────────────────────────────────────────────
 
-    def _build_kpi_card(self, parent, col: int, label: str, color: str) -> ctk.CTkLabel:
+    def _build_kpi_card(self, parent, col: int, label: str, color: str, hint: str = "") -> ctk.CTkLabel:
         tile = ui.kpi_tile(parent, label, color, variant="dashboard")
         tile["card"].grid(
             row=0, column=col, sticky="nsew",
             padx=(0 if col == 0 else theme.SPACE_2, 0),
             pady=0,
         )
+        if hint:
+            for w in tile["widgets"]:
+                ui.tooltip(w, hint)
         return tile["value"]
 
     # ── Nav Card ─────────────────────────────────────────────────────────────

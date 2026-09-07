@@ -64,7 +64,9 @@ class DevolucionesView(ctk.CTkFrame):
         # Header
         ui.page_header(
             self, "Devoluciones",
-            "Correos parseables del buzón IMAP · doble click para previsualizar y enviar")
+            "Correos en los que el cliente devuelve documentación (TR, GAIA, ACONEX, SENDOC, "
+            "AYESA…). Recarga, doble clic para revisar y envía la notificación.",
+            help_key="devoluciones")
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")

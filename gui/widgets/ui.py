@@ -148,10 +148,13 @@ class PageHeader:
 
 
 def page_header(parent, title: str, subtitle: str = "", icon: str | None = None,
-                icon_color: str | None = None, pad_bottom: int = theme.SPACE_1) -> PageHeader:
+                icon_color: str | None = None, pad_bottom: int = theme.SPACE_1,
+                help_key: str | None = None) -> PageHeader:
     """Cabecera estándar de sección: título (+icono opcional), subtítulo y una
     zona de acciones a la derecha. Misma respiración en todas las vistas:
-    padx SPACE_6 · pady (SPACE_5, pad_bottom)."""
+    padx SPACE_6 · pady (SPACE_5, pad_bottom).
+
+    help_key → añade el botón «?» (ayuda contextual de gui/help.py; también F1)."""
     header = ctk.CTkFrame(parent, fg_color="transparent")
     header.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_5, pad_bottom))
 
@@ -174,7 +177,73 @@ def page_header(parent, title: str, subtitle: str = "", icon: str | None = None,
 
     actions = ctk.CTkFrame(header, fg_color="transparent")
     actions.pack(side="right", anchor="n")
+    if help_key:
+        def _help(_e=None, k=help_key, p=parent):
+            from gui.help import open_help
+            open_help(p.winfo_toplevel(), k)
+        btn = button(actions, "?", "outline", size="xs", width=30, font=theme.FONT_SMALL_BOLD,
+                     text_color=theme.TEXT_SUB, command=_help)
+        btn.pack(side="right", padx=(theme.SPACE_2, 0))
+        tooltip(btn, "Ayuda de esta sección (F1)")
     return PageHeader(header, lbl_title, lbl_sub, actions)
+
+
+# ── Tooltip ────────────────────────────────────────────────────────────────────
+
+class _Tooltip:
+    """Globo de ayuda: aparece tras `delay` ms con el ratón encima, desaparece
+    al salir o pulsar. `show()`/`hide()` permiten controlarlo por código."""
+
+    def __init__(self, widget, text: str, delay: int):
+        self.widget, self.text, self.delay = widget, text, delay
+        self.win = None
+        self._job = None
+        widget.bind("<Enter>", self._enter, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def show(self) -> None:
+        self._job = None
+        if self.win is not None or not self.text:
+            return
+        try:
+            w = self.widget
+            x = w.winfo_rootx() + 12
+            y = w.winfo_rooty() + w.winfo_height() + 6
+            win = ctk.CTkToplevel(w)
+            win.overrideredirect(True)
+            win.attributes("-topmost", True)
+            win.configure(fg_color=theme.BG_CARD)
+            ctk.CTkLabel(win, text=self.text, font=theme.FONT_SMALL, text_color=theme.TEXT_MAIN,
+                         fg_color=theme.BG_CARD, corner_radius=6, justify="left",
+                         wraplength=320).pack(padx=theme.SPACE_2, pady=theme.SPACE_1)
+            win.geometry(f"+{x}+{y}")
+            self.win = win
+        except Exception:  # noqa: BLE001 — un tooltip nunca debe romper nada
+            self.win = None
+
+    def hide(self, _e=None) -> None:
+        if self._job is not None:
+            try:
+                self.widget.after_cancel(self._job)
+            except Exception:  # noqa: BLE001
+                pass
+            self._job = None
+        if self.win is not None:
+            try:
+                self.win.destroy()
+            except Exception:  # noqa: BLE001
+                pass
+            self.win = None
+
+    def _enter(self, _e=None) -> None:
+        self.hide()
+        self._job = self.widget.after(self.delay, self.show)
+
+
+def tooltip(widget, text: str, delay: int = 450) -> _Tooltip:
+    """Añade un globo de ayuda al widget. Devuelve el controlador (show/hide)."""
+    return _Tooltip(widget, text, delay)
 
 
 def tabview(parent, command=None, **kwargs) -> ctk.CTkTabview:

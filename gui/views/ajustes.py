@@ -46,7 +46,7 @@ class AjustesView(ctk.CTkFrame):
         hdr = ui.page_header(
             self, "Ajustes",
             f"Los cambios de conexión se aplican al reiniciar · almacén de secretos: {credentials.backend_name()}",
-            pad_bottom=theme.SPACE_2)
+            pad_bottom=theme.SPACE_2, help_key="ajustes")
         ui.button(hdr.actions, "↻  Reiniciar app", "outline", command=self._restart,
                   width=140, height=theme.HEIGHT_INPUT, font=theme.FONT_SMALL_BOLD,
                   text_color=theme.TEXT_SUB).pack()

@@ -108,8 +108,8 @@ class OfertasView(ctk.CTkFrame):
     def _build_header(self) -> None:
         hdr = ui.page_header(
             self, "Ofertas",
-            "Bandejas comercial · dptocomercial · info  ·  control de entrada por portal",
-            icon="✉", icon_color=ACCENT_OF, pad_bottom=theme.SPACE_2)
+            "Ofertas recibidas en los buzones comerciales y control de su entrada por portal.",
+            icon="✉", icon_color=ACCENT_OF, pad_bottom=theme.SPACE_2, help_key="ofertas")
         actions = hdr.actions
         self.lbl_sync = ctk.CTkLabel(actions, text="", font=theme.FONT_TINY,
                                      text_color=theme.TEXT_MUTED)
