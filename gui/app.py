@@ -26,16 +26,16 @@ class DocFlowLiteApp(ctk.CTk):
     NAV_LAYOUT = [
         {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
         {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
+        {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦", "hint": "I"},
         {"type": "group", "id": "proyectos", "label": "Proyectos", "items": [
-            {"key": "apertura",   "label": "Nuevo pedido", "icon": "✚", "hint": "N"},
-            {"key": "pedidos",    "label": "Seguimiento",  "icon": "▦"},
+            {"key": "pedidos", "label": "Seguimiento", "icon": "▦"},
         ]},
         {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
+            {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚", "hint": "N"},
             {"key": "documentos",    "label": "Documentos",    "icon": "◫", "hint": "O"},
             {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩", "hint": "D"},
             {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠", "hint": "R"},
             {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
-            {"key": "inbox",         "label": "Correo",        "icon": "✦", "hint": "I"},
         ]},
         {"type": "group", "id": "comercial", "label": "Comercial", "items": [
             {"key": "ofertas", "label": "Ofertas", "icon": "✉"},
