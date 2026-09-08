@@ -161,13 +161,6 @@ class Sidebar(ctk.CTkFrame):
         )
         btn.pack(side="left", fill="both", expand=True, padx=(theme.SPACE_1, 0))
 
-        # Letra del atajo de teclado (descubrible sin leer ningún manual)
-        if item.get("hint"):
-            ctk.CTkLabel(
-                btn, text=item["hint"], font=theme.FONT_TINY_BOLD,
-                text_color=theme.TEXT_MUTED, fg_color="transparent", width=16,
-            ).place(relx=1.0, rely=0.5, anchor="e", x=-theme.SPACE_3)
-
         self._items[key] = {"row": row, "bar": bar, "btn": btn}
 
     def _build_footer(self, current_user_label: str) -> None:

@@ -106,11 +106,10 @@ class CommandPalette(ctk.CTkToplevel):
             for it in (entry["items"] if entry.get("type") == "group" else [entry]):
                 if it["key"] not in allowed:
                     continue
-                hint = it.get("hint")
                 self._items.append({
                     "kind": "section", "key": it["key"], "icon": it.get("icon", "▸"),
                     "title": it["label"],
-                    "sub": "Sección" + (f"  ·  tecla {hint}" if hint else ""),
+                    "sub": "Sección",
                     "search": it["label"].lower(),
                 })
 

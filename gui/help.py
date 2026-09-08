@@ -20,9 +20,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Hoy»: urgente (críticos +15 días), por responder (devoluciones) y pendientes. Clic en una tarjeta abre Documentos ya filtrado.",
             "«Qué hacer ahora»: cada línea es una acción concreta con su botón (Reclamar, Ver, Agenda…).",
-            "«Accesos rápidos»: pulsa cualquier tarjeta para ir a esa sección. Los números se actualizan solos.",
+            "«Accesos rápidos»: pulsa cualquier tarjeta para ir a esa sección. Los números se actualizan solos."
         ],
-        "atajos": ["H · volver a Inicio", "Ctrl+K · buscar un pedido, documento o sección"],
+        "atajos": ["Ctrl+K · buscar un pedido, documento o sección"],
     },
     "documentos": {
         "titulo": "Documentos",
@@ -31,10 +31,12 @@ HELP: dict[str, dict] = {
             "Escribe en «Buscar» un Nº de documento, título o cliente.",
             "Pulsa una tarjeta de arriba (Aprobados, Devoluciones, Críticos…) para filtrar por estado; vuelve a pulsarla para quitar el filtro.",
             "Doble clic en una fila abre la ficha: revisiones, fechas y acciones.",
-            "Botón «Filtros» para acotar por pedido, cliente o responsable.",
+            "Botón «Filtros» para acotar por pedido, cliente o responsable."
         ],
-        "atajos": ["O · abrir Documentos", "Ctrl+K · saltar a un documento por su número",
-                   "↻ · traer los documentos del ERP y recargar"],
+        "atajos": [
+            "Ctrl+K · saltar a un documento por su número",
+            "↻ · traer los documentos del ERP y recargar",
+        ],
     },
     "pedidos": {
         "titulo": "Pedidos",
@@ -43,9 +45,12 @@ HELP: dict[str, dict] = {
             "Escribe el Nº de pedido o el cliente y elígelo en la lista.",
             "«Estado del pedido»: veredicto, avance documental, fabricación (fases y órdenes de trabajo) y plazo.",
             "«Equipos & Tags»: cada equipo con su plano, su cálculo y su estado de fabricación; doble clic abre la ficha.",
-            "«Informe del pedido →» genera un informe web completo para compartir.",
+            "«Informe del pedido →» genera un informe web completo para compartir."
         ],
-        "atajos": ["Ctrl+K · escribe P-26/048 y Enter", "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas"],
+        "atajos": [
+            "Ctrl+K · escribe P-26/048 y Enter",
+            "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas",
+        ],
     },
     "produccion": {
         "titulo": "Producción",
@@ -54,10 +59,11 @@ HELP: dict[str, dict] = {
             "«En taller»: pedidos abiertos con su % de taller y montaje; los retrasados, arriba y en rojo.",
             "Los pedidos que arrastran más de año y medio quedaron sin cerrar en el ERP: se ocultan salvo que marques la casilla.",
             "«Horas de taller»: en qué operaciones se van las horas y cuántas lleva cada pedido.",
-            "Doble clic en un pedido lo abre en Pedidos.",
+            "Doble clic en un pedido lo abre en Pedidos."
         ],
-        "atajos": ["T · abrir Producción",
-                   "Las horas salen del parte de taller (imputación por OT); arriba se indica hasta qué fecha hay datos"],
+        "atajos": [
+            "Las horas salen del parte de taller (imputación por OT); arriba se indica hasta qué fecha hay datos",
+        ],
     },
     "administracion": {
         "titulo": "Administración",
@@ -65,10 +71,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Facturas pendientes»: de la más antigua a la más reciente. Ámbar a partir de 90 días, rojo pasado el año.",
             "«Avales»: los que vencen antes, primero. En rojo los que ya pasaron de fecha (siguen generando comisiones).",
-            "Doble clic abre el pedido en Pedidos; con el botón derecho copias el nº de factura o la referencia del aval.",
+            "Doble clic abre el pedido en Pedidos; con el botón derecho copias el nº de factura o la referencia del aval."
         ],
-        "atajos": ["F · abrir Administración",
-                   "Una factura cuenta como cobrada cuando el ERP le pone fecha de cobro"],
+        "atajos": ["Una factura cuenta como cobrada cuando el ERP le pone fecha de cobro"],
     },
     "compras": {
         "titulo": "Compras",
@@ -77,10 +82,9 @@ HELP: dict[str, dict] = {
             "La lista sale ordenada por retraso: primero lo que ya debería estar aquí.",
             "Rojo = la fecha prometida ya pasó. Ámbar = llega en los próximos 30 días.",
             "Doble clic abre el pedido afectado en Pedidos; con el botón derecho copias proveedor o material.",
-            "«Solo lo que va con retraso» deja únicamente lo que hay que reclamar.",
+            "«Solo lo que va con retraso» deja únicamente lo que hay que reclamar."
         ],
-        "atajos": ["C · abrir Compras",
-                   "El enlace con nuestro pedido lo pone Compras en las notas del pedido a proveedor"],
+        "atajos": ["El enlace con nuestro pedido lo pone Compras en las notas del pedido a proveedor"],
     },
     "calidad": {
         "titulo": "Calidad",
@@ -89,9 +93,9 @@ HELP: dict[str, dict] = {
             "«No conformidades»: doble clic abre la ficha completa con descripción, causa y acción correctiva.",
             "Ámbar = sin acción correctiva cerrada. Rojo = además la detectó el cliente.",
             "«Equipos de medida»: calibres, máquinas y manómetros; los vencidos salen arriba en rojo.",
-            "Los equipos dados de baja se muestran en gris y no cuentan como vencidos.",
+            "Los equipos dados de baja se muestran en gris y no cuentan como vencidos."
         ],
-        "atajos": ["Q · abrir Calidad", "Desde una NC puedes saltar a su pedido en Pedidos"],
+        "atajos": ["Desde una NC puedes saltar a su pedido en Pedidos"],
     },
     "almacen": {
         "titulo": "Almacén",
@@ -100,11 +104,12 @@ HELP: dict[str, dict] = {
             "«En almacén ahora»: lo avisado y aún sin enviar, lo más viejo arriba. Es la lista a la que reclamar.",
             "Verde hasta 7 días, ámbar hasta 30, rojo por encima.",
             "«Histórico de envíos»: cuánto tardó en salir lo ya enviado y el reparto de tiempos.",
-            "Doble clic en un pedido lo abre en Pedidos; «⤓ Excel» exporta la pestaña activa.",
+            "Doble clic en un pedido lo abre en Pedidos; «⤓ Excel» exporta la pestaña activa."
         ],
-        "atajos": ["M · abrir Almacén",
-                   "Las fechas salen del ERP: «Aviso de entrega» y «Fecha de envío» del pedido",
-                   "Solo hay datos desde 2025, que es cuando se empezó a rellenar el aviso"],
+        "atajos": [
+            "Las fechas salen del ERP: «Aviso de entrega» y «Fecha de envío» del pedido",
+            "Solo hay datos desde 2025, que es cuando se empezó a rellenar el aviso",
+        ],
     },
     "devoluciones": {
         "titulo": "Devoluciones",
@@ -120,10 +125,12 @@ HELP: dict[str, dict] = {
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
             "antes de enviar la notificación (que indica dónde está guardada).",
-            "Solo se listan transmittals de verdad: respuestas (RE:/FW:), acuses de lectura y avisos de los portales quedan fuera.",
+            "Solo se listan transmittals de verdad: respuestas (RE:/FW:), acuses de lectura y avisos de los portales quedan fuera."
         ],
-        "atajos": ["D · abrir Devoluciones", "El pedido, cliente y PO se completan solos desde el ERP",
-                   "El acceso a eGesDoc y la descarga automática se configuran en Ajustes ▸ Portales"],
+        "atajos": [
+            "El pedido, cliente y PO se completan solos desde el ERP",
+            "El acceso a eGesDoc y la descarga automática se configuran en Ajustes ▸ Portales",
+        ],
     },
     "reclamaciones": {
         "titulo": "Reclamaciones",
@@ -131,9 +138,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "La lista se calcula sola al abrir; ajusta los días mínimos si quieres ser más o menos estricto.",
             "Marca los pedidos y pulsa «Enviar seleccionadas» (o «Preview» para ver el correo antes).",
-            "Los destinatarios salen de la Comm. Matrix del pedido; edítala con el botón «Comm. Matrix».",
+            "Los destinatarios salen de la Comm. Matrix del pedido; edítala con el botón «Comm. Matrix»."
         ],
-        "atajos": ["R · abrir Reclamaciones", "Desde la ficha de un documento también puedes generar su reclamación"],
+        "atajos": ["Desde la ficha de un documento también puedes generar su reclamación"],
     },
     "inbox": {
         "titulo": "Correo",
@@ -141,9 +148,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Recargar» lee los correos recientes.",
             "Selecciona uno para leerlo; márcalo como leído o no leído.",
-            "Con la clave de IA en Ajustes, cada correo trae un resumen automático.",
+            "Con la clave de IA en Ajustes, cada correo trae un resumen automático."
         ],
-        "atajos": ["I · abrir la bandeja"],
+        "atajos": [],
     },
     "ofertas": {
         "titulo": "Ofertas",
@@ -151,7 +158,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "Elige el rango de días y pulsa «Actualizar».",
             "Abre una oferta para ver el correo, marcarla como leída o registrar su gestión.",
-            "«Excel» exporta la lista para el seguimiento comercial.",
+            "«Excel» exporta la lista para el seguimiento comercial."
         ],
         "atajos": ["Los buzones y el seguimiento de comerciales se configuran en Ajustes ▸ Ofertas"],
     },
@@ -161,7 +168,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Actualizar» trae los sobres de tu cuenta.",
             "Selecciona un sobre para ver firmantes y estado.",
-            "«Descargar PDF» guarda el documento firmado.",
+            "«Descargar PDF» guarda el documento firmado."
         ],
         "atajos": ["Las credenciales de DocuSign se guardan en Ajustes ▸ DocuSign"],
     },
@@ -171,9 +178,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "Escribe el Nº de pedido (P-26/048): cliente y material se completan solos desde el ERP.",
             "«Localizar pedido» comprueba si ya existe la carpeta.",
-            "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo.",
+            "«Procesar pedido» crea las carpetas y documentos; «Abrir carpeta» para verlo."
         ],
-        "atajos": ["N · abrir Apertura"],
+        "atajos": [],
     },
     "agenda": {
         "titulo": "Agenda",
@@ -181,9 +188,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«+ Nueva tarea» crea una tarea; márcala con el check cuando esté hecha.",
             "«Sincronizar con Documentos» crea tareas a partir de los documentos pendientes.",
-            "Las notas y reuniones tienen su propia pestaña.",
+            "Las notas y reuniones tienen su propia pestaña."
         ],
-        "atajos": ["A · abrir la Agenda"],
+        "atajos": [],
     },
     "informes": {
         "titulo": "Analítica",
@@ -191,7 +198,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Resumen»: distribución por estado, tiempos de respuesta y mapa de calor por cliente.",
             "«Equipo»: carga y ritmo de cada responsable.",
-            "«Predicción & Scorecard»: fechas estimadas de cierre y puntuación por cliente.",
+            "«Predicción & Scorecard»: fechas estimadas de cierre y puntuación por cliente."
         ],
         "atajos": ["Para un informe compartible usa Centro de Reportes ▸ Informe interactivo"],
     },
@@ -201,9 +208,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Informes»: descarga el Monitoring Report en Excel o genera el informe web (semanal, mensual, ejecutivo o por pedido, con botón para PDF).",
             "«Resúmenes por email»: envía ahora el resumen ejecutivo o el personal, por email o Teams.",
-            "«Programados»: deja los envíos automáticos (día, hora y destinatarios).",
+            "«Programados»: deja los envíos automáticos (día, hora y destinatarios)."
         ],
-        "atajos": ["P · abrir el Centro de Reportes", "Los Excel y la conexión al ERP se gestionan en Ajustes ▸ Fuentes de datos"],
+        "atajos": ["Los Excel y la conexión al ERP se gestionan en Ajustes ▸ Fuentes de datos"],
     },
     "ajustes": {
         "titulo": "Ajustes",
@@ -213,7 +220,7 @@ HELP: dict[str, dict] = {
             "Las contraseñas se guardan cifradas (nunca en texto plano).",
             "«Fuentes de datos»: de dónde se leen los Excel y el botón para regenerar documentos y pedidos desde el ERP.",
             "«Portales»: usuario y contraseña de eGesDoc (Técnicas Reunidas) y la descarga automática de "
-            "devoluciones (eGesDoc y AYESA).",
+            "devoluciones (eGesDoc y AYESA)."
         ],
         "atajos": ["«↻ Reiniciar app» aplica los cambios de conexión"],
     },

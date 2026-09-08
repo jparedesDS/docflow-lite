@@ -19,41 +19,40 @@ class DocFlowLiteApp(ctk.CTk):
     # La navegación sigue el organigrama de la empresa: cada grupo es un
     # departamento, para que cualquiera encuentre lo suyo sin preguntar. Arriba,
     # sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo, Pedidos).
-    # Las CLAVES (key) no cambian nunca: atajos y ruteo van por ellas, solo se
-    # reorganiza la presentación. `hint` = letra del atajo (ver bind_all).
+    # Se navega con el ratón o con la paleta (Ctrl+K); no hay atajos por letra.
     NAV_LAYOUT = [
-        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
-        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
-        {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦", "hint": "I"},
+        {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂"},
+        {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣"},
+        {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦"},
         {"type": "item", "key": "pedidos", "label": "Pedidos", "icon": "▦"},
         {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
-            {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚", "hint": "N"},
-            {"key": "documentos",    "label": "Documentos",    "icon": "◫", "hint": "O"},
-            {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩", "hint": "D"},
-            {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠", "hint": "R"},
+            {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚"},
+            {"key": "documentos",    "label": "Documentos",    "icon": "◫"},
+            {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩"},
+            {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠"},
             {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
         ]},
         {"type": "group", "id": "comercial", "label": "Comercial", "items": [
             {"key": "ofertas", "label": "Ofertas", "icon": "✉"},
         ]},
         {"type": "group", "id": "compras", "label": "Compras", "items": [
-            {"key": "compras", "label": "Material pendiente", "icon": "🛒", "hint": "C"},
+            {"key": "compras", "label": "Material pendiente", "icon": "🛒"},
         ]},
         {"type": "group", "id": "produccion", "label": "Producción", "items": [
-            {"key": "produccion", "label": "Taller", "icon": "⚙", "hint": "T"},
+            {"key": "produccion", "label": "Taller", "icon": "⚙"},
         ]},
         {"type": "group", "id": "calidad", "label": "Calidad", "items": [
-            {"key": "calidad", "label": "No conformidades", "icon": "✔", "hint": "Q"},
+            {"key": "calidad", "label": "No conformidades", "icon": "✔"},
         ]},
         {"type": "group", "id": "administracion", "label": "Administración", "items": [
-            {"key": "administracion", "label": "Facturas y avales", "icon": "€", "hint": "F"},
+            {"key": "administracion", "label": "Facturas y avales", "icon": "€"},
         ]},
         {"type": "group", "id": "logistica", "label": "Almacén y transporte", "items": [
-            {"key": "almacen", "label": "Expediciones", "icon": "📦", "hint": "M"},
+            {"key": "almacen", "label": "Expediciones", "icon": "📦"},
         ]},
         {"type": "group", "id": "informes", "label": "Informes", "items": [
             {"key": "informes", "label": "Analítica",          "icon": "▤"},
-            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊", "hint": "P"},
+            {"key": "reportes", "label": "Centro de Reportes", "icon": "📊"},
         ]},
     ]
 
@@ -95,33 +94,6 @@ class DocFlowLiteApp(ctk.CTk):
         last = _pref.get("last_section", "home")
         self.navigate(last if last in self._nav_keys else "home")
 
-        # Atajos teclado globales (solo si el foco no está en un Entry)
-        self.bind_all("<KeyPress-h>", self._kb_home)
-        self.bind_all("<KeyPress-H>", self._kb_home)
-        self.bind_all("<KeyPress-d>", self._kb_devoluciones)
-        self.bind_all("<KeyPress-D>", self._kb_devoluciones)
-        self.bind_all("<KeyPress-o>", self._kb_documentos)
-        self.bind_all("<KeyPress-O>", self._kb_documentos)
-        self.bind_all("<KeyPress-a>", self._kb_agenda)
-        self.bind_all("<KeyPress-A>", self._kb_agenda)
-        self.bind_all("<KeyPress-r>", self._kb_reclamaciones)
-        self.bind_all("<KeyPress-R>", self._kb_reclamaciones)
-        self.bind_all("<KeyPress-i>", self._kb_inbox)
-        self.bind_all("<KeyPress-I>", self._kb_inbox)
-        self.bind_all("<KeyPress-p>", self._kb_reportes)
-        self.bind_all("<KeyPress-P>", self._kb_reportes)
-        self.bind_all("<KeyPress-n>", self._kb_apertura)
-        self.bind_all("<KeyPress-N>", self._kb_apertura)
-        self.bind_all("<KeyPress-m>", self._kb_almacen)
-        self.bind_all("<KeyPress-M>", self._kb_almacen)
-        self.bind_all("<KeyPress-c>", self._kb_compras)
-        self.bind_all("<KeyPress-C>", self._kb_compras)
-        self.bind_all("<KeyPress-q>", self._kb_calidad)
-        self.bind_all("<KeyPress-Q>", self._kb_calidad)
-        self.bind_all("<KeyPress-t>", self._kb_produccion)
-        self.bind_all("<KeyPress-T>", self._kb_produccion)
-        self.bind_all("<KeyPress-f>", self._kb_administracion)
-        self.bind_all("<KeyPress-F>", self._kb_administracion)
         # Paleta de comandos: funciona también con el foco en un Entry
         self.bind_all("<Control-k>", lambda _e: self.open_palette())
         self.bind_all("<Control-K>", lambda _e: self.open_palette())
@@ -506,70 +478,6 @@ class DocFlowLiteApp(ctk.CTk):
                 view.set_query(num_doc)
             except Exception:
                 logger.debug("set_query falló", exc_info=True)
-
-    # ── Atajos teclado (con guarda de foco en Entry) ─────────────────────────
-
-    def _focus_is_entry(self) -> bool:
-        try:
-            w = self.focus_get()
-        except KeyError:
-            return False
-        if w is None:
-            return False
-        cls = w.winfo_class()
-        return cls in ("Entry", "TEntry", "CTkEntry") or "Entry" in cls
-
-    def _kb_home(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("home")
-
-    def _kb_devoluciones(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("devoluciones")
-
-    def _kb_documentos(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("documentos")
-
-    def _kb_almacen(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("almacen")
-
-    def _kb_compras(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("compras")
-
-    def _kb_calidad(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("calidad")
-
-    def _kb_produccion(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("produccion")
-
-    def _kb_administracion(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("administracion")
-
-    def _kb_agenda(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("agenda")
-
-    def _kb_reclamaciones(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("reclamaciones")
-
-    def _kb_inbox(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("inbox")
-
-    def _kb_reportes(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("reportes")
-
-    def _kb_apertura(self, _evt):
-        if not self._focus_is_entry():
-            self.navigate("apertura")
 
     # ── Theme picker ─────────────────────────────────────────────────────────
 
