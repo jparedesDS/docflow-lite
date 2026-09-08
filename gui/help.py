@@ -47,6 +47,29 @@ HELP: dict[str, dict] = {
         ],
         "atajos": ["Ctrl+K · escribe P-26/048 y Enter", "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas"],
     },
+    "produccion": {
+        "titulo": "Producción",
+        "que": "Qué hay en el taller ahora mismo y cuántas horas lleva cada pedido.",
+        "pasos": [
+            "«En taller»: pedidos abiertos con su % de taller y montaje; los retrasados, arriba y en rojo.",
+            "Los pedidos que arrastran más de año y medio quedaron sin cerrar en el ERP: se ocultan salvo que marques la casilla.",
+            "«Horas de taller»: en qué operaciones se van las horas y cuántas lleva cada pedido.",
+            "Doble clic en un pedido lo abre en Seguimiento.",
+        ],
+        "atajos": ["T · abrir Producción",
+                   "Las horas salen del parte de taller (imputación por OT); arriba se indica hasta qué fecha hay datos"],
+    },
+    "administracion": {
+        "titulo": "Administración",
+        "que": "Facturas emitidas sin cobrar y avales bancarios con su vencimiento.",
+        "pasos": [
+            "«Facturas pendientes»: de la más antigua a la más reciente. Ámbar a partir de 90 días, rojo pasado el año.",
+            "«Avales»: los que vencen antes, primero. En rojo los que ya pasaron de fecha (siguen generando comisiones).",
+            "Doble clic abre el pedido en Seguimiento; con el botón derecho copias el nº de factura o la referencia del aval.",
+        ],
+        "atajos": ["F · abrir Administración",
+                   "Una factura cuenta como cobrada cuando el ERP le pone fecha de cobro"],
+    },
     "compras": {
         "titulo": "Compras",
         "que": "Material pedido a proveedor que todavía no ha llegado, y a qué pedido afecta.",

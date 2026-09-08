@@ -199,6 +199,16 @@ class HomeView(ctk.CTkFrame):
         if n and docs:
             items.append(("○", theme.TEXT_SUB, f"{n} documento(s) todavía sin enviar al cliente.",
                           "Ver →", lambda: docs("sin_enviar")))
+        n = r.get("avales_vencidos", 0)
+        if n:
+            items.append(("€", theme.RED,
+                          f"{n} aval(es) bancarios pasados de fecha: siguen generando comisiones.",
+                          "Administración →", lambda: self._on_navigate("administracion")))
+        n = r.get("taller_retrasados", 0)
+        if n:
+            items.append(("⚙", theme.AMBER,
+                          f"{n} pedido(s) en taller con la fecha prevista pasada.",
+                          "Producción →", lambda: self._on_navigate("produccion")))
         n = r.get("compras_retraso", 0)
         if n:
             peds = r.get("compras_pedidos", 0)
@@ -377,6 +387,21 @@ class HomeView(ctk.CTkFrame):
                 results["equipos_vencidos"] = quality.equipment_stats()["vencidos"]
             except Exception as exc:
                 logger.warning("KPI calidad falló (probablemente ERP cerrado): %s", exc)
+
+            try:
+                from core.services import production
+                results["taller_retrasados"] = production.workshop_stats()["retrasados"]
+            except Exception as exc:
+                logger.warning("KPI producción falló (probablemente ERP cerrado): %s", exc)
+
+            try:
+                from core.services import administration as adm
+                st = adm.invoice_stats()
+                results["facturas_pendientes"] = st["pendientes"]
+                results["facturas_importe"] = st["importe_pendiente"]
+                results["avales_vencidos"] = adm.bond_stats()["vencidos"]
+            except Exception as exc:
+                logger.warning("KPI administración falló (probablemente ERP cerrado): %s", exc)
 
             self.after(0, lambda: self._update_kpis(results))
 

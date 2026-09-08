@@ -348,6 +348,34 @@ class PedidosView(ctk.CTkFrame):
                 out.append(("No conformidades", txt))
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from core.services import production
+            h = production.hours_for_pedido(pedido)
+            if h and h["horas"] >= 1:      # menos de una hora no dice nada
+                out.append(("Horas de taller", f"{h['horas']:,.0f} h".replace(",", ".")))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from core.services import administration as adm
+            facturas = adm.invoices_for_pedido(pedido)
+            if facturas:
+                pend = [f for f in facturas if not f["pagada"]]
+                txt = f"{len(facturas)} · {adm.euros(sum(f['importe'] for f in facturas))}"
+                if pend:
+                    txt += f" · {len(pend)} sin cobrar"
+                out.append(("Facturado", txt))
+            avales = adm.bonds_for_pedido(pedido)
+            if avales:
+                vencidos = sum(1 for a in avales if a["vencido"])
+                prox = min((a["vence"] for a in avales if a["vence"]), default=None)
+                txt = f"{len(avales)}"
+                if prox:
+                    txt += f" · vence {prox:%d-%m-%Y}"
+                if vencidos:
+                    txt += f" · {vencidos} pasado(s) de fecha"
+                out.append(("Avales", txt))
+        except Exception:  # noqa: BLE001
+            pass
         return out
 
     @staticmethod

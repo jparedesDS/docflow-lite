@@ -36,7 +36,7 @@ ADMIN_INITIALS: set[str] = {"JP"}
 # 'home' siempre es visible; 'ajustes' es exclusivo del admin.
 SECTION_KEYS: list[str] = [
     "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos",
-    "almacen", "compras", "calidad",
+    "almacen", "compras", "calidad", "produccion", "administracion",
     "devoluciones", "reclamaciones", "docusign", "informes", "reportes",
 ]
 PERM_LEVELS = ("none", "ver", "gestionar")

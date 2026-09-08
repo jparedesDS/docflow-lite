@@ -43,8 +43,14 @@ class DocFlowLiteApp(ctk.CTk):
         {"type": "group", "id": "compras", "label": "Compras", "items": [
             {"key": "compras", "label": "Material pendiente", "icon": "🛒", "hint": "C"},
         ]},
+        {"type": "group", "id": "produccion", "label": "Producción", "items": [
+            {"key": "produccion", "label": "Taller", "icon": "⚙", "hint": "T"},
+        ]},
         {"type": "group", "id": "calidad", "label": "Calidad", "items": [
             {"key": "calidad", "label": "No conformidades", "icon": "✔", "hint": "Q"},
+        ]},
+        {"type": "group", "id": "administracion", "label": "Administración", "items": [
+            {"key": "administracion", "label": "Facturas y avales", "icon": "€", "hint": "F"},
         ]},
         {"type": "group", "id": "logistica", "label": "Almacén y transporte", "items": [
             {"key": "almacen", "label": "Expediciones", "icon": "📦", "hint": "M"},
@@ -116,6 +122,10 @@ class DocFlowLiteApp(ctk.CTk):
         self.bind_all("<KeyPress-C>", self._kb_compras)
         self.bind_all("<KeyPress-q>", self._kb_calidad)
         self.bind_all("<KeyPress-Q>", self._kb_calidad)
+        self.bind_all("<KeyPress-t>", self._kb_produccion)
+        self.bind_all("<KeyPress-T>", self._kb_produccion)
+        self.bind_all("<KeyPress-f>", self._kb_administracion)
+        self.bind_all("<KeyPress-F>", self._kb_administracion)
         # Paleta de comandos: funciona también con el foco en un Entry
         self.bind_all("<Control-k>", lambda _e: self.open_palette())
         self.bind_all("<Control-K>", lambda _e: self.open_palette())
@@ -408,6 +418,12 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "calidad":
             from gui.views.calidad import CalidadView
             view = CalidadView(self.content, on_open_pedido=self.open_pedido)
+        elif key == "produccion":
+            from gui.views.produccion import ProduccionView
+            view = ProduccionView(self.content, on_open_pedido=self.open_pedido)
+        elif key == "administracion":
+            from gui.views.administracion import AdministracionView
+            view = AdministracionView(self.content, on_open_pedido=self.open_pedido)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)
@@ -530,6 +546,14 @@ class DocFlowLiteApp(ctk.CTk):
     def _kb_calidad(self, _evt):
         if not self._focus_is_entry():
             self.navigate("calidad")
+
+    def _kb_produccion(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("produccion")
+
+    def _kb_administracion(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("administracion")
 
     def _kb_agenda(self, _evt):
         if not self._focus_is_entry():
