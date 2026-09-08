@@ -47,6 +47,19 @@ HELP: dict[str, dict] = {
         ],
         "atajos": ["Ctrl+K · escribe P-26/048 y Enter", "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas"],
     },
+    "almacen": {
+        "titulo": "Almacén",
+        "que": "Cuánto espera el material terminado, desde que se avisa al cliente hasta que sale.",
+        "pasos": [
+            "«En almacén ahora»: lo avisado y aún sin enviar, lo más viejo arriba. Es la lista a la que reclamar.",
+            "Verde hasta 7 días, ámbar hasta 30, rojo por encima.",
+            "«Histórico de envíos»: cuánto tardó en salir lo ya enviado y el reparto de tiempos.",
+            "Doble clic en un pedido lo abre en Seguimiento; «⤓ Excel» exporta la pestaña activa.",
+        ],
+        "atajos": ["M · abrir Almacén",
+                   "Las fechas salen del ERP: «Aviso de entrega» y «Fecha de envío» del pedido",
+                   "Solo hay datos desde 2025, que es cuando se empezó a rellenar el aviso"],
+    },
     "devoluciones": {
         "titulo": "Devoluciones",
         "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA…).",

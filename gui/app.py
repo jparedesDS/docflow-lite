@@ -29,6 +29,7 @@ class DocFlowLiteApp(ctk.CTk):
             {"key": "ofertas",    "label": "Ofertas",     "icon": "✉"},
             {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
             {"key": "documentos", "label": "Documentos",  "icon": "◫", "hint": "O"},
+            {"key": "almacen",    "label": "Almacén",     "icon": "📦", "hint": "M"},
         ]},
         {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
             {"key": "inbox",         "label": "Correo",             "icon": "✦", "hint": "I"},
@@ -97,6 +98,8 @@ class DocFlowLiteApp(ctk.CTk):
         self.bind_all("<KeyPress-P>", self._kb_reportes)
         self.bind_all("<KeyPress-n>", self._kb_apertura)
         self.bind_all("<KeyPress-N>", self._kb_apertura)
+        self.bind_all("<KeyPress-m>", self._kb_almacen)
+        self.bind_all("<KeyPress-M>", self._kb_almacen)
         # Paleta de comandos: funciona también con el foco en un Entry
         self.bind_all("<Control-k>", lambda _e: self.open_palette())
         self.bind_all("<Control-K>", lambda _e: self.open_palette())
@@ -380,6 +383,9 @@ class DocFlowLiteApp(ctk.CTk):
             from gui.views.pedidos import PedidosView
             view = PedidosView(self.content, on_open_documentos=self._open_doc_pedido,
                                on_open_documento=self.open_documento)
+        elif key == "almacen":
+            from gui.views.almacen import AlmacenView
+            view = AlmacenView(self.content, on_open_pedido=self.open_pedido)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)
@@ -490,6 +496,10 @@ class DocFlowLiteApp(ctk.CTk):
     def _kb_documentos(self, _evt):
         if not self._focus_is_entry():
             self.navigate("documentos")
+
+    def _kb_almacen(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("almacen")
 
     def _kb_agenda(self, _evt):
         if not self._focus_is_entry():

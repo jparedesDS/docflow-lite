@@ -35,7 +35,7 @@ ADMIN_INITIALS: set[str] = {"JP"}
 # Secciones gobernables por permisos (claves de navegación del sidebar).
 # 'home' siempre es visible; 'ajustes' es exclusivo del admin.
 SECTION_KEYS: list[str] = [
-    "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos",
+    "apertura", "agenda", "inbox", "ofertas", "documentos", "pedidos", "almacen",
     "devoluciones", "reclamaciones", "docusign", "informes", "reportes",
 ]
 PERM_LEVELS = ("none", "ver", "gestionar")

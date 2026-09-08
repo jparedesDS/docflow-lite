@@ -325,6 +325,22 @@ class PedidosView(ctk.CTkFrame):
 
     # ── 1) Cabecera: identidad + veredicto + % ───────────────────────────────
 
+    @staticmethod
+    def _almacen_field(pedido: str):
+        """('Días en almacén', valor) del ERP: lo que esperó (o lleva esperando)
+        el material entre el aviso de entrega y el envío. None si no aplica."""
+        try:
+            from core.services import warehouse
+            r = warehouse.for_pedido(pedido)
+        except Exception:  # noqa: BLE001 — sin ERP la ficha se pinta igual
+            return None
+        if not r:
+            return None
+        if r["en_almacen"]:
+            return ("Días en almacén", f"{r['dias']} d · esperando salida")
+        salida = r["transporte"] or "enviado"
+        return ("Días en almacén", f"{r['dias']} d · {salida}")
+
     def _build_header_card(self, parent, pedido, dash, consulta, docs, kpis, verdict) -> None:
         cli = dash.get("cliente", "") or consulta.get("Cliente", "")
         first = docs[0] if docs else {}
@@ -387,6 +403,9 @@ class PedidosView(ctk.CTkFrame):
             val = str(hdr.get(lab, "") or "").strip()
             if val:
                 fields.append((lab, val))
+        alm = self._almacen_field(pedido)
+        if alm:
+            fields.append(alm)
         if fields:
             ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
             ginfo = ctk.CTkFrame(inner, fg_color="transparent")

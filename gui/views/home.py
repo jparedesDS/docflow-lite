@@ -199,6 +199,13 @@ class HomeView(ctk.CTkFrame):
         if n and docs:
             items.append(("○", theme.TEXT_SUB, f"{n} documento(s) todavía sin enviar al cliente.",
                           "Ver →", lambda: docs("sin_enviar")))
+        n = r.get("almacen_atascado", 0)
+        if n:
+            dmax = r.get("almacen_dias_max", 0)
+            items.append(("📦", theme.RED,
+                          f"{n} pedido(s) llevan más de 30 días en almacén sin salir"
+                          + (f" (el más antiguo, {dmax} días)." if dmax else "."),
+                          "Almacén →", lambda: self._on_navigate("almacen")))
         n = r.get("tareas", 0)
         if n:
             items.append(("▣", theme.BLUE, f"{n} tarea(s) pendiente(s) en tu agenda.",
@@ -329,6 +336,15 @@ class HomeView(ctk.CTkFrame):
                 results["inbox"] = len(emails)
             except Exception as exc:
                 logger.warning("KPI inbox falló (probablemente IMAP no configurado): %s", exc)
+
+            try:
+                from core.services import warehouse
+                snap = warehouse.snapshot()
+                if snap.get("available"):
+                    results["almacen_atascado"] = snap["stats"]["atascados"]
+                    results["almacen_dias_max"] = snap["stats"]["dias_max"]
+            except Exception as exc:
+                logger.warning("KPI almacén falló (probablemente ERP cerrado): %s", exc)
 
             self.after(0, lambda: self._update_kpis(results))
 
