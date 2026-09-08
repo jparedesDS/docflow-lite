@@ -6,7 +6,7 @@ Dos pestañas:
   · «Histórico»: los envíos ya hechos, con el reparto de tiempos de espera.
 
 Los datos salen del ERP (`core.services.warehouse`). Doble clic en un pedido lo
-abre en Seguimiento.
+abre en Pedidos.
 """
 
 import logging
@@ -235,7 +235,7 @@ class AlmacenView(ctk.CTkFrame):
             return None
         items = [("Copiar Nº de pedido", lambda: table.copy_to_clipboard(iid))]
         if self._on_open_pedido:
-            items.insert(0, ("▦  Abrir en Seguimiento", lambda: self._on_open_pedido(iid)))
+            items.insert(0, ("▦  Abrir en Pedidos", lambda: self._on_open_pedido(iid)))
         return items
 
     def _export(self) -> None:

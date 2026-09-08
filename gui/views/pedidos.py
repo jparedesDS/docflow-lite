@@ -78,7 +78,7 @@ class PedidosView(ctk.CTkFrame):
 
     def _build_layout(self) -> None:
         ui.page_header(
-            self, "Seguimiento",
+            self, "Pedidos",
             "Elige un pedido y mira de un vistazo cómo va: documentación, fabricación, "
             "equipos y qué requiere acción.",
             help_key="pedidos")

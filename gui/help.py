@@ -37,7 +37,7 @@ HELP: dict[str, dict] = {
                    "↻ · traer los documentos del ERP y recargar"],
     },
     "pedidos": {
-        "titulo": "Seguimiento",
+        "titulo": "Pedidos",
         "que": "El estado de un pedido de un vistazo: documentación, fabricación, equipos y qué requiere acción.",
         "pasos": [
             "Escribe el Nº de pedido o el cliente y elígelo en la lista.",
@@ -54,7 +54,7 @@ HELP: dict[str, dict] = {
             "«En taller»: pedidos abiertos con su % de taller y montaje; los retrasados, arriba y en rojo.",
             "Los pedidos que arrastran más de año y medio quedaron sin cerrar en el ERP: se ocultan salvo que marques la casilla.",
             "«Horas de taller»: en qué operaciones se van las horas y cuántas lleva cada pedido.",
-            "Doble clic en un pedido lo abre en Seguimiento.",
+            "Doble clic en un pedido lo abre en Pedidos.",
         ],
         "atajos": ["T · abrir Producción",
                    "Las horas salen del parte de taller (imputación por OT); arriba se indica hasta qué fecha hay datos"],
@@ -65,7 +65,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "«Facturas pendientes»: de la más antigua a la más reciente. Ámbar a partir de 90 días, rojo pasado el año.",
             "«Avales»: los que vencen antes, primero. En rojo los que ya pasaron de fecha (siguen generando comisiones).",
-            "Doble clic abre el pedido en Seguimiento; con el botón derecho copias el nº de factura o la referencia del aval.",
+            "Doble clic abre el pedido en Pedidos; con el botón derecho copias el nº de factura o la referencia del aval.",
         ],
         "atajos": ["F · abrir Administración",
                    "Una factura cuenta como cobrada cuando el ERP le pone fecha de cobro"],
@@ -76,7 +76,7 @@ HELP: dict[str, dict] = {
         "pasos": [
             "La lista sale ordenada por retraso: primero lo que ya debería estar aquí.",
             "Rojo = la fecha prometida ya pasó. Ámbar = llega en los próximos 30 días.",
-            "Doble clic abre el pedido afectado en Seguimiento; con el botón derecho copias proveedor o material.",
+            "Doble clic abre el pedido afectado en Pedidos; con el botón derecho copias proveedor o material.",
             "«Solo lo que va con retraso» deja únicamente lo que hay que reclamar.",
         ],
         "atajos": ["C · abrir Compras",
@@ -91,7 +91,7 @@ HELP: dict[str, dict] = {
             "«Equipos de medida»: calibres, máquinas y manómetros; los vencidos salen arriba en rojo.",
             "Los equipos dados de baja se muestran en gris y no cuentan como vencidos.",
         ],
-        "atajos": ["Q · abrir Calidad", "Desde una NC puedes saltar a su pedido en Seguimiento"],
+        "atajos": ["Q · abrir Calidad", "Desde una NC puedes saltar a su pedido en Pedidos"],
     },
     "almacen": {
         "titulo": "Almacén",
@@ -100,7 +100,7 @@ HELP: dict[str, dict] = {
             "«En almacén ahora»: lo avisado y aún sin enviar, lo más viejo arriba. Es la lista a la que reclamar.",
             "Verde hasta 7 días, ámbar hasta 30, rojo por encima.",
             "«Histórico de envíos»: cuánto tardó en salir lo ya enviado y el reparto de tiempos.",
-            "Doble clic en un pedido lo abre en Seguimiento; «⤓ Excel» exporta la pestaña activa.",
+            "Doble clic en un pedido lo abre en Pedidos; «⤓ Excel» exporta la pestaña activa.",
         ],
         "atajos": ["M · abrir Almacén",
                    "Las fechas salen del ERP: «Aviso de entrega» y «Fecha de envío» del pedido",

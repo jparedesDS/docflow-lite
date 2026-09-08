@@ -16,20 +16,16 @@ class DocFlowLiteApp(ctk.CTk):
     WIDTH = 1280
     HEIGHT = 820
 
-    # Navegación agrupada: ítems sueltos + grupos colapsables. Las CLAVES (key)
-    # no cambian — solo se reorganiza la presentación y se renombran etiquetas
-    # ("Pedidos"→"Seguimiento", "Informes"→"Analítica") para no chocar con el
-    # nombre de su grupo. Atajos de teclado y ruteo siguen usando las keys.
-    # `hint` = letra del atajo global (ver bind_all más abajo); se muestra en el sidebar.
     # La navegación sigue el organigrama de la empresa: cada grupo es un
-    # departamento, para que cualquiera encuentre lo suyo sin preguntar.
+    # departamento, para que cualquiera encuentre lo suyo sin preguntar. Arriba,
+    # sueltos, lo que usa todo el mundo (Inicio, Agenda, Correo, Pedidos).
+    # Las CLAVES (key) no cambian nunca: atajos y ruteo van por ellas, solo se
+    # reorganiza la presentación. `hint` = letra del atajo (ver bind_all).
     NAV_LAYOUT = [
         {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
         {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
         {"type": "item", "key": "inbox", "label": "Correo", "icon": "✦", "hint": "I"},
-        {"type": "group", "id": "proyectos", "label": "Proyectos", "items": [
-            {"key": "pedidos", "label": "Seguimiento", "icon": "▦"},
-        ]},
+        {"type": "item", "key": "pedidos", "label": "Pedidos", "icon": "▦"},
         {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
             {"key": "apertura",      "label": "Nuevo pedido",  "icon": "✚", "hint": "N"},
             {"key": "documentos",    "label": "Documentos",    "icon": "◫", "hint": "O"},

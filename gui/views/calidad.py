@@ -229,7 +229,7 @@ class CalidadView(ctk.CTkFrame):
             return None
         items = [("🔍  Ver la no conformidad", self._open_nc)]
         if n["pedido"] and self._on_open_pedido:
-            items.append((f"▦  Abrir {n['pedido']} en Seguimiento",
+            items.append((f"▦  Abrir {n['pedido']} en Pedidos",
                           lambda: self._on_open_pedido(n["pedido"])))
         items.append(("Copiar descripción", lambda: self.table_nc.copy_to_clipboard(n["descripcion"])))
         return items

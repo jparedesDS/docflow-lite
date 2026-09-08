@@ -202,7 +202,7 @@ class AdministracionView(ctk.CTkFrame):
             return None
         items = []
         if r.get("pedido") and self._on_open_pedido:
-            items.append((f"▦  Abrir {r['pedido']} en Seguimiento",
+            items.append((f"▦  Abrir {r['pedido']} en Pedidos",
                           lambda: self._on_open_pedido(r["pedido"])))
         if r.get("numero"):
             items.append((f"Copiar nº de factura ({r['numero']})",

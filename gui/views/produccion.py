@@ -248,7 +248,7 @@ class ProduccionView(ctk.CTkFrame):
             return None
         items = []
         if self._on_open_pedido:
-            items.append((f"▦  Abrir {r['pedido']} en Seguimiento",
+            items.append((f"▦  Abrir {r['pedido']} en Pedidos",
                           lambda: self._on_open_pedido(r["pedido"])))
         items.append(("Copiar Nº de pedido", lambda: self.table.copy_to_clipboard(r["pedido_raw"])))
         if r["obs"]:

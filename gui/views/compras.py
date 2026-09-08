@@ -2,7 +2,7 @@
 
 Es la respuesta a «¿por qué va tarde este pedido?»: qué falta, de qué proveedor,
 para cuándo lo prometió y cuántos días lleva de retraso. Doble clic en una línea
-abre el pedido afectado en Seguimiento.
+abre el pedido afectado en Pedidos.
 """
 
 import logging
@@ -173,7 +173,7 @@ class ComprasView(ctk.CTkFrame):
             return None
         items = []
         if r["pedido"] and self._on_open_pedido:
-            items.append((f"▦  Abrir {r['pedido']} en Seguimiento",
+            items.append((f"▦  Abrir {r['pedido']} en Pedidos",
                           lambda: self._on_open_pedido(r["pedido"])))
         items += [
             ("Copiar material", lambda: self.table.copy_to_clipboard(r["material"])),
