@@ -199,6 +199,23 @@ class HomeView(ctk.CTkFrame):
         if n and docs:
             items.append(("○", theme.TEXT_SUB, f"{n} documento(s) todavía sin enviar al cliente.",
                           "Ver →", lambda: docs("sin_enviar")))
+        n = r.get("compras_retraso", 0)
+        if n:
+            peds = r.get("compras_pedidos", 0)
+            items.append(("🛒", theme.RED,
+                          f"{n} línea(s) de compra con la fecha prometida pasada"
+                          + (f", afectando a {peds} pedido(s)." if peds else "."),
+                          "Compras →", lambda: self._on_navigate("compras")))
+        n = r.get("nc_abiertas", 0)
+        if n:
+            items.append(("✔", theme.AMBER,
+                          f"{n} no conformidad(es) del último año sin acción correctiva cerrada.",
+                          "Calidad →", lambda: self._on_navigate("calidad")))
+        n = r.get("equipos_vencidos", 0)
+        if n:
+            items.append(("⚖", theme.RED,
+                          f"{n} equipo(s) de medida con la calibración vencida.",
+                          "Calidad →", lambda: self._on_navigate("calidad")))
         n = r.get("almacen_atascado", 0)
         if n:
             dmax = r.get("almacen_dias_max", 0)
@@ -345,6 +362,21 @@ class HomeView(ctk.CTkFrame):
                     results["almacen_dias_max"] = snap["stats"]["dias_max"]
             except Exception as exc:
                 logger.warning("KPI almacén falló (probablemente ERP cerrado): %s", exc)
+
+            try:
+                from core.services import purchases
+                st = purchases.stats()
+                results["compras_retraso"] = st["retrasadas"]
+                results["compras_pedidos"] = st["pedidos"]
+            except Exception as exc:
+                logger.warning("KPI compras falló (probablemente ERP cerrado): %s", exc)
+
+            try:
+                from core.services import quality
+                results["nc_abiertas"] = quality.nc_stats()["abiertas_anio"]
+                results["equipos_vencidos"] = quality.equipment_stats()["vencidos"]
+            except Exception as exc:
+                logger.warning("KPI calidad falló (probablemente ERP cerrado): %s", exc)
 
             self.after(0, lambda: self._update_kpis(results))
 

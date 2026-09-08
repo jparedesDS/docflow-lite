@@ -326,6 +326,31 @@ class PedidosView(ctk.CTkFrame):
     # ── 1) Cabecera: identidad + veredicto + % ───────────────────────────────
 
     @staticmethod
+    def _erp_fields(pedido: str) -> list:
+        """Campos de otros departamentos que afectan a este pedido: material
+        pendiente de proveedor y no conformidades abiertas. Vacío si no hay."""
+        out = []
+        try:
+            from core.services import purchases
+            compras = purchases.for_pedido(pedido)
+            if compras:
+                tarde = sum(1 for c in compras if c["retraso"] > 0)
+                txt = f"{len(compras)} línea(s)" + (f" · {tarde} con retraso" if tarde else "")
+                out.append(("Compras pendientes", txt))
+        except Exception:  # noqa: BLE001 — sin ERP la ficha se pinta igual
+            pass
+        try:
+            from core.services import quality
+            ncs = quality.nc_for_pedido(pedido)
+            if ncs:
+                abiertas = sum(1 for n in ncs if not n["cerrada"])
+                txt = f"{len(ncs)}" + (f" · {abiertas} sin cerrar" if abiertas else " · todas cerradas")
+                out.append(("No conformidades", txt))
+        except Exception:  # noqa: BLE001
+            pass
+        return out
+
+    @staticmethod
     def _almacen_field(pedido: str):
         """('Días en almacén', valor) del ERP: lo que esperó (o lleva esperando)
         el material entre el aviso de entrega y el envío. None si no aplica."""
@@ -406,6 +431,8 @@ class PedidosView(ctk.CTkFrame):
         alm = self._almacen_field(pedido)
         if alm:
             fields.append(alm)
+        for extra in self._erp_fields(pedido):
+            fields.append(extra)
         if fields:
             ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
             ginfo = ctk.CTkFrame(inner, fg_color="transparent")

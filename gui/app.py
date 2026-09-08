@@ -21,24 +21,36 @@ class DocFlowLiteApp(ctk.CTk):
     # ("Pedidos"→"Seguimiento", "Informes"→"Analítica") para no chocar con el
     # nombre de su grupo. Atajos de teclado y ruteo siguen usando las keys.
     # `hint` = letra del atajo global (ver bind_all más abajo); se muestra en el sidebar.
+    # La navegación sigue el organigrama de la empresa: cada grupo es un
+    # departamento, para que cualquiera encuentre lo suyo sin preguntar.
     NAV_LAYOUT = [
         {"type": "item", "key": "home", "label": "Inicio", "icon": "⌂", "hint": "H"},
         {"type": "item", "key": "agenda", "label": "Agenda", "icon": "▣", "hint": "A"},
-        {"type": "group", "id": "pedidos", "label": "Pedidos", "items": [
+        {"type": "group", "id": "proyectos", "label": "Proyectos", "items": [
             {"key": "apertura",   "label": "Nuevo pedido", "icon": "✚", "hint": "N"},
-            {"key": "ofertas",    "label": "Ofertas",     "icon": "✉"},
-            {"key": "pedidos",    "label": "Seguimiento", "icon": "▦"},
-            {"key": "documentos", "label": "Documentos",  "icon": "◫", "hint": "O"},
-            {"key": "almacen",    "label": "Almacén",     "icon": "📦", "hint": "M"},
+            {"key": "pedidos",    "label": "Seguimiento",  "icon": "▦"},
         ]},
-        {"type": "group", "id": "comunicaciones", "label": "Comunicaciones", "items": [
-            {"key": "inbox",         "label": "Correo",             "icon": "✦", "hint": "I"},
-            {"key": "devoluciones",  "label": "Devoluciones",       "icon": "↩", "hint": "D"},
-            {"key": "reclamaciones", "label": "Reclamaciones",      "icon": "⚠", "hint": "R"},
-            {"key": "docusign",      "label": "DocuSign",           "icon": "✒"},
+        {"type": "group", "id": "documentacion", "label": "Documentación", "items": [
+            {"key": "documentos",    "label": "Documentos",    "icon": "◫", "hint": "O"},
+            {"key": "devoluciones",  "label": "Devoluciones",  "icon": "↩", "hint": "D"},
+            {"key": "reclamaciones", "label": "Reclamaciones", "icon": "⚠", "hint": "R"},
+            {"key": "docusign",      "label": "DocuSign",      "icon": "✒"},
+            {"key": "inbox",         "label": "Correo",        "icon": "✦", "hint": "I"},
+        ]},
+        {"type": "group", "id": "comercial", "label": "Comercial", "items": [
+            {"key": "ofertas", "label": "Ofertas", "icon": "✉"},
+        ]},
+        {"type": "group", "id": "compras", "label": "Compras", "items": [
+            {"key": "compras", "label": "Material pendiente", "icon": "🛒", "hint": "C"},
+        ]},
+        {"type": "group", "id": "calidad", "label": "Calidad", "items": [
+            {"key": "calidad", "label": "No conformidades", "icon": "✔", "hint": "Q"},
+        ]},
+        {"type": "group", "id": "logistica", "label": "Almacén y transporte", "items": [
+            {"key": "almacen", "label": "Expediciones", "icon": "📦", "hint": "M"},
         ]},
         {"type": "group", "id": "informes", "label": "Informes", "items": [
-            {"key": "informes", "label": "Analítica",         "icon": "▤"},
+            {"key": "informes", "label": "Analítica",          "icon": "▤"},
             {"key": "reportes", "label": "Centro de Reportes", "icon": "📊", "hint": "P"},
         ]},
     ]
@@ -100,6 +112,10 @@ class DocFlowLiteApp(ctk.CTk):
         self.bind_all("<KeyPress-N>", self._kb_apertura)
         self.bind_all("<KeyPress-m>", self._kb_almacen)
         self.bind_all("<KeyPress-M>", self._kb_almacen)
+        self.bind_all("<KeyPress-c>", self._kb_compras)
+        self.bind_all("<KeyPress-C>", self._kb_compras)
+        self.bind_all("<KeyPress-q>", self._kb_calidad)
+        self.bind_all("<KeyPress-Q>", self._kb_calidad)
         # Paleta de comandos: funciona también con el foco en un Entry
         self.bind_all("<Control-k>", lambda _e: self.open_palette())
         self.bind_all("<Control-K>", lambda _e: self.open_palette())
@@ -386,6 +402,12 @@ class DocFlowLiteApp(ctk.CTk):
         elif key == "almacen":
             from gui.views.almacen import AlmacenView
             view = AlmacenView(self.content, on_open_pedido=self.open_pedido)
+        elif key == "compras":
+            from gui.views.compras import ComprasView
+            view = ComprasView(self.content, on_open_pedido=self.open_pedido)
+        elif key == "calidad":
+            from gui.views.calidad import CalidadView
+            view = CalidadView(self.content, on_open_pedido=self.open_pedido)
         elif key == "agenda":
             from gui.views.agenda import AgendaView
             view = AgendaView(self.content)
@@ -500,6 +522,14 @@ class DocFlowLiteApp(ctk.CTk):
     def _kb_almacen(self, _evt):
         if not self._focus_is_entry():
             self.navigate("almacen")
+
+    def _kb_compras(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("compras")
+
+    def _kb_calidad(self, _evt):
+        if not self._focus_is_entry():
+            self.navigate("calidad")
 
     def _kb_agenda(self, _evt):
         if not self._focus_is_entry():

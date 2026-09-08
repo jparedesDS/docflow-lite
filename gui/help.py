@@ -47,6 +47,29 @@ HELP: dict[str, dict] = {
         ],
         "atajos": ["Ctrl+K · escribe P-26/048 y Enter", "Las revisiones superadas están ocultas: marca «Incluir superados» si las necesitas"],
     },
+    "compras": {
+        "titulo": "Compras",
+        "que": "Material pedido a proveedor que todavía no ha llegado, y a qué pedido afecta.",
+        "pasos": [
+            "La lista sale ordenada por retraso: primero lo que ya debería estar aquí.",
+            "Rojo = la fecha prometida ya pasó. Ámbar = llega en los próximos 30 días.",
+            "Doble clic abre el pedido afectado en Seguimiento; con el botón derecho copias proveedor o material.",
+            "«Solo lo que va con retraso» deja únicamente lo que hay que reclamar.",
+        ],
+        "atajos": ["C · abrir Compras",
+                   "El enlace con nuestro pedido lo pone Compras en las notas del pedido a proveedor"],
+    },
+    "calidad": {
+        "titulo": "Calidad",
+        "que": "No conformidades del ERP y equipos de medida con su calibración.",
+        "pasos": [
+            "«No conformidades»: doble clic abre la ficha completa con descripción, causa y acción correctiva.",
+            "Ámbar = sin acción correctiva cerrada. Rojo = además la detectó el cliente.",
+            "«Equipos de medida»: calibres, máquinas y manómetros; los vencidos salen arriba en rojo.",
+            "Los equipos dados de baja se muestran en gris y no cuentan como vencidos.",
+        ],
+        "atajos": ["Q · abrir Calidad", "Desde una NC puedes saltar a su pedido en Seguimiento"],
+    },
     "almacen": {
         "titulo": "Almacén",
         "que": "Cuánto espera el material terminado, desde que se avisa al cliente hasta que sale.",

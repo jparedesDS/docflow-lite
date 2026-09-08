@@ -672,6 +672,51 @@ class DocumentosView(ctk.CTkFrame):
                          anchor="w", justify="left", wraplength=DETAIL_W - 80).pack(
                 fill="x", padx=theme.SPACE_3, pady=theme.SPACE_2)
 
+        # Trazabilidad: quién tocó el documento y cuándo (auditoría del ERP)
+        self._d_trazabilidad(body, doc)
+
+    def _d_trazabilidad(self, body, doc: dict) -> None:
+        """Últimos cambios del documento según el registro de auditoría del ERP.
+
+        Se consulta en segundo plano: si el ERP no está, la sección no aparece.
+        """
+        num = str(doc.get("Nº Doc. EIPSA", "") or "").strip()
+        if not num:
+            return
+        host = ctk.CTkFrame(body, fg_color="transparent")
+        host.pack(fill="x")
+
+        def pintar(entradas: list[dict]) -> None:
+            if not entradas or not host.winfo_exists():
+                return
+            self._d_section(host, "Quién lo ha tocado")
+            box = ctk.CTkFrame(host, fg_color=theme.BG_PAGE, corner_radius=8,
+                               border_width=1, border_color=theme.BORDER)
+            box.pack(fill="x", pady=(0, theme.SPACE_2))
+            for e in entradas[:12]:
+                row = ctk.CTkFrame(box, fg_color="transparent")
+                row.pack(fill="x", padx=theme.SPACE_3, pady=1)
+                ctk.CTkLabel(row, text=f"{e['cuando']:%d/%m/%y %H:%M}", font=theme.mfont(9),
+                             text_color=theme.TEXT_MUTED, width=88, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=e["quien"], font=theme.FONT_TINY,
+                             text_color=theme.ACCENT, width=72, anchor="w").pack(side="left")
+                ctk.CTkLabel(row, text=e["texto"], font=theme.FONT_TINY,
+                             text_color=theme.TEXT_SUB, anchor="w", justify="left",
+                             wraplength=DETAIL_W - 200).pack(side="left", fill="x", expand=True)
+            ctk.CTkFrame(box, fg_color="transparent", height=theme.SPACE_1).pack()
+
+        def worker():
+            from core.services import audit
+            try:
+                entradas = audit.document_history(num, limit=12)
+            except Exception as exc:  # noqa: BLE001 — sin ERP, sin sección
+                logger.debug("Trazabilidad no disponible: %s", exc)
+                return
+            if entradas:
+                self.after(0, lambda: pintar(entradas))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _d_kpi(self, parent, icon, value, label, color, col) -> None:
         box = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=10,
                            border_width=1, border_color=theme.BORDER)
