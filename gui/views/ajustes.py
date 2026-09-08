@@ -71,6 +71,7 @@ class AjustesView(ctk.CTkFrame):
             "Ofertas": lazy(self._build_ofertas),
             "DocuSign": lazy(self._build_docusign),
             "IA": lazy(self._build_ia),
+            "Portales": lazy(self._build_portales),
             "Usuarios": lazy(self._build_usuarios),
         })
 
@@ -226,14 +227,14 @@ class AjustesView(ctk.CTkFrame):
         self._render_datos()
 
     def _refresh_consulta_from_erp(self) -> None:
-        """Regenera consulta_erp desde el Postgres local del ERP (en un hilo)."""
+        """Regenera data_erp + consulta_erp desde el Postgres local del ERP (en un hilo)."""
         self._erp_btn.configure(state="disabled", text="↻  Actualizando…")
         self._erp_status.configure(text="Conectando al ERP…", text_color=theme.TEXT_SUB)
 
         def _work():
             from core.services import erp_db
             try:
-                res = erp_db.refresh_consulta_erp(make_backup=True)
+                res = erp_db.refresh_all(make_backup=True)
                 self.after(0, lambda: self._erp_done(res, None))
             except Exception as exc:  # noqa: BLE001
                 msg = str(exc).splitlines()[0] if str(exc) else repr(exc)
@@ -243,12 +244,13 @@ class AjustesView(ctk.CTkFrame):
 
     def _erp_done(self, res, error) -> None:
         if error:
-            self._erp_btn.configure(state="normal", text="↻  Actualizar consulta desde ERP")
+            self._erp_btn.configure(state="normal", text="↻  Actualizar datos desde el ERP")
             self._erp_status.configure(text=f"Error: {error}", text_color=theme.RED)
             ui.toast(self, "ERP", f"No se pudo actualizar: {error}", kind="error")
             return
-        ui.toast(self, "Consulta actualizada",
-                 f"{res['rows']} pedidos desde el ERP. Ya aplicado a Documentos y reportes.",
+        ui.toast(self, "Datos actualizados",
+                 f"{res['data']['rows']} documentos y {res['consulta']['rows']} pedidos desde el ERP. "
+                 "Ya aplicado a Documentos y reportes.",
                  kind="success")
         self._render_datos()   # refresca fechas de los Excel (recrea el botón)
 
@@ -260,16 +262,16 @@ class AjustesView(ctk.CTkFrame):
             self._datos_card(st)
 
         # ── Consulta del ERP (PostgreSQL local) ──────────────────────────────
-        ui.section_header(self.datos_scroll, "Consulta del ERP").pack(
+        ui.section_header(self.datos_scroll, "Datos del ERP").pack(
             fill="x", pady=(theme.SPACE_3, theme.SPACE_1))
         ctk.CTkLabel(self.datos_scroll,
-                     text="consulta_erp.xlsx se regenera solo desde el ERP al abrir la app y cada hora. "
-                          "Aquí puedes forzarlo.",
+                     text="Los documentos (data_erp.xlsx) y los pedidos (consulta_erp.xlsx) se regeneran solos "
+                          "desde la base de datos del ERP al abrir la app y cada hora. Aquí puedes forzarlo.",
                      font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
             anchor="w", pady=(0, theme.SPACE_1))
         erp_row = ctk.CTkFrame(self.datos_scroll, fg_color="transparent")
         erp_row.pack(fill="x", pady=(0, theme.SPACE_2))
-        self._erp_btn = ui.button(erp_row, "↻  Actualizar consulta desde ERP", "primary", size="sm",
+        self._erp_btn = ui.button(erp_row, "↻  Actualizar datos desde el ERP", "primary", size="sm",
                                   command=self._refresh_consulta_from_erp)
         self._erp_btn.pack(side="left")
         self._erp_status = ctk.CTkLabel(erp_row, text="", font=theme.FONT_SMALL,
@@ -605,6 +607,90 @@ class AjustesView(ctk.CTkFrame):
                 moved += 1
         ui.toast(self, "Migración", f"{moved} credencial(es) movida(s) al almacén seguro.",
                  kind="success" if moved else "info")
+
+    # ════════════════════════════════════════════════════════════════════════
+    #  PORTALES DE CLIENTE (eGesDoc · Técnicas Reunidas)
+    # ════════════════════════════════════════════════════════════════════════
+
+    def _build_portales(self, parent) -> None:
+        s = self._scroll(parent)
+        ui.section_header(s, "eGesDoc · Técnicas Reunidas").pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_2))
+        ctk.CTkLabel(
+            s, text="Acceso al portal para bajar los transmittals sin pasar por el navegador. "
+                    "La contraseña se guarda cifrada (Administrador de credenciales), nunca en texto plano.",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w", justify="left",
+            wraplength=720).pack(anchor="w", pady=(0, theme.SPACE_2))
+        self.eg_user = self._setting_row(s, "Usuario", "egesdoc_user")
+        self.eg_pass, self.eg_pass_state = self._secret_row(s, "Contraseña", "egesdoc_pass", "EGESDOC_PASS")
+
+        ui.section_header(s, "Descarga de devoluciones").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
+        ctk.CTkLabel(
+            s, text="Cada devolución (zip + correo) se guarda en la carpeta del pedido: "
+                    "00 DOCUMENTACIÓN \\ 00 TRANS Y RES \\ NNN (fecha), y cada PDF devuelto se copia además a "
+                    "2-Tecnico \\ dev. <Tipo> \\ rev<N> AP|COM. Portales: eGesDoc (Técnicas Reunidas, "
+                    "con el acceso de arriba) y AYESA (enlace del propio correo, sin usuario).",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w", justify="left",
+            wraplength=720).pack(anchor="w", pady=(0, theme.SPACE_2))
+        arow = ctk.CTkFrame(s, fg_color="transparent")
+        arow.pack(fill="x", pady=theme.SPACE_1)
+        ctk.CTkLabel(arow, text="Descarga automática", font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+                     anchor="w", width=170).pack(side="left")
+        self.sw_eg_auto = ctk.CTkSwitch(arow, text="revisar el buzón cada 10 min y bajar las devoluciones nuevas",
+                                        font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
+                                        onvalue=True, offvalue=False)
+        self.sw_eg_auto.pack(side="left")
+        (self.sw_eg_auto.select if pref.get("portal_auto_download", True) else self.sw_eg_auto.deselect)()
+        btns = ctk.CTkFrame(s, fg_color="transparent")
+        btns.pack(anchor="w", pady=theme.SPACE_3)
+        ui.button(btns, "Guardar acceso", "primary", size="sm", height=36,
+                  command=self._save_portales).pack(side="left", padx=(0, theme.SPACE_2))
+        ui.button(btns, "Probar acceso", "outline", size="sm", height=36, text_color=theme.TEXT_SUB,
+                  command=self._test_egesdoc).pack(side="left", padx=(0, theme.SPACE_2))
+        self.btn_eg_now = ui.button(btns, "⤓  Descargar pendientes ahora", "outline", size="sm", height=36,
+                                    text_color=theme.TEXT_SUB, command=self._egesdoc_download_now)
+        self.btn_eg_now.pack(side="left")
+
+    def _save_portales(self) -> None:
+        pref.set_value("egesdoc_user", self.eg_user.get().strip())
+        pref.set_value("portal_auto_download", bool(self.sw_eg_auto.get()))
+        self._save_secret(self.eg_pass, self.eg_pass_state, "egesdoc_pass")
+        ui.toast(self, "Guardado", "Acceso a eGesDoc guardado.", kind="success")
+
+    def _egesdoc_download_now(self) -> None:
+        """Revisa el buzón (últimos 30 días) y baja los transmittals que falten."""
+        self.btn_eg_now.configure(state="disabled", text="⤓  Descargando…")
+
+        def done(results, error=None):
+            self.btn_eg_now.configure(state="normal", text="⤓  Descargar pendientes ahora")
+            if error:
+                ui.toast(self, "Descargas · error", error, kind="error")
+            elif not results:
+                ui.toast(self, "Descargas", "No hay devoluciones pendientes de descargar.", kind="info")
+            else:
+                from core.services import dev_folders
+                names = "\n".join(
+                    f"· {r['code']} → {r['pedido']} / {r['folder'].name} · dev.: {dev_folders.summary_line(r.get('archive') or {})}"
+                    for r in results[:6])
+                ui.toast(self, "Descargas", f"{len(results)} devolución(es) descargada(s):\n{names}",
+                         kind="success")
+
+        def work():
+            from core.services import portal_downloads
+            try:
+                results = portal_downloads.auto_download(days=30, force=True)
+                self.after(0, lambda: done(results))
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc)
+                self.after(0, lambda: done([], msg))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _test_egesdoc(self) -> None:
+        def work():
+            from core.services import egesdoc
+            ok, msg = egesdoc.test_login()
+            self.after(0, lambda: ui.toast(self, "eGesDoc" if ok else "eGesDoc · error", msg,
+                                           kind="success" if ok else "error"))
+        threading.Thread(target=work, daemon=True).start()
 
     # ════════════════════════════════════════════════════════════════════════
     #  USUARIOS

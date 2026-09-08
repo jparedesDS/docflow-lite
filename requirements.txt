@@ -17,4 +17,5 @@ PyJWT>=2.8.0
 requests>=2.31.0
 psycopg2-binary>=2.9.0
 python-calamine>=0.8.0
+truststore>=0.9.0
 

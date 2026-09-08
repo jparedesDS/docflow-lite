@@ -39,6 +39,15 @@ def can_parse(sender: str) -> bool:
     return SENDER_MATCH in (sender or "").lower()
 
 
+# Una devolución real de AYESA empieza por su código: "P03_3630_EIP-2206-300-008: Documentos de …".
+# Del mismo dominio llegan también respuestas de personas y acuses de lectura, que no lo son.
+_RETURN_SUBJECT_RE = re.compile(r"^\s*P\d+_\d+_EIP-[\dA-Z-]+\s*:", re.I)
+
+
+def matches_subject(subject: str) -> bool:
+    return bool(_RETURN_SUBJECT_RE.match(subject or ""))
+
+
 def extract_transmittal_code(subject: str) -> str | None:
     """Primer token del asunto (p.ej. 'P03_3630_EIP-2206-300-001')."""
     s = (subject or "").split(":")[0].strip()

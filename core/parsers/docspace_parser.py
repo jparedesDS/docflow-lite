@@ -19,6 +19,17 @@ def can_parse(sender: str) -> bool:
     return SENDER_MATCH in sender.lower()
 
 
+# Un transmittal de Document Space lleva su código entre corchetes con varios
+# segmentos: "[JUS&ICS2-CI0021-HS-EI-T-0029] …". Del mismo dominio (hec.co.kr)
+# llegan avisos del sistema ("[DocumentSpace] Authentication Number…") y correos
+# de personas ("[SACE2] Vendor document IFC", "Wrong Tag numbers"): no lo son.
+_RETURN_SUBJECT_RE = re.compile(r"\[[A-Z0-9&]+(?:-[A-Z0-9]+){2,}\]")
+
+
+def matches_subject(subject: str) -> bool:
+    return bool(_RETURN_SUBJECT_RE.search(subject or ""))
+
+
 def extract_transmittal_code(subject: str) -> str | None:
     m = re.search(TRANSMITTAL_REGEX, subject)
     return m.group(1) if m else None

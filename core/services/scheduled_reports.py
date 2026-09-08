@@ -9,7 +9,7 @@ ejecutan mientras la app esté abierta.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from core.config import USERS
@@ -282,6 +282,7 @@ def start_background_scheduler():
     scheduler = BackgroundScheduler()
     sync_scheduler_jobs(scheduler)
     _add_erp_refresh_job(scheduler)
+    _add_portal_downloads_job(scheduler)
     scheduler.start()
     logger.info("BackgroundScheduler arrancado (%d jobs)", len(scheduler.get_jobs()))
     return scheduler
@@ -302,6 +303,23 @@ def _add_erp_refresh_job(scheduler) -> None:
         logger.info("Job ERP consulta_refresh añadido (al inicio + cada hora)")
     except Exception as exc:  # noqa: BLE001
         logger.warning("No se pudo programar el refresco de consulta ERP: %s", exc)
+
+
+def _add_portal_downloads_job(scheduler) -> None:
+    """Descarga automática de devoluciones (eGesDoc/TR y AYESA): mira el buzón
+    cada 10 min (primera pasada a los 2 min de arrancar). No hace nada si está
+    desactivado en Ajustes ▸ Portales."""
+    try:
+        from core.services import portal_downloads
+        scheduler.add_job(
+            portal_downloads.auto_download, "interval", minutes=10,
+            next_run_time=datetime.now() + timedelta(minutes=2),
+            id="portal_auto_download", replace_existing=True,
+            max_instances=1, coalesce=True,
+        )
+        logger.info("Job portal_auto_download añadido (cada 10 min)")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("No se pudo programar la descarga automática de devoluciones: %s", exc)
 
 
 def sync_scheduler_jobs(scheduler) -> None:

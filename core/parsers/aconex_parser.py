@@ -20,6 +20,11 @@ def extract_transmittal_code(subject: str) -> str | None:
     return m.group(0) if m else None
 
 
+def matches_subject(subject: str) -> bool:
+    """Solo correos con código de transmittal en el asunto (no avisos del sistema)."""
+    return extract_transmittal_code(subject or "") is not None
+
+
 def parse(html_body: str, subject: str, received_time: str) -> pd.DataFrame:
     df_list = pd.read_html(StringIO(html_body), flavor='lxml')
 

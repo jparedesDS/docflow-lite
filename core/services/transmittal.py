@@ -76,12 +76,49 @@ def _detect_platform(sender: str):
 
 # ── Listado de correos ────────────────────────────────────────────────────────
 
+# Correos que llegan desde el dominio de un portal pero NO son devoluciones:
+#   · respuestas / reenvíos de personas («RE: Request for Revised Drawing ///P-24/070»,
+#     «RE: 2206-300 - Documentación pendiente // P-26/048», «RE: Wrong Tag numbers»)
+#   · acuses de lectura («Not read: …», «Leído: …»), autorespuestas y rebotes.
+_NOISE_SUBJECT_RE = re.compile(
+    r"^\s*(?:(?:re|fw|fwd|rv|aw|tr|sv|vs|ref)\s*(?:\[\d+\])?\s*:"
+    r"|(?:not read|read|le[ií]do|no le[ií]do|automatic reply|respuesta autom|out of office|"
+    r"undeliverable|delivery status|no se puede entregar|mail delivery)\b)", re.I)
+
+
+def is_noise_email(e: dict) -> bool:
+    """True para respuestas/reenvíos, acuses de lectura, informes de entrega y autorespuestas."""
+    return bool(e.get("is_report")) or bool(_NOISE_SUBJECT_RE.match(e.get("subject") or ""))
+
+
+def _detect_platform_for(e: dict):
+    """Como _detect_platform pero descarta ruido y, si el parser sabe reconocer
+    el asunto (`matches_subject`), exige que sea una devolución de verdad."""
+    if is_noise_email(e):
+        return None, "UNKNOWN"
+    parser, platform = _detect_platform(e.get("from", ""))
+    if parser is not None and hasattr(parser, "matches_subject") \
+            and not parser.matches_subject(e.get("subject") or ""):
+        return None, "UNKNOWN"
+    return parser, platform
+
+
+def _download_status(e: dict) -> dict:
+    """Estado de descarga de la devolución (zip + archivo en dev.) para la lista."""
+    try:
+        from core.services import portal_downloads   # import perezoso: evita ciclo
+        return portal_downloads.download_status(e.get("from", ""), e.get("subject") or "")
+    except Exception:  # noqa: BLE001
+        return {"code": "", "downloadable": False, "downloaded": False, "folder": ""}
+
+
 def fetch_unread_emails(folder: str = "INBOX") -> list[dict]:
     raw = imap_service.list_unread(folder)
     results = []
     for e in raw:
-        parser, platform = _detect_platform(e["from"])
-        results.append({**e, "platform": platform, "parseable": parser is not None})
+        parser, platform = _detect_platform_for(e)
+        results.append({**e, "platform": platform, "parseable": parser is not None,
+                        **({"download": _download_status(e)} if parser else {})})
     return results
 
 
@@ -91,7 +128,7 @@ def fetch_all_emails(folder: str = "INBOX") -> list[dict]:
     processed = _load_processed()
     out = []
     for e in raw:
-        parser, platform = _detect_platform(e["from"])
+        parser, platform = _detect_platform_for(e)
         if parser is None:
             continue
         out.append({
@@ -99,16 +136,43 @@ def fetch_all_emails(folder: str = "INBOX") -> list[dict]:
             "platform": platform,
             "parseable": True,
             "processed": e["uid"] in processed,
+            "download": _download_status(e),
         })
     return out
+
+
+def saved_folder_for(preview: dict) -> str:
+    """Carpeta donde quedó guardada la devolución de este correo ('' si no se ha descargado)."""
+    return _download_status(preview).get("folder", "")
+
+
+def saved_dev_folders_for(preview: dict) -> list[str]:
+    """Carpetas dev. de 2-Tecnico donde se archivaron los PDF de esta devolución."""
+    return list(_download_status(preview).get("dev_folders") or [])
+
+
+def folder_link_html(folder: str, depth: int = 1) -> str:
+    """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» apuntando a la carpeta
+    (file://). `depth` = cuántos tramos finales de la ruta se muestran; la ruta
+    completa va en el tooltip para no llenar el email de texto."""
+    from html import escape
+
+    p = Path(folder)
+    label = "\\".join(p.parts[-depth:]) if len(p.parts) >= depth else p.name
+    try:
+        href = p.as_uri()
+    except ValueError:           # ruta relativa o rara: mejor sin enlace que un enlace roto
+        return escape(str(folder))
+    return (f'<a href="{escape(href)}" title="{escape(str(folder))}" '
+            f'style="color:inherit;text-decoration:underline;">📂 {escape(label)}</a>')
 
 
 # ── Preview ───────────────────────────────────────────────────────────────────
 
 def preview_email(uid: str, folder: str = "INBOX") -> dict:
     msg = imap_service.fetch_email(uid, folder)
-    sender = msg.get("From", "")
-    subject = msg.get("Subject", "")
+    sender = imap_service._decode_header_value(msg.get("From", ""))
+    subject = imap_service._decode_header_value(msg.get("Subject", ""))
     date_str = msg.get("Date", "")
 
     try:
@@ -341,6 +405,10 @@ def generate_notification_html(
         "PO": first.get("PO", ""),
         "Fecha": str(fecha)[:10] if fecha else "",
     }
+    # Si la devolución ya está descargada y archivada, el correo dice dónde.
+    devs = saved_dev_folders_for(preview)
+    if devs:
+        info_dict["Guardado en"] = "<br>".join(folder_link_html(d, depth=2) for d in devs)
 
     html_body = build_notification_html(info_dict, df, deadline)
     subject = f"DEV: {first.get('Nº Pedido', '')} [{preview['subject']}]"
@@ -390,6 +458,10 @@ def process_and_notify(
         "PO": first.get("PO", ""),
         "Fecha": str(fecha)[:10] if fecha else "",
     }
+    # Si la devolución ya está descargada y archivada, el correo dice dónde.
+    devs = saved_dev_folders_for(preview)
+    if devs:
+        info_dict["Guardado en"] = "<br>".join(folder_link_html(d, depth=2) for d in devs)
 
     html_body = build_notification_html(info_dict, df, deadline)
     subject = f"DEV: {first.get('Nº Pedido', '')} [{preview['subject']}]"

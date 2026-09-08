@@ -165,6 +165,8 @@ def list_all(folder="INBOX", imap_user=None, imap_pass=None):
                 "subject": subject,
                 "from": sender,
                 "date": date_iso,
+                # Acuses de lectura / informes de entrega (multipart/report): no son correos "de verdad"
+                "is_report": msg.get_content_type() == "multipart/report",
             })
         return list(reversed(results))
     finally:
@@ -195,6 +197,8 @@ def list_unread(folder="INBOX", imap_user=None, imap_pass=None):
                 "subject": subject,
                 "from": sender,
                 "date": date_iso,
+                # Acuses de lectura / informes de entrega (multipart/report): no son correos "de verdad"
+                "is_report": msg.get_content_type() == "multipart/report",
             })
         return list(reversed(results))
     finally:
@@ -222,7 +226,7 @@ def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=30
         uids = list(reversed(uids))[:limit]
         results = []
         fields = ("(FLAGS BODY.PEEK[HEADER.FIELDS "
-                  "(FROM SUBJECT DATE MESSAGE-ID REPLY-TO RETURN-PATH AUTHENTICATION-RESULTS)])")
+                  "(FROM SUBJECT DATE MESSAGE-ID REPLY-TO RETURN-PATH AUTHENTICATION-RESULTS CONTENT-TYPE)])")
         for i in range(0, len(uids), 250):              # descarga en LOTE
             batch = b",".join(uids[i:i + 250])
             try:
@@ -251,6 +255,7 @@ def list_since(days=30, folder="INBOX", imap_user=None, imap_pass=None, limit=30
                     "auth_results": "; ".join(msg.get_all("Authentication-Results", []) or []),
                     "reply_to": _decode_header_value(msg.get("Reply-To", "")),
                     "return_path": msg.get("Return-Path", ""),
+                    "is_report": msg.get_content_type() == "multipart/report",
                 })
         return results
     finally:

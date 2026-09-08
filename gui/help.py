@@ -33,7 +33,8 @@ HELP: dict[str, dict] = {
             "Doble clic en una fila abre la ficha: revisiones, fechas y acciones.",
             "Botón «Filtros» para acotar por pedido, cliente o responsable.",
         ],
-        "atajos": ["O · abrir Documentos", "Ctrl+K · saltar a un documento por su número", "↻ · recargar desde los Excel"],
+        "atajos": ["O · abrir Documentos", "Ctrl+K · saltar a un documento por su número",
+                   "↻ · traer los documentos del ERP y recargar"],
     },
     "pedidos": {
         "titulo": "Seguimiento",
@@ -54,8 +55,16 @@ HELP: dict[str, dict] = {
             "Doble clic en un correo: la app lo interpreta y muestra los documentos y su estado.",
             "Revisa, corrige un estado si hace falta y pulsa «Enviar notificación».",
             "«+ Devolución manual» si el correo no es de un portal reconocido: escribe el pedido y se autocompleta.",
+            "«⤓ Descargar devolución» (Técnicas Reunidas y AYESA): baja el zip del portal y lo guarda con el "
+            "correo en 00 TRANS Y RES \\ NNN (fecha) del pedido; además copia cada PDF devuelto a su carpeta "
+            "2-Tecnico \\ dev. <Tipo> \\ rev<N> AP|COM (la crea si no existe). Con la descarga automática activa se hace solo.",
+            "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
+            "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
+            "antes de enviar la notificación (que indica dónde está guardada).",
+            "Solo se listan transmittals de verdad: respuestas (RE:/FW:), acuses de lectura y avisos de los portales quedan fuera.",
         ],
-        "atajos": ["D · abrir Devoluciones", "El pedido, cliente y PO se completan solos desde el ERP"],
+        "atajos": ["D · abrir Devoluciones", "El pedido, cliente y PO se completan solos desde el ERP",
+                   "El acceso a eGesDoc y la descarga automática se configuran en Ajustes ▸ Portales"],
     },
     "reclamaciones": {
         "titulo": "Reclamaciones",
@@ -143,7 +152,9 @@ HELP: dict[str, dict] = {
         "pasos": [
             "Cada pestaña tiene su botón «Guardar»; los cambios de conexión se aplican al reiniciar.",
             "Las contraseñas se guardan cifradas (nunca en texto plano).",
-            "«Fuentes de datos»: de dónde se leen los Excel y el botón para regenerar la consulta desde el ERP.",
+            "«Fuentes de datos»: de dónde se leen los Excel y el botón para regenerar documentos y pedidos desde el ERP.",
+            "«Portales»: usuario y contraseña de eGesDoc (Técnicas Reunidas) y la descarga automática de "
+            "devoluciones (eGesDoc y AYESA).",
         ],
         "atajos": ["«↻ Reiniciar app» aplica los cambios de conexión"],
     },

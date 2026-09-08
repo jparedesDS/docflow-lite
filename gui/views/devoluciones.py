@@ -1,9 +1,11 @@
 """Vista Devoluciones — lista emails IMAP parseables + ventana preview/envío."""
 
 import logging
+import os
 import threading
 import tkinter as tk
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import customtkinter as ctk
 from tkinter import messagebox
@@ -16,7 +18,7 @@ from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
 
-COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha"]
+COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha", "Descarga"]
 
 # Preview de devolución: columnas a nivel de DOCUMENTO (varían por fila) que se
 # muestran en la tabla. El resto (pedido, cliente, material, PO, transmittal…)
@@ -103,12 +105,13 @@ class DevolucionesView(ctk.CTkFrame):
         self.table = DataTable(self, columns=COLUMNS, on_double_click=self._on_row_double)
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
-            "Plataforma": 130, "Asunto": 520, "Remitente": 260, "Fecha": 150,
+            "Plataforma": 130, "Asunto": 460, "Remitente": 240, "Fecha": 140, "Descarga": 120,
         })
         self.table.set_columns_anchor({
             "Plataforma": "center", "Asunto": "w",
-            "Remitente": "w", "Fecha": "center",
+            "Remitente": "w", "Fecha": "center", "Descarga": "center",
         })
+        self.table.tree.tag_configure("downloaded", foreground=theme.GREEN)
         self.table.set_context_menu(self._ctx_menu)
 
     # ── Acciones ──────────────────────────────────────────────────────────────
@@ -147,13 +150,17 @@ class DevolucionesView(ctk.CTkFrame):
             return
 
         for e in emails:
+            dl = e.get("download") or {}
             tags = ("processed",) if e.get("processed") else ()
+            if dl.get("downloaded"):
+                tags = tags + ("downloaded",)
             self.table.add_row(
                 values=[
                     e.get("platform", "—"),
                     e.get("subject", "(sin asunto)"),
                     e.get("from", ""),
                     _fmt_date(e.get("date", "")),
+                    _download_label(dl),
                 ],
                 iid=e.get("uid"),
                 tags=tags,
@@ -178,9 +185,15 @@ class DevolucionesView(ctk.CTkFrame):
         email = next((e for e in self._emails if e.get("uid") == iid), None)
         if not email:
             return None
-        return [
+        dl = email.get("download") or {}
+        items = [
             ("✉  Procesar / Preview",
              lambda: PreviewWindow(self, uid=iid, on_sent=self._reload)),
+        ]
+        if dl.get("downloaded") and dl.get("folder"):
+            items.append(("📂  Abrir carpetas de la devolución (TRANS Y RES + dev.)",
+                          lambda: _open_return_folders(dl["folder"], dl.get("dev_folders") or [])))
+        return items + [
             ("-", None),
             ("Copiar asunto",
              lambda: self.table.copy_to_clipboard(email.get("subject", ""))),
@@ -294,6 +307,17 @@ class PreviewWindow(ctk.CTkToplevel):
         )
         self.btn_preview.pack(side="left")
 
+        # Solo para portales con descarga (eGesDoc/TR y AYESA): baja el zip de la
+        # devolución a la carpeta del pedido (se habilita en _render_preview).
+        self.btn_transmittal = ui.button(
+            footer, "⤓  Descargar devolución", "chip", size="lg",
+            state="disabled", command=self._download_transmittal,
+        )
+        self.btn_transmittal.pack(side="left", padx=(8, 0))
+        ui.tooltip(self.btn_transmittal,
+                   "Descarga el zip de la devolución (eGesDoc o enlace de AYESA) y lo guarda\n"
+                   "con el correo en 00 TRANS Y RES \\ NNN (fecha) del pedido.")
+
         self.lbl_status = ctk.CTkLabel(
             self, text="⏳  Parseando email…", font=theme.FONT_BODY,
             text_color=theme.TEXT_MUTED, anchor="w",
@@ -399,6 +423,76 @@ class PreviewWindow(ctk.CTkToplevel):
         )
         self.btn_send.configure(state="normal")
         self.btn_preview.configure(state="normal")
+        self._setup_transmittal_button(pv)
+
+    # ── Descarga del transmittal (eGesDoc) ────────────────────────────────────
+
+    def _setup_transmittal_button(self, pv: dict) -> None:
+        from core.services import portal_downloads
+
+        info = portal_downloads.describe_email(pv.get("from", ""), pv.get("subject", ""))
+        if info is None:
+            self.btn_transmittal.pack_forget()
+            return
+        done = portal_downloads.downloaded_info(info["code"])
+        if done and done.get("folder"):
+            # Ya descargada y archivada: el botón lleva directamente a la carpeta
+            # para comprobarlo antes de avisar a los compañeros.
+            folder, devs = done["folder"], list(done.get("dev_folders") or [])
+            self.btn_transmittal.configure(
+                state="normal", text="📂  Abrir carpetas de la devolución",
+                command=lambda: _open_return_folders(folder, devs))
+            self.lbl_status.configure(
+                text=f"✓  Devolución {info['code']} ya guardada en {Path(folder).name} · "
+                     f"revisa la carpeta y envía la notificación.")
+            return
+        ready, why = portal_downloads.portal_ready(info["portal"])
+        if not ready:
+            self.btn_transmittal.configure(state="disabled", text=f"⤓  Descargar ({why})")
+            return
+        self.btn_transmittal.configure(state="normal", text=f"⤓  Descargar {info['code']}")
+
+    def _download_transmittal(self) -> None:
+        self.btn_transmittal.configure(state="disabled", text="⤓  Descargando…")
+        self.lbl_status.configure(text="⏳  Descargando la devolución del portal…")
+        uid = self._uid
+
+        def worker():
+            from core.services import portal_downloads
+            try:
+                res = portal_downloads.download_for_email(uid)
+                self.after(0, lambda: self._transmittal_done(res))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Descarga de transmittal")
+                msg = str(exc)
+                self.after(0, lambda: self._transmittal_failed(msg))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _transmittal_done(self, res: dict) -> None:
+        folder, devs = res["folder"], list(res.get("dev_folders") or [])
+        self.btn_transmittal.configure(
+            state="normal", text="📂  Abrir carpetas de la devolución",
+            command=lambda: _open_return_folders(folder, devs),
+        )
+        from core.services import dev_folders
+
+        estado = "ya estaba descargada" if res.get("already") else "descargada"
+        archive = res.get("archive") or {}
+        resumen = dev_folders.summary_line(archive)
+        self.lbl_status.configure(
+            text=f"✓  Devolución {res['code']} {estado} en {folder.name} ({res['pedido']}). Archivo dev.: {resumen}.")
+        detalle = "\n".join(f"· {f}: {why}" for f, why in archive.get("skipped", [])[:4])
+        if self._on_sent:
+            self._on_sent()          # refresca la lista: la fila pasa a «✓ guardada»
+        ui.toast(self, "Devolución descargada",
+                 f"{res['zip'].name} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
+                 kind="success" if not archive.get("skipped") else "warn")
+
+    def _transmittal_failed(self, msg: str) -> None:
+        self.btn_transmittal.configure(state="normal", text="⤓  Reintentar descarga")
+        self.lbl_status.configure(text=f"✗  No se pudo descargar la devolución: {msg}")
+        ui.toast(self, "Descarga · error", msg, kind="error")
 
     def _fit_docs_table(self) -> None:
         if self.docs_table is not None:
@@ -1065,6 +1159,24 @@ def _friendly_error(msg: str) -> str:
     if "name or service not known" in low or "getaddrinfo" in low or "timed out" in low:
         return "No se pudo contactar con el servidor IMAP. Revisa IMAP_HOST en .env."
     return msg
+
+
+def _open_return_folders(folder, dev_folders=()) -> None:
+    """Abre en el Explorador la carpeta 00 TRANS Y RES\\NNN de la devolución y
+    también cada carpeta dev. donde se archivaron los PDF."""
+    for p in [folder, *dev_folders]:
+        if p:
+            try:
+                os.startfile(str(p))
+            except OSError as exc:
+                logger.warning("No se pudo abrir %s: %s", p, exc)
+
+
+def _download_label(dl: dict) -> str:
+    """Texto de la columna Descarga: '✓ guardada' / '⤓ pendiente' / '—' (portal sin descarga)."""
+    if not dl or not dl.get("downloadable"):
+        return "—"
+    return "✓  guardada" if dl.get("downloaded") else "⤓  pendiente"
 
 
 def _fmt_date(iso: str) -> str:

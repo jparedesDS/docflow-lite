@@ -111,6 +111,11 @@ def extract_transmittal_code(subject: str) -> str | None:
     return None
 
 
+def matches_subject(subject: str) -> bool:
+    """Solo notificaciones con código de transmittal (no avisos de cuenta, etc.)."""
+    return extract_transmittal_code(subject or "") is not None
+
+
 def extract_status_from_subject(subject: str) -> str:
     """Extrae 'Code X' del subject y lo mapea a estado español."""
     m = re.search(r"Code\s+(\d)", subject)

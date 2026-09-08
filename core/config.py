@@ -64,6 +64,7 @@ OFERTAS_ACCOUNTS = [
 
 # ── Estado runtime ────────────────────────────────────────────────────────────
 PROCESSED_EMAILS_FILE = str(state_dir() / "processed_emails.json")
+PORTAL_DOWNLOADS_FILE = str(state_dir() / "portal_downloads.json")
 
 # ── Carpeta de pedidos en red (opcional, para guardar EML enviados) ───────────
 PEDIDOS_BASE_PATH = _cfg("pedidos_base_path", "PEDIDOS_BASE_PATH", "")

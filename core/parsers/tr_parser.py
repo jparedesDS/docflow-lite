@@ -46,6 +46,15 @@ def can_parse(sender: str) -> bool:
     return SENDER_MATCH in sender.lower()
 
 
+# eGesDoc manda también "New VDDL available", recordatorios, etc.: solo es una
+# devolución el aviso "New transmittal registered (…) - PO(…)".
+_RETURN_SUBJECT_RE = re.compile(r"transmittal\s+registered", re.I)
+
+
+def matches_subject(subject: str) -> bool:
+    return bool(_RETURN_SUBJECT_RE.search(subject or ""))
+
+
 def extract_transmittal_code(subject: str) -> str | None:
     # PO de 10 dígitos del subject
     m = re.search(r"(\d{10})", subject)
@@ -149,11 +158,13 @@ def parse(html_body: str, subject: str, received_time: str) -> pd.DataFrame:
     else:
         df["Título"] = ""
 
-    # Rev
+    # Rev (la del proveedor). La letra de revisión de TR («TR Rev» = A, B…) se
+    # conserva aparte: se usa para nombrar las carpetas dev. («rev0-A COM»).
     if "Vendor Rev" in df.columns:
         df["Rev."] = df["Vendor Rev"]
     else:
         df["Rev."] = ""
+    df["_rev_cliente"] = df["TR Rev"].astype(str).str.strip() if "TR Rev" in df.columns else ""
 
     # Status
     if "Return Status" in df.columns:
@@ -180,4 +191,6 @@ def parse(html_body: str, subject: str, received_time: str) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = ""
 
-    return df[FINAL_COLUMNS].copy()
+    # `_rev_cliente` viaja como columna oculta (las que empiezan por "_" no se
+    # muestran en la tabla de la preview).
+    return df[FINAL_COLUMNS + ["_rev_cliente"]].copy()

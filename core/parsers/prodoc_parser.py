@@ -35,6 +35,11 @@ def extract_transmittal_code(subject: str) -> str | None:
     return m.group(0) if m else None
 
 
+def matches_subject(subject: str) -> bool:
+    """Solo correos con código de transmittal en el asunto (no avisos del sistema)."""
+    return extract_transmittal_code(subject or "") is not None
+
+
 def _clean(series: pd.Series) -> pd.Series:
     """Elimina nbsp (\xa0), marcadores (*), y espacios sobrantes."""
     s = series.astype(str)

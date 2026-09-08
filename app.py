@@ -87,6 +87,26 @@ def _try_start_scheduler():
     return None
 
 
+def _notify_portal_downloads(app) -> None:
+    """Aviso en pantalla cuando la descarga automática baja una devolución de un portal."""
+    try:
+        from core.services import portal_downloads
+        from gui.widgets import ui
+
+        def _on_downloaded(res: dict) -> None:
+            from core.services import dev_folders
+            portal = portal_downloads.PORTAL_NAMES.get(res.get("portal"), "portal")
+            resumen = dev_folders.summary_line(res.get("archive") or {})
+            app.after(0, lambda: ui.toast(
+                app, f"Devolución descargada · {portal}",
+                f"{res['code']} → {res['pedido']} / {res['folder'].name}\nArchivo en 2-Tecnico: {resumen}",
+                kind="success"))
+
+        portal_downloads.on_downloaded(_on_downloaded)
+    except Exception as exc:  # noqa: BLE001 — solo es un aviso
+        logger.debug("No se pudo registrar el aviso de descargas: %s", exc)
+
+
 def _authenticate():
     """Muestra la pantalla de login. Devuelve el user dict o None."""
     from core import auth
@@ -111,6 +131,7 @@ def main() -> int:
 
     from gui.app import DocFlowLiteApp
     app = DocFlowLiteApp(current_user=user)
+    _notify_portal_downloads(app)
 
     def _on_close():
         try:
