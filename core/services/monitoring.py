@@ -64,6 +64,22 @@ def _read_excel(path: str) -> pd.DataFrame:
 
 # ── Helpers de fechas ─────────────────────────────────────────────────────────
 
+def _as_date_text(value) -> str:
+    """Fecha (date/Timestamp) o texto → texto DD-MM-YYYY. Vacíos → ''."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    if hasattr(value, "strftime"):
+        try:
+            if pd.isna(value):
+                return ""
+        except (TypeError, ValueError):
+            pass
+        return value.strftime("%d-%m-%Y")
+    text = str(value).strip()
+    return "" if text.lower() in ("nan", "nat", "none") else text
+
 def _parse_date(val):
     if val is None or (isinstance(val, float) and math.isnan(val)) or val == "":
         return None
@@ -158,7 +174,7 @@ def _build_merged_dataset() -> list[dict]:
     # P-25/017-s00) y espacios accidentales.
     if not consulta_df.empty and "Nº Pedido" in consulta_df.columns:
         lookup_cols = ["Nº Pedido"]
-        for col in ("Responsable", "Nº Oferta", "Fecha Pedido", "Fecha Prevista"):
+        for col in ("Responsable", "Nº Oferta", "Fecha Pedido", "Fecha Prevista", "Cl. Final / Planta"):
             if col in consulta_df.columns:
                 lookup_cols.append(col)
         lookup = consulta_df[lookup_cols].drop_duplicates(subset=["Nº Pedido"]).copy()
@@ -185,15 +201,33 @@ def _build_merged_dataset() -> list[dict]:
                         "data_erp.xlsx (Ajustes → Fuentes de datos).", c,
                     )
                     break  # un solo warning basta
+        # Fechas: data_erp las trae como texto (DD-MM-YYYY) y consulta_erp como
+        # fecha real. Se normalizan a texto ANTES de rellenar huecos; si no,
+        # pandas rechaza meter un date en una columna de texto.
         for col in ("Fecha Pedido", "Fecha Prevista"):
             col_c = col + "_consulta"
             if col_c in data_df.columns:
+                filler = data_df[col_c].map(_as_date_text)
                 if col not in data_df.columns:
-                    data_df[col] = data_df[col_c]
+                    data_df[col] = filler
                 else:
-                    mask = data_df[col].isna() | (data_df[col].astype(str).str.strip() == "")
-                    data_df.loc[mask, col] = data_df.loc[mask, col_c].values
+                    actual = data_df[col].map(_as_date_text)
+                    data_df[col] = actual.where(actual.str.strip() != "", filler)
                 data_df.drop(columns=[col_c], inplace=True)
+
+        # Cliente = cliente FINAL / planta del ERP (SILLENO, MOEVE, DUQM…), no la
+        # ingeniería contratante (TR, AYESA…) que trae data_erp. Si el ERP no lo
+        # tiene ("NO HAY DATOS"/vacío) se conserva el Cliente de data_erp.
+        col_final = next((c for c in ("Cl. Final / Planta_consulta", "Cl. Final / Planta")
+                          if c in data_df.columns), None)
+        if col_final is not None:
+            final = data_df[col_final].fillna("").astype(str).str.strip()
+            has_final = (final != "") & (~final.str.lower().isin(["nan", "none", "no hay datos"]))
+            if "Cliente" in data_df.columns:
+                data_df.loc[has_final, "Cliente"] = final[has_final]
+            else:
+                data_df["Cliente"] = final.where(has_final, "")
+            data_df.drop(columns=[col_final], inplace=True)
 
     # Renombrar Fecha → Fecha Env. Doc.
     if "Fecha" in data_df.columns and "Fecha Env. Doc." not in data_df.columns:

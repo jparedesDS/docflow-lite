@@ -199,10 +199,12 @@ class DocumentosView(ctk.CTkFrame):
         btn_clear.pack(side="left", padx=(0, theme.SPACE_2))
         ui.tooltip(btn_clear, "Quita la búsqueda, los filtros y la tarjeta seleccionada")
 
-        btn_refresh = ui.button(filters, "↻", "outline", width=36, text_color=theme.TEXT_SUB,
-                                command=self._hard_refresh)
-        btn_refresh.pack(side="left")
-        ui.tooltip(btn_refresh, "Recargar los documentos desde los Excel")
+        self.btn_refresh = ui.button(filters, "↻", "outline", width=36, text_color=theme.TEXT_SUB,
+                                     command=self._hard_refresh)
+        self.btn_refresh.pack(side="left")
+        ui.tooltip(self.btn_refresh,
+                   "Traer los documentos del ERP y recargar.\n"
+                   "Si el ERP no está disponible, recarga lo que haya en disco.")
 
         # Fila plegable de filtros finos
         self._filters_open = False
@@ -328,8 +330,35 @@ class DocumentosView(ctk.CTkFrame):
         threading.Thread(target=worker, daemon=True).start()
 
     def _hard_refresh(self) -> None:
-        monitoring_service.invalidate_cache()
-        self._reload()
+        """↻: trae los documentos del ERP (Postgres) y recarga.
+
+        Si el ERP no está disponible se recarga lo que haya en disco, para que el
+        botón nunca deje la pantalla sin datos.
+        """
+        self.btn_refresh.configure(state="disabled")
+        self.lbl_status.configure(text="⏳  Actualizando desde el ERP…", text_color=theme.TEXT_MUTED)
+
+        def worker():
+            try:
+                from core.services import erp_db
+                if erp_db.is_configured():
+                    erp_db.refresh_all(make_backup=False)
+            except Exception as exc:  # noqa: BLE001 — sin ERP se sigue con los Excel
+                logger.info("Refresco desde el ERP no disponible: %s", exc)
+            monitoring_service.invalidate_cache()
+            try:
+                docs = monitoring_service.get_monitoring_data()
+                self.after(0, lambda: self._on_refreshed(docs))
+            except Exception as exc:
+                logger.exception("Error cargando monitoring")
+                err = str(exc)
+                self.after(0, lambda: (self.btn_refresh.configure(state="normal"), self._show_error(err)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_refreshed(self, docs: list[dict]) -> None:
+        self.btn_refresh.configure(state="normal")
+        self._on_loaded(docs)
 
     def _on_loaded(self, docs: list[dict]) -> None:
         self._all_docs = docs

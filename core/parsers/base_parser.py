@@ -868,24 +868,72 @@ def erp_header_from_row(row: dict) -> dict:
     return out
 
 
-def enrich_missing_from_erp(df):
-    """Red de seguridad para cualquier portal. Empareja cada 'Doc. Cliente' del
-    email con su fila del ERP (por Nº Doc. Cliente) y rellena los huecos de
-    Nº Pedido / Cliente / Material / PO / Supp. / Doc. EIPSA / Responsable.
+def _fill_blanks(df, col: str, value: str) -> None:
+    """Pone `value` en las celdas vacías de `col` (si la columna existe)."""
+    if value and col in df.columns:
+        df[col] = [value if _is_blank(cur) else cur for cur in df[col]]
 
-    No hace nada si no hay columna 'Doc. Cliente' o si ningún código casa.
+
+def _erp_value(row: dict, col: str) -> str:
+    val = str(row.get(col, "") or "").strip()
+    return "" if (_is_blank(val) or val.lower() == "no hay datos") else val
+
+
+def erp_header_by_pedido(pedido: str) -> dict:
+    """Cliente / Material / PO de un pedido a partir del ERP.
+
+    · Cliente: de la consulta del ERP (base de datos). Es el cliente FINAL /
+      planta (p. ej. SILLENO, DUQM, ARAMCO), igual que en `PO_CLIENT_MAP`; la
+      ingeniería contratante (Técnicas Reunidas, Ayesa…) solo se usa si el ERP
+      no tiene cliente final.
+    · Material y PO: de data_erp.
+    Devuelve solo los campos con valor.
+    """
+    pedido = str(pedido or "").strip()
+    out: dict = {}
+    if not pedido:
+        return out
+    try:
+        from core.services import erp   # import perezoso: evita ciclos parsers↔services
+        rows = erp.consulta(pedido)
+        if rows:
+            cliente = _erp_value(rows[0], "Cl. Final / Planta") or _erp_value(rows[0], "Cliente")
+            if cliente:
+                out["cliente"] = cliente
+    except Exception:  # noqa: BLE001 — la consulta es un extra, no un requisito
+        pass
+    try:
+        found = lookup_erp(pedido)
+    except Exception:  # noqa: BLE001
+        found = {}
+    for key, col in (("material", "Material"), ("po", "Nº PO")):
+        val = _erp_value(found, col)
+        if val:
+            out[key] = val
+    return out
+
+
+def enrich_missing_from_erp(df):
+    """Red de seguridad para cualquier portal. Rellena los huecos que deje el
+    parser (Nº Pedido / Cliente / Material / PO / Supp. / Doc. EIPSA /
+    Responsable) con los datos del ERP, en dos pasadas:
+
+      1. Por Nº Doc. Cliente: cada 'Doc. Cliente' del email contra la columna
+         Nº Doc. Cliente del ERP (resuelve incluso el Nº Pedido).
+      2. Por Nº Pedido: si ya se conoce el pedido pero faltan Cliente / Material
+         / PO, se toman de la consulta del ERP y de data_erp.
+
     Sólo rellena celdas vacías: si el parser ya resolvió un campo, se respeta.
     """
-    if df is None or getattr(df, "empty", True) or "Doc. Cliente" not in df.columns:
+    if df is None or getattr(df, "empty", True):
         return df
 
-    idx = erp_client_code_index()
-    if not idx:
-        return df
-
-    matched = [idx.get(norm_doc_code(c)) for c in df["Doc. Cliente"]]
-    if not any(m is not None for m in matched):
-        return df
+    # ── 1) Por Nº Doc. Cliente ────────────────────────────────────────────────
+    matched = []
+    if "Doc. Cliente" in df.columns:
+        idx = erp_client_code_index()
+        if idx:
+            matched = [idx.get(norm_doc_code(c)) for c in df["Doc. Cliente"]]
 
     # Cabecera del pedido: de la primera fila emparejada (todos los docs de una
     # devolución pertenecen al mismo pedido).
@@ -899,16 +947,25 @@ def enrich_missing_from_erp(df):
             ("PO", header["po"]),
             ("Supp.", header["supp"]),
         ):
-            if val and col in df.columns:
-                df[col] = [val if _is_blank(cur) else cur for cur in df[col]]
+            _fill_blanks(df, col, val)
 
-    # Doc. EIPSA: por fila, de su propia coincidencia exacta.
-    if "Doc. EIPSA" in df.columns:
-        df["Doc. EIPSA"] = [
-            (str(m.get("Nº Doc. EIPSA", "") or "") or cur)
-            if (_is_blank(cur) and m is not None) else cur
-            for cur, m in zip(df["Doc. EIPSA"], matched)
-        ]
+        # Doc. EIPSA: por fila, de su propia coincidencia exacta.
+        if "Doc. EIPSA" in df.columns:
+            df["Doc. EIPSA"] = [
+                (str(m.get("Nº Doc. EIPSA", "") or "") or cur)
+                if (_is_blank(cur) and m is not None) else cur
+                for cur, m in zip(df["Doc. EIPSA"], matched)
+            ]
+
+    # ── 2) Por Nº Pedido ──────────────────────────────────────────────────────
+    if "Nº Pedido" in df.columns:
+        pedido = next((str(p).strip() for p in df["Nº Pedido"] if not _is_blank(p)), "")
+        needs = [c for c in ("Cliente", "Material", "PO") if c in df.columns and any(_is_blank(v) for v in df[c])]
+        if pedido and needs:
+            header = erp_header_by_pedido(pedido)
+            _fill_blanks(df, "Cliente", header.get("cliente", ""))
+            _fill_blanks(df, "Material", header.get("material", ""))
+            _fill_blanks(df, "PO", header.get("po", ""))
 
     # Responsable: si quedó vacío y ya conocemos el Nº Pedido.
     if "Responsable" in df.columns and "Nº Pedido" in df.columns:
