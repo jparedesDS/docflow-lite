@@ -1214,11 +1214,20 @@ def create_order(
     # 3) Planning
     if do_planning:
         try:
-            tpl = planning_template
-            # Si copiamos plantilla, preferimos la copia recién creada en doc_dir
-            local_tpl = doc_dir / "03 PLANTILLA PLANNING - CON MESES.xlsm"
-            if local_tpl.exists():
+            # Siempre la plantilla maestra. La copia que queda dentro del pedido
+            # se hizo el día que se abrió y ahí se queda: un pedido abierto hace
+            # meses generaba hoy el Planning con la plantilla de entonces. Solo
+            # se usa como recambio si la maestra no está (M: caída).
+            tpl = Path(planning_template)
+            if not tpl.exists():
+                local_tpl = doc_dir / tpl.name
+                if not local_tpl.exists():
+                    raise FileNotFoundError(f"Plantilla Planning no encontrada en {tpl}")
                 tpl = local_tpl
+                warnings.append(
+                    f"No se llegó a {planning_template}: Planning hecho con la copia "
+                    f"del pedido, que puede estar desfasada."
+                )
             result.planning_file = generate_planning(
                 spec, doc_dir, planning_template=tpl
             )
