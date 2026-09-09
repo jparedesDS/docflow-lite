@@ -1,10 +1,13 @@
-﻿import re
+﻿import logging
+import re
 import pandas as pd
 from io import StringIO
 from core.parsers.base_parser import (
     DOC_TYPE_MAP, apply_critico, fill_supp_nulls, apply_fecha, FINAL_COLUMNS,
     identify_client, get_responsable_initials,
 )
+
+logger = logging.getLogger(__name__)
 
 SENDER_MATCH = "hec.co.kr"
 TRANSMITTAL_REGEX = r'\[([A-Z0-9&]+(?:-[A-Z0-9]+)*)\]'
@@ -19,15 +22,32 @@ def can_parse(sender: str) -> bool:
     return SENDER_MATCH in sender.lower()
 
 
-# Un transmittal de Document Space lleva su código entre corchetes con varios
-# segmentos: "[JUS&ICS2-CI0021-HS-EI-T-0029] …". Del mismo dominio (hec.co.kr)
-# llegan avisos del sistema ("[DocumentSpace] Authentication Number…") y correos
-# de personas ("[SACE2] Vendor document IFC", "Wrong Tag numbers"): no lo son.
-_RETURN_SUBJECT_RE = re.compile(r"\[[A-Z0-9&]+(?:-[A-Z0-9]+){2,}\]")
+# Un transmittal de Document Space lleva entre corchetes un código que empieza
+# por la clave del proyecto: "[JUS&ICS2-CI0021-HS-EI-T-0029] …". Del mismo
+# dominio (hec.co.kr) llega mucho más que no lo es:
+#   · avisos del sistema     "[DocumentSpace] Authentication Number Infomation"
+#   · correos de personas    "[SACE2] Vendor document IFC", "Wrong Tag numbers"
+#   · avisos de workflow     "[VDTR-CI-1602] JUS&ICS2-CI0021-EIPSA-HS-T-0063"
+# El último engaña porque también son tres segmentos entre corchetes, pero ahí
+# va el identificador del flujo, no el transmittal, y el correo no trae tabla de
+# documentos (parse revienta con «No se encontró columna de documento»).
+# Por eso se exige que la clave sea un proyecto conocido: es además la que el
+# parser necesita para saber de qué pedido se trata.
 
 
 def matches_subject(subject: str) -> bool:
-    return bool(_RETURN_SUBJECT_RE.search(subject or ""))
+    code = extract_transmittal_code(subject or "")
+    if not code or code.count("-") < 2:
+        return False
+    if _get_project_key(code) in DOCSPACE_PROJECT_MAP:
+        return True
+    # Pinta de transmittal pero de un proyecto sin dar de alta: se ignora, y se
+    # deja constancia para que se añada a DOCSPACE_PROJECT_MAP.
+    if code.count("-") >= 4:
+        logger.warning(
+            "Document Space: '%s' parece un transmittal pero el proyecto '%s' no "
+            "está en DOCSPACE_PROJECT_MAP; el correo se ignora.", subject, _get_project_key(code))
+    return False
 
 
 def extract_transmittal_code(subject: str) -> str | None:
