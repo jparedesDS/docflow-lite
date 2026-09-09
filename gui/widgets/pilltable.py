@@ -26,7 +26,7 @@ _PADX = 8
 
 class PillTable(ctk.CTkFrame):
     def __init__(self, master, columns, on_double_click=None, on_select=None,
-                 on_sort=None, rowheight=40, **kwargs):
+                 on_sort=None, rowheight=40, multiselect=False, **kwargs):
         super().__init__(master, fg_color=theme.BG_CARD, corner_radius=12,
                          border_width=1, border_color=theme.BORDER, **kwargs)
         self._columns = columns
@@ -34,10 +34,12 @@ class PillTable(ctk.CTkFrame):
         self._on_select = on_select
         self._on_sort = on_sort
         self._rowheight = rowheight
+        self._multiselect = multiselect     # ctrl+clic suma · mayús+clic rango
         self._ctx_builder = None
         self._pool: list[dict] = []
         self._rowid_pos: dict[str, int] = {}
         self._selected: str | None = None
+        self._sel: list[str] = []
         self._header_labels: dict[str, tk.Label] = {}
 
         wrap = tk.Frame(self, bg=theme.BG_CARD)
@@ -154,6 +156,7 @@ class PillTable(ctk.CTkFrame):
             self._pool[i]["frame"].grid_remove()
             self._pool[i]["rowid"] = None
         self._selected = None
+        self._sel = []
         self._canvas.yview_moveto(0)
 
     def clear(self) -> None:
@@ -162,6 +165,7 @@ class PillTable(ctk.CTkFrame):
             ro["rowid"] = None
         self._rowid_pos = {}
         self._selected = None
+        self._sel = []
 
     def selected_id(self) -> str | None:
         return self._selected
@@ -212,13 +216,23 @@ class PillTable(ctk.CTkFrame):
         def on_click(_e):
             if ro["rowid"]:
                 self.select(ro["rowid"])
+        def on_ctrl(_e):
+            if ro["rowid"]:
+                self.select(ro["rowid"], mode="toggle")
+            return "break"
+        def on_shift(_e):
+            if ro["rowid"]:
+                self.select(ro["rowid"], mode="range")
+            return "break"
         def on_dbl(_e):
             if ro["rowid"] and self._on_double_click:
                 self._on_double_click(ro["rowid"])
         def on_ctx(e):
             if not ro["rowid"]:
                 return
-            self.select(ro["rowid"])
+            # Clic derecho sobre algo ya seleccionado: respeta la selección
+            if ro["rowid"] not in self._sel:
+                self.select(ro["rowid"])
             if self._ctx_builder:
                 self._show_menu(e, ro["rowid"])
         widgets = [ro["frame"]]
@@ -229,6 +243,9 @@ class PillTable(ctk.CTkFrame):
             w.bind("<Double-Button-1>", on_dbl)
             w.bind("<Button-3>", on_ctx)
             w.bind("<MouseWheel>", self._on_wheel)
+            if self._multiselect:
+                w.bind("<Control-Button-1>", on_ctrl)
+                w.bind("<Shift-Button-1>", on_shift)
 
     def _paint(self, rowid: str, bg: str) -> None:
         ro = self._pool[self._rowid_pos[rowid]]
@@ -238,14 +255,48 @@ class PillTable(ctk.CTkFrame):
             if not c["pill"]:
                 c["label"].configure(bg=bg)
 
-    def select(self, rowid: str) -> None:
-        if self._selected and self._selected in self._rowid_pos:
-            self._paint(self._selected, self._pool[self._rowid_pos[self._selected]]["base"])
-        self._selected = rowid
-        if rowid in self._rowid_pos:
-            self._paint(rowid, theme.ACCENT_SOFT)
+    def select(self, rowid: str, mode: str = "set") -> None:
+        """Selecciona una fila. `mode`: 'set' · 'toggle' (ctrl) · 'range' (mayús).
+
+        Los dos últimos solo hacen algo con multiselect=True.
+        """
+        previas = list(self._sel)
+        if not self._multiselect or mode == "set":
+            self._sel = [rowid]
+        elif mode == "toggle":
+            self._sel = [r for r in self._sel if r != rowid] if rowid in self._sel \
+                else self._sel + [rowid]
+        elif mode == "range" and self._sel:
+            ini = self._rowid_pos.get(self._sel[-1], 0)
+            fin = self._rowid_pos.get(rowid, 0)
+            lo, hi = (ini, fin) if ini <= fin else (fin, ini)
+            entre = [r for r, pos in self._rowid_pos.items() if lo <= pos <= hi]
+            self._sel = self._sel + [r for r in entre if r not in self._sel]
+        else:
+            self._sel = [rowid]
+
+        self._selected = self._sel[-1] if self._sel else None
+        for r in set(previas) | set(self._sel):
+            if r in self._rowid_pos:
+                self._paint(r, theme.ACCENT_SOFT if r in self._sel
+                            else self._pool[self._rowid_pos[r]]["base"])
         if self._on_select:
-            self._on_select(rowid)
+            self._on_select(self._selected)
+
+    def selected_ids(self) -> list[str]:
+        """Filas seleccionadas, en el orden en que se fueron marcando."""
+        return [r for r in self._sel if r in self._rowid_pos]
+
+    def row_values(self, rowid: str) -> list[str]:
+        """Textos de las celdas de una fila (para copiar al portapapeles)."""
+        pos = self._rowid_pos.get(rowid)
+        if pos is None:
+            return []
+        return [c["label"].cget("text").strip() for c in self._pool[pos]["cells"]]
+
+    def copy_to_clipboard(self, text: str) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(text)
 
     def _show_menu(self, event, rowid: str) -> None:
         try:

@@ -13,18 +13,28 @@ from gui import cell_format
 from gui import theme
 from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
+from gui.widgets.pilltable import PillTable
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
 
+# Columnas de la tabla (key · cabecera · ancho mínimo · estira · alineación),
+# con el mismo formato por celda que Documentos y Pedidos.
 COLUMNS = [
-    "Pedido", "Cliente", "Docs", "Días", "Urgencia",
-    "Nivel propuesto", "Último envío", "Reclamaciones",
+    {"key": "Pedido",       "label": "Pedido",     "min": 118, "anchor": "w"},
+    {"key": "Cliente",      "label": "Cliente",    "min": 220, "anchor": "w", "stretch": True},
+    {"key": "Docs",         "label": "Docs",       "min": 70,  "anchor": "center"},
+    {"key": "Días",         "label": "Días",       "min": 84,  "anchor": "center"},
+    {"key": "Urgencia",     "label": "Urgencia",   "min": 112, "anchor": "center"},
+    {"key": "Nivel",        "label": "Nivel",      "min": 150, "anchor": "center"},
+    {"key": "Último envío", "label": "Último envío", "min": 122, "anchor": "center"},
+    {"key": "Reclamaciones", "label": "Enviadas",  "min": 96,  "anchor": "center"},
 ]
 
 URGENCY_LABEL = {"low": "BAJA", "medium": "MEDIA", "high": "ALTA"}
 URGENCY_COLOR = {"low": theme.BLUE, "medium": theme.AMBER, "high": theme.RED}
 LEVEL_LABEL = {1: "1 · Recordatorio", 2: "2 · Formal", 3: "3 · Urgente"}
+LEVEL_COLOR = {1: theme.BLUE, 2: theme.AMBER, 3: theme.RED}
 
 
 class ReclamacionesView(ctk.CTkFrame):
@@ -98,34 +108,16 @@ class ReclamacionesView(ctk.CTkFrame):
         )
         self.lbl_status.pack(fill="x", padx=theme.SPACE_6)
 
-        # Tabla con selección múltiple
-        self.table = DataTable(
-            self, columns=COLUMNS,
-            on_double_click=self._on_row_double,
-            selectmode="extended",
+        # Tabla con color por celda y selección múltiple (ctrl/mayús + clic)
+        self.table = PillTable(
+            self, columns=COLUMNS, on_double_click=self._on_row_double,
+            on_select=lambda _r: self._on_select_change(), on_sort=self._on_sort,
+            multiselect=True, rowheight=40,
         )
-        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
-        self.table.set_columns_width({
-            "Pedido": 120, "Cliente": 240, "Docs": 70, "Días": 115,
-            "Urgencia": 110, "Nivel propuesto": 150, "Último envío": 140, "Reclamaciones": 120,
-        })
-        # Texto a la izquierda, números/badges/fechas centrados
-        self.table.set_columns_anchor({
-            "Pedido": "w", "Cliente": "w",
-            "Docs": "center", "Días": "center", "Urgencia": "center",
-            "Nivel propuesto": "center", "Último envío": "center",
-            "Reclamaciones": "center",
-        })
-
-        # Tags color para urgency
-        self.table.tree.tag_configure("urg_low", foreground=theme.BLUE)
-        self.table.tree.tag_configure("urg_medium", foreground=theme.AMBER)
-        self.table.tree.tag_configure("urg_high", foreground=theme.RED)
-
+        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6,
+                        pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_context_menu(self._ctx_menu)
-
-        # Bind selection → habilitar botones
-        self.table.tree.bind("<<TreeviewSelect>>", self._on_select_change)
+        self._sort: tuple[str, bool] = ("Días", False)   # los más viejos arriba
 
     # ── Datos ─────────────────────────────────────────────────────────────────
 
@@ -185,32 +177,66 @@ class ReclamacionesView(ctk.CTkFrame):
             self.lbl_count.configure(text="0 pedidos")
             return
 
-        for p in rows:
-            level = claims_service.get_escalation_level(p)
-            urgency = p.get("urgency", "low")
-            tag = f"urg_{urgency}"
-            self.table.add_row(
-                values=[
-                    p.get("pedido", ""),
-                    p.get("cliente", "")[:60],
-                    p.get("docs_count", 0),
-                    cell_format.urgency_bar(p.get("max_dias", 0)),
-                    cell_format.urgency_with_icon(
-                        URGENCY_LABEL.get(urgency, "—"), urgency
-                    ),
-                    LEVEL_LABEL.get(level, ""),
-                    _fmt_dt(p.get("last_claimed")),
-                    p.get("claim_count", 0),
-                ],
-                iid=p["pedido"],
-                tags=(tag,),
-            )
-
+        self._render_rows()
         self.lbl_count.configure(text=f"{len(rows)} pedidos")
         self.lbl_status.configure(
-            text=f"✓  {len(rows)} pedidos. Doble-click en una fila para previsualizar y enviar.",
+            text=f"✓  {len(rows)} pedidos. Doble clic en una fila para previsualizar y enviar · "
+                 "ctrl o mayús + clic para marcar varias.",
             text_color=theme.TEXT_MUTED,
         )
+
+    # ── Pintado de la tabla ───────────────────────────────────────────────────
+
+    def _build_cells(self, p: dict) -> dict:
+        """Celdas con estilo de un pedido: color solo donde dice algo."""
+        urgency = p.get("urgency", "low")
+        ucol = URGENCY_COLOR.get(urgency, theme.TEXT_MUTED)
+        level = claims_service.get_escalation_level(p)
+        lcol = LEVEL_COLOR.get(level, theme.TEXT_MUTED)
+        dias = p.get("max_dias", 0)
+        enviadas = p.get("claim_count", 0) or 0
+        ultimo = _fmt_dt(p.get("last_claimed"))
+        return {
+            # El pedido es la identidad de la fila: en acento, como en Documentos
+            "Pedido":   {"text": p.get("pedido", ""), "fg": theme.ACCENT, "bold": True},
+            "Cliente":  {"text": (p.get("cliente", "") or "")[:60]},
+            "Docs":     {"text": str(p.get("docs_count", 0)), "bold": True},
+            # Los días sin respuesta son EL dato: van en el color de la urgencia
+            "Días":     {"text": str(dias), "fg": ucol, "bold": True},
+            "Urgencia": {"text": cell_format.urgency_with_icon(
+                             URGENCY_LABEL.get(urgency, "—"), urgency),
+                         "pill": True, "fg": ucol,
+                         "pill_bg": ui.blend(ucol, theme.BG_CARD, 0.20)},
+            "Nivel":    {"text": LEVEL_LABEL.get(level, "—"), "fg": lcol, "bold": True},
+            "Último envío": {"text": ultimo,
+                             "fg": theme.TEXT_MAIN if ultimo != "—" else theme.TEXT_MUTED},
+            "Reclamaciones": {"text": str(enviadas), "bold": bool(enviadas),
+                              "fg": theme.TEXT_MAIN if enviadas else theme.TEXT_MUTED},
+        }
+
+    _SORT_KEY = {
+        "Pedido": lambda p: str(p.get("pedido", "")),
+        "Cliente": lambda p: str(p.get("cliente", "")).lower(),
+        "Docs": lambda p: p.get("docs_count", 0),
+        "Días": lambda p: p.get("max_dias", 0),
+        "Urgencia": lambda p: {"high": 3, "medium": 2, "low": 1}.get(p.get("urgency"), 0),
+        "Nivel": lambda p: claims_service.get_escalation_level(p),
+        "Último envío": lambda p: str(p.get("last_claimed") or ""),
+        "Reclamaciones": lambda p: p.get("claim_count", 0) or 0,
+    }
+
+    def _on_sort(self, key: str) -> None:
+        col, asc = self._sort
+        self._sort = (key, not asc if key == col else True)
+        self._render_rows()
+
+    def _render_rows(self) -> None:
+        col, asc = self._sort
+        key = self._SORT_KEY.get(col, self._SORT_KEY["Días"])
+        filas = sorted(self._pedidos, key=key, reverse=not asc)
+        self.table.set_sort_arrow(col, asc)
+        self.table.set_rows([(p["pedido"], self._build_cells(p)) for p in filas])
+        self._on_select_change()
 
     def _show_error(self, msg: str) -> None:
         self.btn_reload.configure(state="normal")
@@ -221,8 +247,8 @@ class ReclamacionesView(ctk.CTkFrame):
 
     # ── Menú contextual ────────────────────────────────────────────────────
 
-    def _ctx_menu(self, iid: str, col_idx: int):
-        pedido = iid  # el iid de la fila ES el código de pedido
+    def _ctx_menu(self, iid: str):
+        pedido = iid  # el id de la fila ES el código de pedido
         return [
             ("✉  Previsualizar y enviar", self._open_preview),
             ("-", None),
@@ -261,7 +287,7 @@ class ReclamacionesView(ctk.CTkFrame):
         CommMatrixWindow(self)
 
     def _on_select_change(self, _evt=None) -> None:
-        n = len(self.table.selected_iids())
+        n = len(self.table.selected_ids())
         self.btn_preview.configure(state="normal" if n == 1 else "disabled")
         self.btn_send_selected.configure(
             state="normal" if n >= 1 else "disabled",
@@ -269,7 +295,7 @@ class ReclamacionesView(ctk.CTkFrame):
         )
 
     def _open_preview(self) -> None:
-        sel = self.table.selected_iids()
+        sel = self.table.selected_ids()
         if len(sel) != 1:
             return
         pedido = sel[0]
@@ -289,7 +315,7 @@ class ReclamacionesView(ctk.CTkFrame):
         return True
 
     def _send_selected(self) -> None:
-        sel = self.table.selected_iids()
+        sel = self.table.selected_ids()
         if not sel or not self._can_send():
             return
         self._send_bulk_confirm(sel, "seleccionada(s)")
@@ -1165,10 +1191,11 @@ def _open_html_preview(html: str, kind: str) -> None:
 
 
 def _fmt_dt(iso: str | None) -> str:
+    """Fecha corta en el formato del resto de la app: 22-07-2026."""
     if not iso:
         return "—"
     try:
         from datetime import datetime
-        return datetime.fromisoformat(iso).strftime("%d %b %Y")
+        return datetime.fromisoformat(iso).strftime("%d-%m-%Y")
     except Exception:
         return iso[:10]
