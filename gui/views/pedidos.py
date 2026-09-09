@@ -56,6 +56,89 @@ def _norm_doc(s) -> str:
     return re.sub(r"\s+", "", str(s or "")).upper()
 
 
+def _date(v) -> str:
+    """Fecha del ERP → '14-10-2024'. El Timestamp de pandas arrastra la hora."""
+    if v is None or v == "":
+        return ""
+    s = str(v).strip()
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return s.split(" ")[0][:24]
+
+
+def _num(v) -> str:
+    """Número del ERP → texto sin decimal de más ('272.0' → '272').
+
+    Ojo con el cero: es un valor válido, no un hueco (un 0 % es «0 %»).
+    """
+    if v is None:
+        return ""
+    s = str(v).strip()
+    if not s:
+        return ""
+    try:
+        f = float(s)
+        return f"{int(f)}" if f == int(f) else f"{f:g}"
+    except (TypeError, ValueError):
+        return s
+
+
+# ── Piezas visuales de esta vista ────────────────────────────────────────────
+
+def _card(parent, **kw):
+    """Tarjeta base: fondo, borde fino y esquinas del sistema."""
+    return ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_LG,
+                        border_width=1, border_color=theme.BORDER, **kw)
+
+
+def _rule(parent, pady=theme.SPACE_3):
+    ctk.CTkFrame(parent, fg_color=theme.BORDER, height=1).pack(fill="x", pady=pady)
+
+
+def _stat(parent, value: str, label: str, color: str, col: int, *, sub: str = "") -> None:
+    """Una cifra grande con su rótulo debajo, dentro de la tira de estadísticas."""
+    cell = ctk.CTkFrame(parent, fg_color="transparent")
+    cell.grid(row=0, column=col, sticky="nsew", padx=(0, theme.SPACE_2))
+    ctk.CTkLabel(cell, text=value, font=theme.font(30, "bold"), text_color=color,
+                 anchor="w").pack(anchor="w")
+    ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_LABEL,
+                 text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+    if sub:
+        ctk.CTkLabel(cell, text=sub, font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
+                     anchor="w").pack(anchor="w")
+
+
+def _field(parent, label: str, value: str, *, color: str | None = None,
+           wrap: int = 330) -> None:
+    """Fila compacta de ficha: rótulo pequeño arriba, dato grande debajo."""
+    row = ctk.CTkFrame(parent, fg_color="transparent")
+    row.pack(fill="x", pady=(0, theme.SPACE_2))
+    ctk.CTkLabel(row, text=str(label).upper(), font=theme.FONT_LABEL,
+                 text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+    ctk.CTkLabel(row, text=str(value) if value not in ("", None) else "—",
+                 font=theme.font(14, "bold"), text_color=color or theme.TEXT_MAIN,
+                 anchor="w", justify="left", wraplength=wrap).pack(anchor="w")
+
+
+def _fields_grid(parent, campos: list, ncols: int = 2) -> None:
+    """Reparte los campos en columnas para que la ficha no se haga interminable.
+
+    Se llenan por columnas (no por filas): así se lee de arriba abajo y el
+    orden de los campos se mantiene."""
+    grid = ctk.CTkFrame(parent, fg_color="transparent")
+    grid.pack(fill="x")
+    ncols = max(1, min(ncols, len(campos)))
+    for c in range(ncols):
+        grid.grid_columnconfigure(c, weight=1, uniform="fic")
+    por_col = -(-len(campos) // ncols)          # techo de la división
+    for c in range(ncols):
+        col = ctk.CTkFrame(grid, fg_color="transparent")
+        col.grid(row=0, column=c, sticky="nsew", padx=(0, theme.SPACE_3 if c < ncols - 1 else 0))
+        for lab, val, color in campos[c * por_col:(c + 1) * por_col]:
+            _field(col, lab, val, color=color, wrap=200 if ncols > 1 else 330)
+
+
 # ════════════════════════════════════════════════════════════════════════════
 #  Vista principal
 # ════════════════════════════════════════════════════════════════════════════
@@ -83,26 +166,22 @@ class PedidosView(ctk.CTkFrame):
             "equipos y qué requiere acción.",
             help_key="pedidos")
 
-        # ── Barra de filtros (encontrar el pedido) ───────────────────────
-        bar = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=12,
-                           border_width=1, border_color=theme.BORDER)
-        bar.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_2))
-        row = ctk.CTkFrame(bar, fg_color="transparent")
-        row.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
-        ctk.CTkLabel(row, text="🔍", font=theme.font(15)).pack(side="left", padx=(0, theme.SPACE_2))
+        # ── Buscador (sin caja propia: la barra ya se lee sola) ───────────
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_3))
         self.ent_search = ctk.CTkEntry(
-            row, placeholder_text="Nº de pedido o cliente…", height=theme.HEIGHT_INPUT,
+            row, placeholder_text="🔍   Nº de pedido o cliente…", height=theme.HEIGHT_INPUT,
             corner_radius=theme.RADIUS_MD, fg_color=theme.BG_INPUT, border_color=theme.BORDER,
-            text_color=theme.TEXT_MAIN, font=theme.FONT_SMALL)
-        self.ent_search.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
+            text_color=theme.TEXT_MAIN, font=theme.FONT_BODY, width=320)
+        self.ent_search.pack(side="left", padx=(0, theme.SPACE_2))
         self.ent_search.bind("<KeyRelease>", lambda e: self._update_matches())
         self.opt_pedido = ctk.CTkOptionMenu(
-            row, values=["—"], command=self._on_pick, width=340, height=theme.HEIGHT_INPUT,
-            corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL, fg_color=theme.BG_INPUT,
+            row, values=["—"], command=self._on_pick, height=theme.HEIGHT_INPUT,
+            corner_radius=theme.RADIUS_MD, font=theme.FONT_BODY, fg_color=theme.BG_INPUT,
             button_color=theme.BORDER_STRONG, button_hover_color=theme.TEXT_MUTED,
             text_color=theme.TEXT_MAIN)
-        self.opt_pedido.pack(side="left", padx=(0, theme.SPACE_2))
-        self.lbl_count = ctk.CTkLabel(row, text="", font=theme.FONT_TINY,
+        self.opt_pedido.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_3))
+        self.lbl_count = ctk.CTkLabel(row, text="", font=theme.FONT_SMALL,
                                       text_color=theme.TEXT_MUTED)
         self.lbl_count.pack(side="left")
 
@@ -255,18 +334,25 @@ class PedidosView(ctk.CTkFrame):
 
         self._build_header_card(scroll, pedido, dash, consulta, docs, kpis, verdict)
 
-        # Conmutador (arriba): Estado del pedido  |  Equipos & Tags (subsección)
+        # Barra: conmutador de subvista a la izquierda, acciones a la derecha
         n_tags = sum(1 for t in self._tags if t.get("_vigente", True))
+        bar = ctk.CTkFrame(scroll, fg_color="transparent")
+        bar.pack(fill="x", pady=(0, theme.SPACE_3))
         self._seg_sub = ctk.CTkSegmentedButton(
-            scroll, values=["Estado del pedido",
-                            f"Equipos & Tags ({n_tags})" if n_tags else "Equipos & Tags"],
-            command=self._on_subview, height=theme.HEIGHT_BUTTON_SM,
+            bar, values=["Estado del pedido",
+                         f"Equipos & Tags ({n_tags})" if n_tags else "Equipos & Tags"],
+            command=self._on_subview, height=theme.HEIGHT_BUTTON,
             font=theme.FONT_SMALL_BOLD, corner_radius=theme.RADIUS_MD,
             fg_color=theme.BG_CARD, selected_color=theme.ACCENT,
             selected_hover_color=theme.ACCENT_HOVER, unselected_color=theme.BG_CARD,
             unselected_hover_color=theme.BG_INPUT, text_color=theme.TEXT_MAIN)
         self._seg_sub.set("Estado del pedido")
-        self._seg_sub.pack(anchor="center", pady=(0, theme.SPACE_3))
+        self._seg_sub.pack(side="left")
+        btn = ui.button(bar, "Informe del pedido  →", "primary",
+                        corner_radius=theme.RADIUS_MD)
+        btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
+        btn.pack(side="right")
+        ui.tooltip(btn, "Informe web completo: ficha, KPIs, predicción y toda la documentación.")
 
         self._body = ctk.CTkFrame(scroll, fg_color="transparent")
         self._body.pack(fill="both", expand=True)
@@ -276,23 +362,66 @@ class PedidosView(ctk.CTkFrame):
         self._subview = "tags" if value.startswith("Equipos") else "estado"
         self._render_body()
 
+    # Por debajo de este ancho las dos columnas se apilan (una encima de otra)
+    _TWO_COL_MIN = 1180
+
     def _render_body(self) -> None:
         body = getattr(self, "_body", None)
         if body is None:
             return
         for w in body.winfo_children():
             w.destroy()
+        self._cols = None
         dash = self._dash or {}
         if self._subview == "tags":
             self._render_tags_block(body, self._tags)
             return
-        # Estado del pedido: Fabricación (fases + OTs) → Documentación → Atención → Plazo
-        self._build_fase_erp(body, dash.get("consulta") or {})
-        self._build_ots_block(body, self._bundle)
-        self._build_estado_documental(body, dash.get("kpis") or {},
-                                      dash.get("avg_dias_respuesta", 0))
-        self._build_atencion(body, dash.get("documents") or [])
-        self._build_seguimiento_block(body, dash.get("seguimiento") or {})
+
+        # Dos columnas: a la izquierda el trabajo (fabricación y lo accionable),
+        # a la derecha la ficha y el plazo. Así se aprovecha el ancho y el
+        # informe cabe casi entero sin desplazarse.
+        body.grid_columnconfigure(0, weight=62, uniform="col")
+        body.grid_columnconfigure(1, weight=38, uniform="col")
+        left = ctk.CTkFrame(body, fg_color="transparent")
+        right = ctk.CTkFrame(body, fg_color="transparent")
+        self._cols = (left, right)
+        self._apply_columns()
+
+        self._build_fase_erp(left, dash.get("consulta") or {})
+        self._build_ots_block(left, self._bundle)
+        self._build_atencion(left, dash.get("documents") or [])
+
+        self._build_ficha(right, self._pedido_current or "", dash)
+        self._build_seguimiento_block(right, dash.get("seguimiento") or {})
+
+        body.bind("<Configure>", self._on_body_resize)
+
+    def _apply_columns(self, ancho: int | None = None) -> None:
+        """Coloca las dos columnas en paralelo, o apiladas si no caben."""
+        if not getattr(self, "_cols", None):
+            return
+        left, right = self._cols
+        if ancho is None:
+            ancho = self._body.winfo_width()
+        dos = ancho >= self._TWO_COL_MIN
+        if getattr(self, "_dos_cols", None) is dos:
+            return
+        self._dos_cols = dos
+        # `columnspan` y `pady` van SIEMPRE: grid() solo cambia lo que se le
+        # pasa, así que al volver a dos columnas sin repetirlos se quedaría el
+        # columnspan=2 de la versión apilada y una columna taparía a la otra.
+        if dos:
+            left.grid(row=0, column=0, columnspan=1, sticky="nsew",
+                      padx=(0, theme.SPACE_3), pady=0)
+            right.grid(row=0, column=1, columnspan=1, sticky="nsew", pady=0)
+        else:
+            # Apiladas: cada una a todo el ancho, no al 62 % / 38 % de su columna
+            left.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
+            right.grid(row=1, column=0, columnspan=2, sticky="nsew",
+                       padx=0, pady=(theme.SPACE_3, 0))
+
+    def _on_body_resize(self, event) -> None:
+        self._apply_columns(event.width)
 
     # ── Veredicto de estado ──────────────────────────────────────────────────
 
@@ -327,8 +456,8 @@ class PedidosView(ctk.CTkFrame):
 
     @staticmethod
     def _erp_fields(pedido: str) -> list:
-        """Campos de otros departamentos que afectan a este pedido: material
-        pendiente de proveedor y no conformidades abiertas. Vacío si no hay."""
+        """Lo que otros departamentos tienen abierto en este pedido, como
+        (etiqueta, valor, color). Lo que avisa de algo va coloreado."""
         out = []
         try:
             from core.services import purchases
@@ -336,7 +465,7 @@ class PedidosView(ctk.CTkFrame):
             if compras:
                 tarde = sum(1 for c in compras if c["retraso"] > 0)
                 txt = f"{len(compras)} línea(s)" + (f" · {tarde} con retraso" if tarde else "")
-                out.append(("Compras pendientes", txt))
+                out.append(("Compras pendientes", txt, theme.AMBER if tarde else theme.TEXT_MAIN))
         except Exception:  # noqa: BLE001 — sin ERP la ficha se pinta igual
             pass
         try:
@@ -345,14 +474,16 @@ class PedidosView(ctk.CTkFrame):
             if ncs:
                 abiertas = sum(1 for n in ncs if not n["cerrada"])
                 txt = f"{len(ncs)}" + (f" · {abiertas} sin cerrar" if abiertas else " · todas cerradas")
-                out.append(("No conformidades", txt))
+                out.append(("No conformidades", txt,
+                            theme.AMBER if abiertas else theme.GREEN))
         except Exception:  # noqa: BLE001
             pass
         try:
             from core.services import production
             h = production.hours_for_pedido(pedido)
             if h and h["horas"] >= 1:      # menos de una hora no dice nada
-                out.append(("Horas de taller", f"{h['horas']:,.0f} h".replace(",", ".")))
+                out.append(("Horas de taller", f"{h['horas']:,.0f} h".replace(",", "."),
+                            theme.TEXT_MAIN))
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -363,7 +494,7 @@ class PedidosView(ctk.CTkFrame):
                 txt = f"{len(facturas)} · {adm.euros(sum(f['importe'] for f in facturas))}"
                 if pend:
                     txt += f" · {len(pend)} sin cobrar"
-                out.append(("Facturado", txt))
+                out.append(("Facturado", txt, theme.AMBER if pend else theme.GREEN))
             avales = adm.bonds_for_pedido(pedido)
             if avales:
                 vencidos = sum(1 for a in avales if a["vencido"])
@@ -373,15 +504,16 @@ class PedidosView(ctk.CTkFrame):
                     txt += f" · vence {prox:%d-%m-%Y}"
                 if vencidos:
                     txt += f" · {vencidos} pasado(s) de fecha"
-                out.append(("Avales", txt))
+                out.append(("Avales", txt, theme.RED if vencidos else theme.TEXT_MAIN))
         except Exception:  # noqa: BLE001
             pass
         return out
 
     @staticmethod
     def _almacen_field(pedido: str):
-        """('Días en almacén', valor) del ERP: lo que esperó (o lleva esperando)
-        el material entre el aviso de entrega y el envío. None si no aplica."""
+        """('Días en almacén', valor, color) del ERP: lo que esperó (o lleva
+        esperando) el material entre el aviso de entrega y el envío. None si no
+        aplica. En rojo si sigue parado y ya lleva más de un mes."""
         try:
             from core.services import warehouse
             r = warehouse.for_pedido(pedido)
@@ -390,112 +522,166 @@ class PedidosView(ctk.CTkFrame):
         if not r:
             return None
         if r["en_almacen"]:
-            return ("Días en almacén", f"{r['dias']} d · esperando salida")
+            color = theme.RED if r["dias"] >= 30 else theme.AMBER
+            return ("Días en almacén", f"{r['dias']} d · esperando salida", color)
         salida = r["transporte"] or "enviado"
-        return ("Días en almacén", f"{r['dias']} d · {salida}")
+        return ("Días en almacén", f"{r['dias']} d · {salida}", theme.TEXT_MAIN)
+
+    # ── Ficha del pedido (columna derecha) ───────────────────────────────────
+
+    def _build_ficha(self, parent, pedido: str, dash: dict) -> None:
+        consulta = dash.get("consulta") or {}
+        docs = dash.get("documents") or []
+        first = docs[0] if docs else {}
+        hdr = (getattr(self, "_bundle", {}) or {}).get("header") or {}
+
+        datos = []
+        for lab, val in (
+            ("PO", str(first.get("Nº PO", "") or "").strip()),
+            ("Material", str(first.get("Material", "")
+                             or consulta.get("Tipo Equipo", "") or "").strip()),
+            ("Nº equipos", _num(consulta.get("Nº Equipos"))),
+            ("Comercial", str(consulta.get("Responsable", "") or "").strip()),
+            ("Nº oferta", str(consulta.get("Nº Oferta", "") or "").strip()),
+            ("Fecha de pedido", _date(consulta.get("Fecha Pedido"))),
+            ("Fecha prevista", _date(consulta.get("Fecha Prevista"))),
+        ):
+            if val:
+                datos.append((lab, val, theme.TEXT_MAIN))
+
+        entrega = []
+        for lab in ("Prev. taller", "Recep. taller", "Aviso entrega",
+                    "Material disponible", "Cerrado"):
+            val = str(hdr.get(lab, "") or "").strip()
+            if val:
+                entrega.append((lab, val, theme.TEXT_MAIN))
+        alm = self._almacen_field(pedido)
+        if alm:
+            entrega.append(alm)
+
+        otros = list(self._erp_fields(pedido))
+        # El «Aval» de la cabecera solo si administración no ha dado los suyos:
+        # ese campo dice «No Aplica» en pedidos que sí tienen aval, así que el
+        # recuento real manda sobre él.
+        aval = str(hdr.get("Aval", "") or "").strip()
+        if aval and not any(lab == "Avales" for lab, _, _ in otros):
+            otros.append(("Aval", aval, theme.TEXT_MAIN))
+
+        for titulo, campos in (("Ficha del pedido", datos),
+                               ("Fabricación y entrega", entrega),
+                               ("Otros departamentos", otros)):
+            if not campos:
+                continue
+            _section_header(parent, titulo).pack(fill="x", pady=(0, theme.SPACE_2))
+            card = _card(parent)
+            card.pack(fill="x", pady=(0, theme.SPACE_3))
+            inner = ctk.CTkFrame(card, fg_color="transparent")
+            inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+            _fields_grid(inner, campos, ncols=2 if len(campos) > 3 else 1)
 
     def _build_header_card(self, parent, pedido, dash, consulta, docs, kpis, verdict) -> None:
+        """Cabecera: identidad, veredicto, las cifras que importan y el reparto
+        de la documentación en una sola barra. Los datos del pedido van aparte,
+        en la columna de la ficha, para no empujar todo esto hacia abajo."""
         cli = dash.get("cliente", "") or consulta.get("Cliente", "")
-        first = docs[0] if docs else {}
-        po = str(first.get("Nº PO", "") or "").strip()
-        material = str(first.get("Material", "") or consulta.get("Tipo Equipo", "") or "").strip()
+        directo = str(consulta.get("Cliente", "") or "").strip()
         proyecto = str(consulta.get("Proyecto", "") or "").strip()
-        comercial = str(consulta.get("Responsable", "") or "").strip()
-        oferta = str(consulta.get("Nº Oferta", "") or "").strip()
-        nequipos = str(consulta.get("Nº Equipos", "") or "").strip()
-        f_ped = _fmt(consulta.get("Fecha Pedido"))
-        f_prev = _fmt(consulta.get("Fecha Prevista"))
 
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=12,
-                            border_width=1, border_color=theme.BORDER)
-        card.pack(fill="x", pady=(0, theme.SPACE_2))
+        card = _card(parent)
+        card.pack(fill="x", pady=(0, theme.SPACE_3))
         inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_2)
+        inner.pack(fill="x", padx=theme.SPACE_5, pady=theme.SPACE_4)
 
         top = ctk.CTkFrame(inner, fg_color="transparent")
         top.pack(fill="x")
 
-        # Izquierda: identidad
+        # Identidad
         left = ctk.CTkFrame(top, fg_color="transparent")
         left.pack(side="left", fill="x", expand=True)
         title = ctk.CTkFrame(left, fg_color="transparent")
         title.pack(anchor="w")
-        ctk.CTkLabel(title, text=pedido, font=theme.font(22, "bold"),
+        ctk.CTkLabel(title, text=pedido, font=theme.font(32, "bold"),
                      text_color=theme.TEXT_MAIN).pack(side="left")
         if cli:
-            ctk.CTkLabel(title, text=cli, font=theme.FONT_BODY_BOLD,
-                         text_color=theme.TEXT_SUB).pack(side="left", padx=(theme.SPACE_3, 0))
+            ctk.CTkLabel(title, text=cli, font=theme.font(17, "bold"),
+                         text_color=theme.ACCENT).pack(side="left", padx=(theme.SPACE_3, 0),
+                                                       pady=(theme.SPACE_2, 0))
+        if directo and directo.upper() != str(cli).upper():
+            ctk.CTkLabel(title, text=f"vía {directo}", font=theme.FONT_SMALL,
+                         text_color=theme.TEXT_MUTED).pack(side="left", padx=(theme.SPACE_2, 0),
+                                                           pady=(theme.SPACE_2, 0))
         if proyecto:
             ctk.CTkLabel(left, text=proyecto, font=theme.FONT_SMALL, text_color=theme.TEXT_SUB,
-                         anchor="w", justify="left", wraplength=560).pack(anchor="w", pady=(2, 0))
+                         anchor="w", justify="left", wraplength=680).pack(anchor="w", pady=(4, 0))
 
-        # Derecha: veredicto
+        # Veredicto
         right = ctk.CTkFrame(top, fg_color="transparent")
-        right.pack(side="right", padx=(theme.SPACE_3, 0))
+        right.pack(side="right", padx=(theme.SPACE_4, 0))
         col = verdict["color"]
-        ctk.CTkLabel(right, text=f"  {verdict['label']}  ", font=theme.font(13, "bold"),
+        ctk.CTkLabel(right, text=f"  {verdict['label']}  ", font=theme.font(14, "bold"),
                      text_color=theme.TEXT_ON_ACCENT if col != theme.TEXT_MUTED else theme.TEXT_MAIN,
-                     fg_color=col, corner_radius=8, height=30).pack(anchor="e")
+                     fg_color=col, corner_radius=theme.RADIUS_MD, height=34).pack(anchor="e")
         ctk.CTkLabel(right, text=verdict["reason"], font=theme.FONT_TINY,
                      text_color=theme.TEXT_SUB, anchor="e", justify="right",
-                     wraplength=300).pack(anchor="e", pady=(theme.SPACE_1, 0))
+                     wraplength=320).pack(anchor="e", pady=(theme.SPACE_1, 0))
 
-        # Datos del pedido — grid claro y bien distribuido (etiqueta + valor)
-        fields = []
-        if po: fields.append(("PO", po))
-        if material: fields.append(("Material", material))
-        if nequipos: fields.append(("Nº equipos", nequipos))
-        if comercial: fields.append(("Comercial", comercial))
-        if oferta: fields.append(("Nº oferta", oferta))
-        if f_ped != "—": fields.append(("Fecha pedido", f_ped))
-        if f_prev != "—": fields.append(("Fecha prevista", f_prev))
-        # Seguimiento del ERP (taller, entrega, material, aval) — solo lo informado
-        hdr = (getattr(self, "_bundle", {}) or {}).get("header") or {}
-        for lab in ("Prev. taller", "Recep. taller", "Aviso entrega",
-                    "Material disponible", "Aval", "Cerrado"):
-            val = str(hdr.get(lab, "") or "").strip()
-            if val:
-                fields.append((lab, val))
-        alm = self._almacen_field(pedido)
-        if alm:
-            fields.append(alm)
-        for extra in self._erp_fields(pedido):
-            fields.append(extra)
-        if fields:
-            ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
-            ginfo = ctk.CTkFrame(inner, fg_color="transparent")
-            ginfo.pack(fill="x")
-            ncols = 4
-            for c in range(ncols):
-                ginfo.grid_columnconfigure(c, weight=1, uniform="idf")
-            for i, (lab, val) in enumerate(fields):
-                self._info_item(ginfo, lab, val, i // ncols, i % ncols)
-
-        # Progreso (% aprobado)
-        ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
-        prow = ctk.CTkFrame(inner, fg_color="transparent")
-        prow.pack(fill="x")
-        ctk.CTkLabel(prow, text="Progreso documental", font=theme.FONT_SMALL_BOLD,
-                     text_color=theme.TEXT_MAIN).pack(side="left")
+        # Las cifras, en grande
+        _rule(inner, pady=theme.SPACE_4)
+        total = kpis.get("total", 0)
         pct = kpis.get("pct_completado", 0)
-        ctk.CTkLabel(prow, text=f"{pct}% aprobado", font=theme.FONT_SMALL_BOLD,
-                     text_color=theme.GREEN).pack(side="right")
-        pbar = ctk.CTkProgressBar(inner, height=10, corner_radius=5,
-                                  progress_color=theme.GREEN, fg_color=theme.BORDER)
-        pbar.pack(fill="x", pady=(theme.SPACE_2, 0))
-        pbar.set(min(pct, 100) / 100)
+        crit = kpis.get("criticos_15d", 0) or kpis.get("criticos", 0)
+        stats = [
+            (f"{_num(pct)}%", "aprobado", theme.GREEN if pct >= 100 else theme.ACCENT, ""),
+            (str(total), "documentos", theme.TEXT_MAIN, ""),
+            (str(kpis.get("aprobados", 0)), "aprobados", theme.GREEN, ""),
+            (str(kpis.get("enviados", 0)), "en revisión", theme.BLUE, "pendientes del cliente"),
+            (str(kpis.get("devoluciones", 0)), "devoluciones",
+             theme.AMBER if kpis.get("devoluciones") else theme.TEXT_MUTED, "con comentarios"),
+            (str(crit), "críticos", theme.RED if crit else theme.TEXT_MUTED,
+             f"{kpis.get('criticos_15d', 0)} con +15 días" if kpis.get("criticos_15d") else ""),
+            (f"{_to_int(round(float(dash.get('avg_dias_respuesta') or 0)))} d",
+             "respuesta media", theme.TEXT_SUB, "del cliente"),
+        ]
+        strip = ctk.CTkFrame(inner, fg_color="transparent")
+        strip.pack(fill="x")
+        for c in range(len(stats)):
+            strip.grid_columnconfigure(c, weight=1, uniform="stat")
+        for i, (val, lab, color, sub) in enumerate(stats):
+            _stat(strip, val, lab, color, i, sub=sub)
 
-        # Acción: generar el informe web completo de este pedido
-        ctk.CTkFrame(inner, fg_color=theme.BORDER, height=1).pack(fill="x", pady=theme.SPACE_2)
-        actions = ctk.CTkFrame(inner, fg_color="transparent")
-        actions.pack(fill="x", pady=(0, theme.SPACE_1))
-        ctk.CTkLabel(actions, text="Informe web completo: ficha, KPIs, predicción y tabla de toda la documentación.",
-                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
-            side="left", fill="x", expand=True)
-        btn = ui.button(actions, "Informe del pedido  →", "primary", size="xs",
-                        corner_radius=theme.RADIUS_MD)
-        btn.configure(command=lambda p=pedido, b=btn: self._generate_pedido_report(p, b))
-        btn.pack(side="right")
+        # Reparto de la documentación, en una sola barra
+        segs = [
+            ("Aprobados", kpis.get("aprobados", 0), theme.GREEN),
+            ("En revisión", kpis.get("enviados", 0), theme.BLUE),
+            ("Devoluciones", kpis.get("devoluciones", 0), theme.AMBER),
+            ("Sin enviar", kpis.get("sin_enviar", 0), theme.BORDER_STRONG),
+        ]
+        if total:
+            track = ctk.CTkFrame(inner, fg_color=theme.BG_INPUT, height=18,
+                                 corner_radius=theme.RADIUS_SM)
+            track.pack(fill="x", pady=(theme.SPACE_4, theme.SPACE_2))
+            track.pack_propagate(False)
+            x = 0.0
+            for _, count, color in segs:
+                if count <= 0:
+                    continue
+                w = count / total
+                ctk.CTkFrame(track, fg_color=color, corner_radius=0).place(
+                    relx=min(x, 0.999), rely=0, relheight=1, relwidth=min(w, 1 - x))
+                x += w
+            leg = ctk.CTkFrame(inner, fg_color="transparent")
+            leg.pack(fill="x")
+            for label, count, color in segs:
+                if count <= 0:
+                    continue
+                chip = ctk.CTkFrame(leg, fg_color="transparent")
+                chip.pack(side="left", padx=(0, theme.SPACE_4))
+                ctk.CTkFrame(chip, fg_color=color, width=10, height=10,
+                             corner_radius=3).pack(side="left", pady=(1, 0))
+                ctk.CTkLabel(chip, text=f" {label} ", font=theme.FONT_SMALL,
+                             text_color=theme.TEXT_SUB).pack(side="left")
+                ctk.CTkLabel(chip, text=str(count), font=theme.FONT_BODY_BOLD,
+                             text_color=theme.TEXT_MAIN).pack(side="left")
 
     # ── Informe del pedido (HTML interactivo) ────────────────────────────────
 
@@ -532,50 +718,7 @@ class PedidosView(ctk.CTkFrame):
         ui.toast(self, "No se pudo generar el informe", msg, kind="info")
         self._restore_report_btn(btn)
 
-    # ── 2) Estado de la documentación: barra segmentada ──────────────────────
-
-    def _build_estado_documental(self, parent, kpis: dict, avg_dias) -> None:
-        _section_header(parent, "Estado de la documentación").pack(fill="x", pady=(0, theme.SPACE_2))
-        total = max(kpis.get("total", 0), 1)
-        segs = [
-            ("Aprobados", kpis.get("aprobados", 0), theme.GREEN),
-            ("Enviados (pend. cliente)", kpis.get("enviados", 0), theme.BLUE),
-            ("Devoluciones", kpis.get("devoluciones", 0), theme.AMBER),
-            ("Sin enviar", kpis.get("sin_enviar", 0), theme.TEXT_MUTED),
-        ]
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
-        card.pack(fill="x", pady=(0, theme.SPACE_3))
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
-
-        # Barra segmentada
-        track = ctk.CTkFrame(inner, fg_color=theme.BORDER, height=14, corner_radius=7)
-        track.pack(fill="x", pady=(0, theme.SPACE_2))
-        x = 0.0
-        for _, count, color in segs:
-            if count <= 0:
-                continue
-            w = count / total
-            seg = ctk.CTkFrame(track, fg_color=color, corner_radius=0)
-            seg.place(relx=min(x, 0.999), rely=0, relheight=1, relwidth=min(w, 1 - x))
-            x += w
-
-        # Leyenda con conteos
-        leg = ctk.CTkFrame(inner, fg_color="transparent")
-        leg.pack(fill="x")
-        for label, count, color in segs:
-            chip = ctk.CTkFrame(leg, fg_color="transparent")
-            chip.pack(side="left", padx=(0, theme.SPACE_4))
-            ctk.CTkFrame(chip, fg_color=color, width=10, height=10, corner_radius=2).pack(side="left")
-            ctk.CTkLabel(chip, text=f" {label}: ", font=theme.FONT_TINY,
-                         text_color=theme.TEXT_SUB).pack(side="left")
-            ctk.CTkLabel(chip, text=str(count), font=theme.FONT_SMALL_BOLD,
-                         text_color=theme.TEXT_MAIN).pack(side="left")
-        ctk.CTkLabel(leg, text=f"{kpis.get('total', 0)} docs · {avg_dias} días resp. media",
-                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED).pack(side="right")
-
-    # ── 3) Requiere atención: lo accionable (sin la tabla completa) ──────────
+    # ── Requiere atención: lo accionable (sin la tabla completa) ─────────────
 
     def _build_atencion(self, parent, docs: list[dict]) -> None:
         _section_header(parent, "Requiere atención").pack(fill="x", pady=(0, theme.SPACE_2))
@@ -594,38 +737,42 @@ class PedidosView(ctk.CTkFrame):
             score = (2 if (crit and dd >= 15) else 0) + (1 if crit else 0) + (1 if is_dev else 0)
             items.append((score, dd, crit, d))
 
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
+        card = _card(parent)
         card.pack(fill="x", pady=(0, theme.SPACE_3))
 
         if not items:
             ctk.CTkLabel(card, text="✓  Sin acciones pendientes — nada crítico, devuelto ni atrasado.",
-                         font=theme.FONT_SMALL, text_color=theme.GREEN, anchor="w").pack(
-                fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
+                         font=theme.FONT_BODY, text_color=theme.GREEN, anchor="w").pack(
+                fill="x", padx=theme.SPACE_4, pady=theme.SPACE_4)
         else:
             items.sort(key=lambda x: (x[0], x[1]), reverse=True)
             body = ctk.CTkFrame(card, fg_color="transparent")
-            body.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_2, 0))
-            for score, dd, crit, d in items[:6]:
+            body.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_3, 0))
+            for i, (score, dd, crit, d) in enumerate(items[:8]):
                 estado = str(d.get("Estado", "") or "Sin enviar")
                 ecol = _status_color(estado)
-                r = ctk.CTkFrame(body, fg_color="transparent")
-                r.pack(fill="x", pady=2)
-                ctk.CTkLabel(r, text="⚠" if crit else "•", font=theme.FONT_SMALL,
-                             text_color=theme.RED if crit else theme.TEXT_MUTED, width=16).pack(side="left")
-                ctk.CTkLabel(r, text=_fmt(d.get("Nº Doc. EIPSA")), font=theme.FONT_SMALL_BOLD,
-                             text_color=theme.ACCENT, width=150, anchor="w").pack(side="left")
-                ctk.CTkLabel(r, text=_trunc(d.get("Título"), 46), font=theme.FONT_SMALL,
-                             text_color=theme.TEXT_MAIN, anchor="w").pack(side="left", fill="x", expand=True)
+                # Banda alterna: separa las filas sin gastar aire entre ellas
+                r = ctk.CTkFrame(body, fg_color=theme.ROW_STRIPE if i % 2 else "transparent",
+                                 corner_radius=theme.RADIUS_SM, height=34)
+                r.pack(fill="x")
+                r.pack_propagate(False)
+                ctk.CTkLabel(r, text="⚠" if crit else "•", font=theme.FONT_BODY_BOLD,
+                             text_color=theme.RED if crit else theme.TEXT_MUTED,
+                             width=22).pack(side="left")
+                ctk.CTkLabel(r, text=_fmt(d.get("Nº Doc. EIPSA")), font=theme.FONT_BODY_BOLD,
+                             text_color=theme.ACCENT, width=170, anchor="w").pack(side="left")
                 dcol = theme.RED if dd >= 15 else theme.TEXT_MUTED
-                ctk.CTkLabel(r, text=(f"{dd} d" if dd > 0 else "—"), font=theme.FONT_SMALL_BOLD,
-                             text_color=dcol, width=44).pack(side="right")
-                ctk.CTkLabel(r, text=f" {estado} ", font=theme.FONT_TINY, text_color=ecol,
-                             fg_color=ui.blend(ecol, theme.BG_CARD, 0.20), corner_radius=7,
-                             height=20).pack(side="right", padx=(0, theme.SPACE_2))
+                ctk.CTkLabel(r, text=(f"{dd} d" if dd > 0 else "—"), font=theme.FONT_BODY_BOLD,
+                             text_color=dcol, width=52).pack(side="right", padx=(0, theme.SPACE_2))
+                ctk.CTkLabel(r, text=f" {estado} ", font=theme.FONT_SMALL, text_color=ecol,
+                             fg_color=ui.blend(ecol, theme.BG_CARD, 0.20), corner_radius=8,
+                             height=22).pack(side="right", padx=(0, theme.SPACE_2))
+                ctk.CTkLabel(r, text=_trunc(d.get("Título"), 52), font=theme.FONT_BODY,
+                             text_color=theme.TEXT_MAIN, anchor="w").pack(
+                    side="left", fill="x", expand=True)
 
         # Pie: aviso + botón que salta a Documentos filtrando este pedido
-        rest = len(items) - 6
+        rest = len(items) - 8
         hint = (f"+ {rest} más · " if rest > 0 else "") + "Documentación completa en la sección Documentos."
         foot = ctk.CTkFrame(card, fg_color="transparent")
         foot.pack(fill="x", padx=theme.SPACE_4, pady=(theme.SPACE_2, theme.SPACE_3))
@@ -641,8 +788,7 @@ class PedidosView(ctk.CTkFrame):
         if not seg or not seg.get("total"):
             return
         _section_header(parent, "Plazo · Curva-S").pack(fill="x", pady=(0, theme.SPACE_2))
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
+        card = _card(parent)
         card.pack(fill="x", pady=(0, theme.SPACE_3))
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="x", padx=theme.SPACE_4, pady=theme.SPACE_3)
@@ -650,9 +796,9 @@ class PedidosView(ctk.CTkFrame):
         pct = seg.get("pct", 0)
         pct_esp = seg.get("pct_esperado")
 
-        ctk.CTkLabel(inner, text="Avance real vs. esperado", font=theme.FONT_SMALL_BOLD,
+        ctk.CTkLabel(inner, text="Avance real vs. esperado", font=theme.FONT_BODY_BOLD,
                      text_color=theme.TEXT_MAIN).pack(anchor="w")
-        track = ctk.CTkFrame(inner, fg_color=theme.BORDER, height=12, corner_radius=6)
+        track = ctk.CTkFrame(inner, fg_color=theme.BG_INPUT, height=14, corner_radius=7)
         track.pack(fill="x", pady=(theme.SPACE_2, theme.SPACE_1))
         if pct_esp is not None:
             exp = ctk.CTkFrame(track, fg_color=theme.TEXT_MUTED, corner_radius=6)
@@ -684,19 +830,19 @@ class PedidosView(ctk.CTkFrame):
         ]
         grid = ctk.CTkFrame(inner, fg_color="transparent")
         grid.pack(fill="x")
-        ncols = 3
+        ncols = 2                      # la columna de la ficha es estrecha
         for c in range(ncols):
             grid.grid_columnconfigure(c, weight=1, uniform="seg")
         for i, (label, val, col) in enumerate(chips):
-            cell = ctk.CTkFrame(grid, fg_color=theme.BG_CARD, corner_radius=8,
+            cell = ctk.CTkFrame(grid, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD,
                                 border_width=1, border_color=theme.BORDER)
             cell.grid(row=i // ncols, column=i % ncols, sticky="ew",
                       padx=(0 if i % ncols == 0 else theme.SPACE_2, 0), pady=(0, theme.SPACE_2))
-            ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_TINY,
-                         text_color=theme.TEXT_MUTED).pack(anchor="w", padx=theme.SPACE_2,
-                                                           pady=(theme.SPACE_1, 0))
-            ctk.CTkLabel(cell, text=str(val), font=theme.FONT_SMALL_BOLD,
-                         text_color=col).pack(anchor="w", padx=theme.SPACE_2, pady=(0, theme.SPACE_1))
+            ctk.CTkLabel(cell, text=str(val), font=theme.font(17, "bold"), text_color=col,
+                         anchor="w").pack(anchor="w", padx=theme.SPACE_3, pady=(theme.SPACE_2, 0))
+            ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_LABEL,
+                         text_color=theme.TEXT_MUTED, anchor="w").pack(
+                anchor="w", padx=theme.SPACE_3, pady=(0, theme.SPACE_2))
 
     # ── 5) Fabricación (fases del ERP) ───────────────────────────────────────
 
@@ -707,8 +853,7 @@ class PedidosView(ctk.CTkFrame):
                          font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
                          anchor="w").pack(fill="x", pady=(0, theme.SPACE_3))
             return
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
+        card = _card(parent)
         card.pack(fill="x", pady=(0, theme.SPACE_3))
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_3)
@@ -750,8 +895,7 @@ class PedidosView(ctk.CTkFrame):
             return
         _section_header(parent, "Fabricación por equipo · órdenes de trabajo").pack(
             fill="x", pady=(0, theme.SPACE_2))
-        card = ctk.CTkFrame(parent, fg_color=theme.BG_PAGE, corner_radius=10,
-                            border_width=1, border_color=theme.BORDER)
+        card = _card(parent)
         card.pack(fill="x", pady=(0, theme.SPACE_3))
         inner = ctk.CTkFrame(card, fg_color="transparent")
         inner.pack(fill="x", padx=theme.SPACE_3, pady=theme.SPACE_3)
@@ -765,9 +909,9 @@ class PedidosView(ctk.CTkFrame):
             ("Equipos", str(n), theme.TEXT_MAIN),
             ("Fabricados", f"{fabricados}/{n}" if n else "—",
              theme.GREEN if n and fabricados == n else (theme.AMBER if fabricados else theme.TEXT_SUB)),
-            ("Con plano dim.", f"{con_plano}/{n}" if n else "—", theme.TEXT_SUB),
+            ("Con plano", f"{con_plano}/{n}" if n else "—", theme.TEXT_SUB),
             ("OTs en curso", str(len(abiertas)), theme.AMBER if abiertas else theme.TEXT_SUB),
-            ("OTs terminadas", f"{cerradas}/{len(fab)}" if fab else "—",
+            ("OTs hechas", f"{cerradas}/{len(fab)}" if fab else "—",
              theme.GREEN if fab and cerradas == len(fab) else theme.TEXT_SUB),
         ]
         grid = ctk.CTkFrame(inner, fg_color="transparent")
@@ -775,14 +919,15 @@ class PedidosView(ctk.CTkFrame):
         for c in range(len(chips)):
             grid.grid_columnconfigure(c, weight=1, uniform="ot")
         for i, (label, val, col) in enumerate(chips):
-            cell = ctk.CTkFrame(grid, fg_color=theme.BG_CARD, corner_radius=8,
+            cell = ctk.CTkFrame(grid, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD,
                                 border_width=1, border_color=theme.BORDER)
             cell.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else theme.SPACE_2, 0))
-            ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_TINY,
-                         text_color=theme.TEXT_MUTED).pack(anchor="w", padx=theme.SPACE_2,
-                                                           pady=(theme.SPACE_1, 0))
-            ctk.CTkLabel(cell, text=val, font=theme.FONT_SMALL_BOLD,
-                         text_color=col).pack(anchor="w", padx=theme.SPACE_2, pady=(0, theme.SPACE_1))
+            ctk.CTkLabel(cell, text=val, font=theme.font(21, "bold"), text_color=col,
+                         anchor="w").pack(anchor="w", padx=theme.SPACE_3,
+                                          pady=(theme.SPACE_2, 0))
+            ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_LABEL,
+                         text_color=theme.TEXT_MUTED, anchor="w").pack(
+                anchor="w", padx=theme.SPACE_3, pady=(0, theme.SPACE_2))
 
         # Qué está en taller ahora mismo (OTs abiertas, las más antiguas primero)
         if abiertas:
@@ -808,42 +953,31 @@ class PedidosView(ctk.CTkFrame):
                              font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
                     fill="x", pady=(theme.SPACE_1, 0))
 
-    def _info_item(self, parent, label, value, r, c) -> None:
-        cell = ctk.CTkFrame(parent, fg_color="transparent")
-        cell.grid(row=r, column=c, sticky="ew", padx=(0, theme.SPACE_3), pady=theme.SPACE_1)
-        ctk.CTkLabel(cell, text=str(label).upper(), font=theme.FONT_LABEL,
-                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
-        ctk.CTkLabel(cell, text=str(value) if value not in ("", None) else "—",
-                     font=theme.FONT_BODY_BOLD, text_color=theme.TEXT_MAIN,
-                     anchor="w").pack(anchor="w")
-
     def _phase_card(self, parent, ph: dict, r, c) -> None:
         color = _phase_color(ph["pct"])
-        box = ctk.CTkFrame(parent, fg_color=theme.BG_CARD, corner_radius=8,
-                           border_width=1, border_color=theme.BORDER)
+        box = _card(parent)
         box.grid(row=r, column=c, sticky="nsew", padx=(0 if c == 0 else theme.SPACE_2, 0))
         top = ctk.CTkFrame(box, fg_color="transparent")
-        top.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_2))
-        ctk.CTkLabel(top, text=ph["title"], font=theme.FONT_SMALL_BOLD,
+        top.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_3, 0))
+        ctk.CTkLabel(top, text=ph["title"], font=theme.FONT_BODY_BOLD,
                      text_color=theme.TEXT_MAIN).pack(side="left")
-        date = (ph["date"] or "")[:10]
+        date = _date((ph["date"] or "")[:10])
         if date:
-            ctk.CTkLabel(top, text=date, font=theme.FONT_TINY,
+            ctk.CTkLabel(top, text=date, font=theme.FONT_SMALL,
                          text_color=theme.TEXT_MUTED).pack(side="right")
-        barrow = ctk.CTkFrame(box, fg_color="transparent")
-        barrow.pack(fill="x", padx=theme.SPACE_3)
-        prog = ctk.CTkProgressBar(barrow, height=8, corner_radius=4,
-                                  progress_color=color, fg_color=theme.BORDER)
-        prog.pack(side="left", fill="x", expand=True, pady=2)
+        # El porcentaje, en grande: es el dato de la tarjeta
+        ctk.CTkLabel(box, text=f"{ph['pct']}%", font=theme.font(28, "bold"), text_color=color,
+                     anchor="w").pack(anchor="w", padx=theme.SPACE_3, pady=(theme.SPACE_1, 0))
+        prog = ctk.CTkProgressBar(box, height=8, corner_radius=4,
+                                  progress_color=color, fg_color=theme.BG_INPUT)
+        prog.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_1, 0))
         prog.set(min(ph["pct"], 100) / 100)
-        ctk.CTkLabel(barrow, text=f"{ph['pct']}%", font=theme.FONT_SMALL_BOLD,
-                     text_color=color, width=44).pack(side="right", padx=(theme.SPACE_2, 0))
         obs = str(ph["obs"] or "").strip()
         if len(obs) > 130:
             obs = obs[:130].rstrip() + "…"
-        ctk.CTkLabel(box, text=obs or " ", font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
-                     anchor="nw", justify="left", wraplength=210).pack(
-            fill="both", expand=True, padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_2))
+        ctk.CTkLabel(box, text=obs or " ", font=theme.FONT_SMALL, text_color=theme.TEXT_MUTED,
+                     anchor="nw", justify="left", wraplength=230).pack(
+            fill="both", expand=True, padx=theme.SPACE_3, pady=(theme.SPACE_2, theme.SPACE_3))
 
     # ── 6) Equipos & Tags (resumen + tabla compacta) ─────────────────────────
 
