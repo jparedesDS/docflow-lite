@@ -136,19 +136,6 @@ def _rule(parent, pady=theme.SPACE_3):
     ctk.CTkFrame(parent, fg_color=theme.BORDER, height=1).pack(fill="x", pady=pady)
 
 
-def _stat(parent, value: str, label: str, color: str, col: int, *, sub: str = "") -> None:
-    """Una cifra grande con su rótulo debajo, dentro de la tira de estadísticas."""
-    cell = ctk.CTkFrame(parent, fg_color="transparent")
-    cell.grid(row=0, column=col, sticky="nsew", padx=(0, theme.SPACE_2))
-    ctk.CTkLabel(cell, text=value, font=theme.font(30, "bold"), text_color=color,
-                 anchor="w").pack(anchor="w")
-    ctk.CTkLabel(cell, text=label.upper(), font=theme.FONT_LABEL,
-                 text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
-    if sub:
-        ctk.CTkLabel(cell, text=sub, font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
-                     anchor="w").pack(anchor="w")
-
-
 def _field(parent, label: str, value: str, *, color: str | None = None,
            wrap: int = 330) -> None:
     """Fila compacta de ficha: rótulo pequeño arriba, dato grande debajo."""
@@ -682,12 +669,7 @@ class PedidosView(ctk.CTkFrame):
             (f"{_to_int(round(float(dash.get('avg_dias_respuesta') or 0)))} d",
              "respuesta media", theme.TEXT_SUB, "del cliente"),
         ]
-        strip = ctk.CTkFrame(inner, fg_color="transparent")
-        strip.pack(fill="x")
-        for c in range(len(stats)):
-            strip.grid_columnconfigure(c, weight=1, uniform="stat")
-        for i, (val, lab, color, sub) in enumerate(stats):
-            _stat(strip, val, lab, color, i, sub=sub)
+        ui.stat_strip(inner, stats)
 
         # Reparto de la documentación, en una sola barra
         segs = [

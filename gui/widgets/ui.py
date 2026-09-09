@@ -99,6 +99,30 @@ def kpi_card(parent, label, value, color, sub: str = "", height: int = _KPI_H):
     return box
 
 
+def stat_strip(parent, stats: list, pady=0):
+    """Tira de cifras grandes en fila: (valor, rótulo, color, apunte opcional).
+
+    Es la cabecera de un informe: lo que hay que ver sin desplazarse.
+    """
+    strip = ctk.CTkFrame(parent, fg_color="transparent")
+    strip.pack(fill="x", pady=pady)
+    for c in range(len(stats)):
+        strip.grid_columnconfigure(c, weight=1, uniform="stat")
+    for i, item in enumerate(stats):
+        value, label, color = item[0], item[1], item[2]
+        sub = item[3] if len(item) > 3 else ""
+        cell = ctk.CTkFrame(strip, fg_color="transparent")
+        cell.grid(row=0, column=i, sticky="nsew", padx=(0, theme.SPACE_2))
+        ctk.CTkLabel(cell, text=str(value), font=theme.font(30, "bold"), text_color=color,
+                     anchor="w").pack(anchor="w")
+        ctk.CTkLabel(cell, text=str(label).upper(), font=theme.FONT_LABEL,
+                     text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
+        if sub:
+            ctk.CTkLabel(cell, text=sub, font=theme.FONT_TINY, text_color=theme.TEXT_SUB,
+                         anchor="w").pack(anchor="w")
+    return strip
+
+
 def bar_row(parent, label: str, value, ratio: float, color: str, value_text=None):
     """Fila: etiqueta + barra horizontal proporcional + valor a la derecha."""
     row = ctk.CTkFrame(parent, fg_color="transparent")
