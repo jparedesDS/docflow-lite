@@ -359,13 +359,13 @@ def fetch_tags(pedido: str) -> list[dict]:
     return fetch_pedido_bundle(pedido)["tags"]
 
 
-def order_dates(pedido: str, suffix: str = "") -> dict | None:
-    """Fechas de entrada y entrega del pedido, tal y como están en el ERP.
+def order_basics(pedido: str, suffix: str = "") -> dict | None:
+    """Datos de cabecera que la apertura necesita: fechas y S.REF del cliente.
 
     `pedido` acepta 'P-26/062', 'P-26-062' o ya con sufijo. Si se pasa `suffix`
     ('S00', 'S01'…) se prefiere esa línea de suministro; si no existe se coge la
-    primera. Devuelve {num_order, order_date, expected_date, sref} con objetos
-    date (o None cada uno), o None si el pedido no está en el ERP.
+    primera. Devuelve {num_order, order_date, expected_date, sref} —las fechas
+    como date o None— o None si el pedido no está en el ERP.
     """
     base = _base_pedido(_slashed(pedido))
     if not base:
@@ -398,9 +398,9 @@ def order_dates(pedido: str, suffix: str = "") -> dict | None:
         }
 
     try:
-        return _cached(f"dates::{base}::{suffix}", build, CACHE_TTL)
+        return _cached(f"basics::{base}::{suffix}", build, CACHE_TTL)
     except Exception as exc:  # noqa: BLE001 — la vista degrada, nunca rompe
-        logger.warning("ERP fechas de %s: %s", base, str(exc).splitlines()[0] if str(exc) else exc)
+        logger.warning("ERP cabecera de %s: %s", base, str(exc).splitlines()[0] if str(exc) else exc)
         return None
 
 
