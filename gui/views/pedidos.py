@@ -26,8 +26,8 @@ from core.services import erp_tags
 from gui import theme
 from gui.views.documentos import _fmt, _status_color, _trunc
 from gui.widgets import ui
+from gui.widgets.pilltable import PillTable
 from gui.widgets.scrollframe import ScrollFrame
-from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,46 @@ def _phase_color(pct: int) -> str:
     if pct > 0:
         return theme.AMBER
     return theme.RED
+
+
+# Columnas de la tabla de equipos, con el mismo formato que la de Documentos:
+# key · etiqueta de cabecera · ancho mínimo · estira · alineación.
+TAG_COLS = [
+    {"key": "Familia",    "label": "Familia",    "min": 104, "anchor": "w"},
+    {"key": "TAG",        "label": "TAG",        "min": 168, "anchor": "w"},
+    {"key": "Tipo",       "label": "Tipo",       "min": 140, "anchor": "w", "stretch": True},
+    {"key": "Tamaño",     "label": "Tamaño",     "min": 66,  "anchor": "center"},
+    {"key": "Rating",     "label": "Rating",     "min": 60,  "anchor": "center"},
+    {"key": "Facing",     "label": "Facing",     "min": 60,  "anchor": "center"},
+    {"key": "Estado",     "label": "Estado",     "min": 116, "anchor": "center"},
+    {"key": "Fab.",       "label": "Fabricación", "min": 116, "anchor": "center"},
+    {"key": "Insp.",      "label": "Insp.",      "min": 84,  "anchor": "center"},
+    {"key": "Plano Dim.", "label": "Plano dim.", "min": 146, "anchor": "w"},
+    {"key": "OTs",        "label": "OTs",        "min": 72,  "anchor": "center"},
+    {"key": "Docs",       "label": "Docs",       "min": 132, "anchor": "w"},
+]
+
+# Equipos por página. Un pedido puede traer cientos y la tabla crea un widget
+# por celda: pintarlos todos deja a Tk sin completar el layout (salía en blanco).
+TAGS_PAGE_SIZE = 20
+
+# Color del símbolo de estado documental que se pinta en la columna «Docs»
+_DOC_SYM_COLOR = {"✓": theme.GREEN, "✕": theme.RED, "⚠": theme.AMBER,
+                  "⏳": theme.BLUE, "○": theme.TEXT_MUTED, "?": theme.TEXT_MUTED}
+
+
+def _tag_state_color(estado: str, vigente: bool, eliminado: bool) -> str:
+    """Color del estado de un equipo. Lo que ya no cuenta, apagado."""
+    if eliminado:
+        return theme.RED
+    if not vigente:
+        return theme.TEXT_MUTED
+    e = str(estado or "").upper()
+    if "INVOIC" in e or "PURCHASED" in e:
+        return theme.GREEN
+    if "DELETED" in e or "RECHAZ" in e:
+        return theme.RED
+    return theme.BLUE
 
 
 def _to_int(v) -> int:
@@ -1027,11 +1067,11 @@ class PedidosView(ctk.CTkFrame):
             height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD, fg_color=theme.BG_INPUT,
             border_color=theme.BORDER, text_color=theme.TEXT_MAIN, font=theme.FONT_SMALL)
         self._tags_search.pack(side="left", fill="x", expand=True, padx=(0, theme.SPACE_2))
-        self._tags_search.bind("<KeyRelease>", lambda e: self._populate_tags_table())
+        self._tags_search.bind("<KeyRelease>", lambda e: self._refilter_tags())
         opt_kw = dict(height=theme.HEIGHT_INPUT, corner_radius=theme.RADIUS_MD, font=theme.FONT_SMALL,
                       fg_color=theme.BG_INPUT, button_color=theme.BORDER_STRONG,
                       button_hover_color=theme.TEXT_MUTED, text_color=theme.TEXT_MAIN,
-                      command=lambda _v: self._populate_tags_table())
+                      command=lambda _v: self._refilter_tags())
         self._tags_familia = ctk.CTkOptionMenu(
             toolbar, values=["Todas"] + [f for f, _ in familias.most_common()], width=140, **opt_kw)
         self._tags_familia.set("Todas")
@@ -1047,28 +1087,42 @@ class PedidosView(ctk.CTkFrame):
             ctk.CTkCheckBox(toolbar, text=f"Incluir superados ({n_sup})",
                             variable=self._tags_superados, font=theme.FONT_TINY,
                             text_color=theme.TEXT_SUB, checkbox_width=18, checkbox_height=18,
-                            command=self._populate_tags_table).pack(side="left", padx=(0, theme.SPACE_2))
-        self._tags_count = ctk.CTkLabel(toolbar, text="", font=theme.FONT_TINY,
+                            command=self._refilter_tags).pack(side="left", padx=(0, theme.SPACE_2))
+        self._tags_count = ctk.CTkLabel(toolbar, text="", font=theme.FONT_SMALL,
                                         text_color=theme.TEXT_MUTED)
         self._tags_count.pack(side="left")
+
+        # Paginación: un pedido puede traer cientos de equipos y pintarlos todos
+        # de golpe deja a Tk sin terminar el layout (la tabla salía en blanco).
+        pager = ctk.CTkFrame(toolbar, fg_color="transparent")
+        pager.pack(side="right")
+        self._tags_page = 0
+        self._btn_tag_prev = ui.button(pager, "‹", "outline", size="xs", width=30,
+                                       font=theme.FONT_BUTTON, text_color=theme.TEXT_SUB,
+                                       command=lambda: self._goto_tags_page(self._tags_page - 1))
+        self._btn_tag_prev.pack(side="left", padx=theme.SPACE_1)
+        self._lbl_tag_page = ctk.CTkLabel(pager, text="—", font=theme.FONT_SMALL,
+                                          text_color=theme.TEXT_SUB, width=92)
+        self._lbl_tag_page.pack(side="left", padx=theme.SPACE_1)
+        self._btn_tag_next = ui.button(pager, "›", "outline", size="xs", width=30,
+                                       font=theme.FONT_BUTTON, text_color=theme.TEXT_SUB,
+                                       command=lambda: self._goto_tags_page(self._tags_page + 1))
+        self._btn_tag_next.pack(side="left", padx=theme.SPACE_1)
 
         ctk.CTkLabel(parent, text="doble-click en un equipo: ficha completa, documentación "
                                   "enlazada y órdenes de fabricación",
                      font=theme.FONT_TINY, text_color=theme.TEXT_MUTED, anchor="w").pack(
             fill="x", pady=(0, theme.SPACE_1))
 
-        h = min(max(len(tags), 4), 16) * 32 + 60
+        h = min(max(len(tags), 5), TAGS_PAGE_SIZE) * 40 + 70
         host = ctk.CTkFrame(parent, fg_color="transparent", height=h)
         host.pack(fill="x", pady=(0, theme.SPACE_3))
         host.pack_propagate(False)
-        self._tags_table = DataTable(
-            host, columns=erp_service.TAGS_SUMMARY_COLUMNS,
-            on_double_click=lambda _i: self._open_tag_detail(self._tags_table))
+        self._tags_sort: tuple[str, bool] = ("TAG", True)
+        self._tags_table = PillTable(
+            host, columns=TAG_COLS, on_double_click=self._open_tag_detail,
+            on_sort=self._on_tags_sort, rowheight=40)
         self._tags_table.pack(fill="both", expand=True)
-        self._tags_table.set_columns_anchor({
-            "Familia": "w", "TAG": "w", "Tipo": "w", "Tamaño": "center", "Rating": "center",
-            "Facing": "center", "Estado": "center", "Fab.": "center", "Insp.": "center",
-            "Plano Dim.": "w", "OTs": "center", "Docs": "w"})
         self._populate_tags_table()
 
     # Símbolo por estado documental (docs enlazados a un equipo)
@@ -1088,12 +1142,21 @@ class PedidosView(ctk.CTkFrame):
                 return sym, est, eipsa
         return "○", est or "Sin enviar", eipsa
 
-    def _docs_cell(self, t: dict) -> str:
-        parts = []
+    def _docs_cell(self, t: dict) -> dict:
+        """Celda «Docs»: 'CAL ✓  PLG ⚠', coloreada por el peor de los dos."""
+        parts, simbolos = [], []
         for lab, num in (("CAL", t.get("Doc EIPSA Calc.", "")), ("PLG", t.get("Doc EIPSA Plano", ""))):
             if num:
-                parts.append(f"{lab} {self._doc_state(num)[0]}")
-        return "  ".join(parts)
+                sym = self._doc_state(num)[0]
+                parts.append(f"{lab} {sym}")
+                simbolos.append(sym)
+        if not parts:
+            return {"text": "—", "fg": theme.TEXT_MUTED}
+        # Manda el más grave: rechazado > comentado > pendiente > sin datos > ok
+        for peor in ("✕", "⚠", "⏳", "○", "?", "✓"):
+            if peor in simbolos:
+                return {"text": "  ".join(parts), "fg": _DOC_SYM_COLOR[peor], "bold": True}
+        return {"text": "  ".join(parts)}
 
     def _docs_progress(self, tags: list[dict]) -> tuple[int, int]:
         """(aprobados, total) de los documentos enlazados a los equipos (sin repetir)."""
@@ -1112,15 +1175,71 @@ class PedidosView(ctk.CTkFrame):
         return ok, tot
 
     @staticmethod
-    def _fab_cell(t: dict) -> str:
+    def _fab_cell(t: dict) -> dict:
+        """Celda «Fabricación»: pill verde/roja, como el Estado de Documentos."""
         if t.get("_eliminado"):
-            return "✕ Eliminado"
-        return "✓ Fabricado" if t.get("Estado Fab.", "").upper() == "FABRICADO" else "—"
+            return {"text": "✕  Eliminado", "pill": True, "fg": theme.RED,
+                    "pill_bg": ui.blend(theme.RED, theme.BG_CARD, 0.20)}
+        if t.get("Estado Fab.", "").upper() == "FABRICADO":
+            return {"text": "✓  Fabricado", "pill": True, "fg": theme.GREEN,
+                    "pill_bg": ui.blend(theme.GREEN, theme.BG_CARD, 0.20)}
+        return {"text": "○  Pendiente", "fg": theme.TEXT_MUTED}
+
+    def _ots_cell(self, t: dict) -> dict:
+        """Celda «OTs»: «2/3» cerradas — verde si todas, ámbar si queda alguna.
+
+        El texto del ERP es «2/3 terminadas»; en la columna solo cabe la cifra.
+        """
+        txt = str(t.get("OTs", "") or "").split(" ")[0]
+        if not txt:
+            return {"text": "—", "fg": theme.TEXT_MUTED}
+        abiertas = t.get("_ot_abiertas", 0)
+        return {"text": txt, "bold": True,
+                "fg": theme.AMBER if abiertas else theme.GREEN}
+
+    def _build_tag_cells(self, t: dict) -> dict:
+        """Celdas con estilo de un equipo (mismo lenguaje visual que Documentos)."""
+        vigente = t.get("_vigente", True)
+        eliminado = bool(t.get("_eliminado"))
+        estado = str(t.get("Estado", "") or "")
+        ecol = _tag_state_color(estado, vigente, eliminado)
+        plano = t.get("Plano Dim.", "")
+        if plano and t.get("Rev. Plano Dim."):
+            plano = f"{plano}  r{t['Rev. Plano Dim.']}"
+        insp = str(t.get("Inspección", "") or "")
+        return {
+            "Familia":    {"text": t.get("Familia", ""), "fg": theme.TEXT_SUB},
+            # El TAG es la identidad de la fila: en acento, como el Nº de documento
+            "TAG":        {"text": t.get("TAG", ""), "fg": theme.ACCENT, "bold": True},
+            "Tipo":       {"text": _trunc(t.get("Tipo", ""), 40)},
+            "Tamaño":     {"text": t.get("Tamaño", "")},
+            "Rating":     {"text": t.get("Rating", "")},
+            "Facing":     {"text": t.get("Facing", "")},
+            "Estado":     {"text": estado or "—", "pill": bool(estado), "fg": ecol,
+                           "pill_bg": ui.blend(ecol, theme.BG_CARD, 0.20)},
+            "Fab.":       self._fab_cell(t),
+            "Insp.":      {"text": insp or "—",
+                           "fg": theme.TEXT_MAIN if insp else theme.TEXT_MUTED},
+            "Plano Dim.": {"text": plano or "—",
+                           "fg": theme.TEXT_MAIN if plano else theme.TEXT_MUTED},
+            "OTs":        self._ots_cell(t),
+            "Docs":       self._docs_cell(t),
+        }
+
+    def _on_tags_sort(self, key: str) -> None:
+        col, asc = getattr(self, "_tags_sort", ("TAG", True))
+        self._tags_sort = (key, not asc if key == col else True)
+        self._refilter_tags()
+
+    def _refilter_tags(self) -> None:
+        """Cambió el filtro o el orden: se vuelve a la primera página."""
+        self._tags_page = 0
+        self._populate_tags_table()
 
     def _populate_tags_table(self) -> None:
         """Rellena la tabla aplicando búsqueda + familia + estado de fabricación.
 
-        El iid de cada fila conserva el índice en self._tags_current para que el
+        El id de cada fila conserva el índice en self._tags_current para que el
         doble-click abra el equipo correcto aunque la lista esté filtrada.
         """
         table = getattr(self, "_tags_table", None)
@@ -1130,8 +1249,9 @@ class PedidosView(ctk.CTkFrame):
         familia = self._tags_familia.get()
         estado = self._tags_estado.get()
         superados = bool(self._tags_superados.get())
-        table.clear()
-        shown = total = 0
+
+        visibles = []
+        total = 0
         for idx, t in enumerate(self._tags_current):
             if not t.get("_vigente", True) and not superados:
                 continue
@@ -1144,26 +1264,41 @@ class PedidosView(ctk.CTkFrame):
                 continue
             if q and not any(q in str(v).lower() for k, v in t.items() if not k.startswith("_")):
                 continue
-            plano = t.get("Plano Dim.", "")
-            if plano and t.get("Rev. Plano Dim."):
-                plano = f"{plano}  r{t['Rev. Plano Dim.']}"
-            table.add_row(values=[
-                t.get("Familia", ""), t.get("TAG", ""), t.get("Tipo", ""), t.get("Tamaño", ""),
-                t.get("Rating", ""), t.get("Facing", ""), t.get("Estado", ""), self._fab_cell(t),
-                t.get("Inspección", ""), plano, t.get("OTs", ""), self._docs_cell(t),
-            ], iid=f"tag_{idx}")
-            shown += 1
-        self._tags_table.autofit_columns(max_per={"Tipo": 170, "TAG": 150, "Plano Dim.": 160, "Docs": 120})
-        self._tags_count.configure(text=f"{shown} / {total} equipos")
+            visibles.append((idx, t))
+
+        col, asc = getattr(self, "_tags_sort", ("TAG", True))
+        clave = {"Fab.": lambda t: self._fab_cell(t)["text"],
+                 "Docs": lambda t: self._docs_cell(t)["text"]}.get(
+            col, lambda t, c=col: str(t.get(c, "") or ""))
+        visibles.sort(key=lambda p: clave(p[1]).lower(), reverse=not asc)
+        table.set_sort_arrow(col, asc)
+
+        paginas = max(1, -(-len(visibles) // TAGS_PAGE_SIZE))
+        self._tags_page = max(0, min(self._tags_page, paginas - 1))
+        ini = self._tags_page * TAGS_PAGE_SIZE
+        pagina = visibles[ini:ini + TAGS_PAGE_SIZE]
+
+        table.set_rows([(f"tag_{idx}", self._build_tag_cells(t)) for idx, t in pagina])
+        hasta = ini + len(pagina)
+        self._tags_count.configure(
+            text=(f"{ini + 1}-{hasta} de {len(visibles)}" if visibles else "sin resultados")
+                 + (f"  ·  {total} en el pedido" if len(visibles) != total else ""))
+        self._lbl_tag_page.configure(text=f"Pág {self._tags_page + 1} / {paginas}")
+        self._btn_tag_prev.configure(state="normal" if self._tags_page > 0 else "disabled")
+        self._btn_tag_next.configure(
+            state="normal" if self._tags_page < paginas - 1 else "disabled")
+
+    def _goto_tags_page(self, page: int) -> None:
+        self._tags_page = max(0, page)
+        self._populate_tags_table()
 
     # ── Detalle de un TAG ───────────────────────────────────────────────────
 
-    def _open_tag_detail(self, table) -> None:
-        iid = table.selected_iid()
-        if not iid or not iid.startswith("tag_"):
+    def _open_tag_detail(self, rowid: str) -> None:
+        if not rowid or not str(rowid).startswith("tag_"):
             return
         try:
-            tag = self._tags_current[int(iid.split("_", 1)[1])]
+            tag = self._tags_current[int(str(rowid).split("_", 1)[1])]
         except (ValueError, IndexError):
             return
         TagDetailWindow(self, tag, doc_state=self._doc_state,
