@@ -16,6 +16,7 @@ import re
 
 from core.services import apertura as apertura_service
 from core.services import comm_matrix as comm_matrix_service
+from core.services import erp_tags
 from gui import theme
 from gui.widgets import ui
 from gui.widgets.scrollframe import ScrollFrame
@@ -124,14 +125,14 @@ class AperturaView(ctk.CTkFrame):
         self._field(grid, "Material (auto)", self.var_material, row=1, col=2, colspan=2,
                     placeholder="se rellena al localizar el pedido")
 
-        # Fila 2 — fechas
+        # Fila 2 — fechas (las trae el ERP al localizar; editables)
         self.var_f_entrada = ctk.StringVar(value=_today_iso())
         self._field(grid, "Fecha entrada (YYYY-MM-DD) *", self.var_f_entrada,
-                    row=2, col=0, colspan=2, placeholder="2026-05-28")
+                    row=2, col=0, colspan=2, placeholder="la trae el ERP al localizar")
 
         self.var_f_prevista = ctk.StringVar(value=_today_plus_iso(180))
         self._field(grid, "Fecha prevista entrega *", self.var_f_prevista,
-                    row=2, col=2, colspan=2, placeholder="2026-11-28")
+                    row=2, col=2, colspan=2, placeholder="la trae el ERP al localizar")
 
         # ─── Botonera (Localizar / Procesar) — justo encima de Resultado ──
         btn_row = ctk.CTkFrame(wrapper, fg_color="transparent")
@@ -161,7 +162,8 @@ class AperturaView(ctk.CTkFrame):
                              padx=theme.SPACE_4, pady=(0, theme.SPACE_4))
         self.txt_result.insert("1.0",
             "1) Mete el código del pedido (p.ej. P-26-050) y pulsa «Localizar pedido»\n"
-            "   para verificar que existe la carpeta y que se rellenan Cliente/Material.\n"
+            "   para verificar que existe la carpeta y que se rellenan Cliente/Material\n"
+            "   y las fechas de entrada y entrega que tiene el pedido en el ERP.\n"
             "2) Pulsa «Procesar pedido» para crear «00 DOCUMENTACIÓN» dentro de\n"
             "   «2-Tecnico», copiar la plantilla, generar Planning y VDDL.")
         self.txt_result.configure(state="disabled")
@@ -454,6 +456,37 @@ class AperturaView(ctk.CTkFrame):
             return
         _open_in_explorer(self._last_result.pedido_dir)
 
+    # ── Fechas del pedido (ERP) ───────────────────────────────────────────
+
+    def _fill_dates_from_erp(self, folder_id: str, suffix: str) -> str:
+        """Rellena entrada/prevista con las del ERP. Devuelve la línea a mostrar.
+
+        Sin ERP (o pedido que aún no está dado de alta) se dejan las que haya en
+        el formulario, avisando de que son estimadas: son la fecha de hoy y hoy
+        + 180 días, no el plazo real del pedido.
+        """
+        try:
+            info = erp_tags.order_dates(folder_id, suffix)
+        except Exception as exc:  # noqa: BLE001 — localizar no depende del ERP
+            logger.warning("Fechas del ERP para %s: %s", folder_id, exc)
+            info = None
+
+        if not info:
+            return ("📅 Fechas: el pedido no está en el ERP — las del formulario\n"
+                    "   son estimadas (hoy y hoy + 180 días). Revísalas a mano.")
+
+        puestas = []
+        if info["order_date"]:
+            self.var_f_entrada.set(info["order_date"].strftime("%Y-%m-%d"))
+            puestas.append(f"entrada {info['order_date']:%d/%m/%Y}")
+        if info["expected_date"]:
+            self.var_f_prevista.set(info["expected_date"].strftime("%Y-%m-%d"))
+            puestas.append(f"prevista {info['expected_date']:%d/%m/%Y}")
+        if not puestas:
+            return (f"📅 Fechas: {info['num_order']} está en el ERP pero sin fechas —\n"
+                    "   las del formulario son estimadas. Revísalas a mano.")
+        return f"📅 Fechas del ERP ({info['num_order']}): {' · '.join(puestas)}"
+
     # ── Localizar carpeta existente ───────────────────────────────────────
 
     def _on_locate(self) -> None:
@@ -504,6 +537,8 @@ class AperturaView(ctk.CTkFrame):
             else "   ⚠ no existe — se creará «2-Tecnico» al procesar"
         )
 
+        fechas_msg = self._fill_dates_from_erp(folder_id, self.var_suffix.get())
+
         # Pre-cargar Communication Matrix si ya hay datos guardados
         # Key en matrix = "P-XX/YYY" (sin sufijo S00)
         m = apertura_service._PEDIDO_FOLDER_RE.match(folder_id)
@@ -528,6 +563,7 @@ class AperturaView(ctk.CTkFrame):
             f"   Material: {meta.get('material', '—')}\n"
             f"   Revisión: {meta.get('suffix', '—')}\n\n"
             f"Subcarpeta técnica:\n{tecnico_msg}\n\n"
+            f"{fechas_msg}\n\n"
             f"{cm_msg}\n\n"
             "Pulsa «Procesar pedido» para crear 00 DOCUMENTACIÓN dentro y\n"
             "copiar plantilla + Planning + VDDL."

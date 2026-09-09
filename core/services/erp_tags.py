@@ -14,6 +14,7 @@ devuelve available=False y la vista lo explica sin romperse.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import date, datetime
 from decimal import Decimal
@@ -356,6 +357,76 @@ def fetch_pedido_bundle(pedido: str) -> dict:
 
 def fetch_tags(pedido: str) -> list[dict]:
     return fetch_pedido_bundle(pedido)["tags"]
+
+
+def order_dates(pedido: str, suffix: str = "") -> dict | None:
+    """Fechas de entrada y entrega del pedido, tal y como están en el ERP.
+
+    `pedido` acepta 'P-26/062', 'P-26-062' o ya con sufijo. Si se pasa `suffix`
+    ('S00', 'S01'…) se prefiere esa línea de suministro; si no existe se coge la
+    primera. Devuelve {num_order, order_date, expected_date, sref} con objetos
+    date (o None cada uno), o None si el pedido no está en el ERP.
+    """
+    base = _base_pedido(_slashed(pedido))
+    if not base:
+        return None
+    suffix = (suffix or "").strip().upper()
+
+    def build():
+        if not is_available():
+            return None
+        conn = erp_db._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute("SET statement_timeout = 10000;")
+            where, params = _pedido_where(base)
+            cur.execute(
+                f"""SELECT num_order, order_date, expected_date, num_ref_order
+                    FROM public.orders WHERE {where} ORDER BY num_order;""", params)
+            rows = cur.fetchall()
+            cur.close()
+        finally:
+            conn.close()
+        if not rows:
+            return None
+        row = next((r for r in rows if suffix and str(r[0] or "").upper().endswith(suffix)), rows[0])
+        return {
+            "num_order": str(row[0] or ""),
+            "order_date": _as_date(row[1]),
+            "expected_date": _as_date(row[2]),
+            "sref": str(row[3] or "").strip(),
+        }
+
+    try:
+        return _cached(f"dates::{base}::{suffix}", build, CACHE_TTL)
+    except Exception as exc:  # noqa: BLE001 — la vista degrada, nunca rompe
+        logger.warning("ERP fechas de %s: %s", base, str(exc).splitlines()[0] if str(exc) else exc)
+        return None
+
+
+def _as_date(v) -> date | None:
+    """Valor del ERP → date. El ERP guarda unas fechas como date y otras como texto."""
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    txt = str(v or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(txt, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+_SLASHABLE_RE = re.compile(r"^(PA|P)-(\d{2})-(\d{1,3})(.*)$", re.I)
+
+
+def _slashed(p) -> str:
+    """'P-26-062' → 'P-26/062' (el ERP usa barra). Deja intacto lo que ya la lleva."""
+    p = str(p or "").strip()
+    m = _SLASHABLE_RE.match(p)
+    return f"{m.group(1)}-{m.group(2)}/{m.group(3)}{m.group(4)}" if m else p
 
 
 def _base_pedido(p) -> str:
