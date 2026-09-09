@@ -743,23 +743,26 @@ def copy_documentation_template(
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Planning — copia el .xlsm y rellena la hoja PLAN ING
+# Planning — copia el .xlsm y rellena las hojas de plan y gráfico
 # ════════════════════════════════════════════════════════════════════════════
+#
+# La plantilla trae el planning por duplicado, en inglés y en español, y hay que
+# rellenar los dos: el par que no se toque se queda con los datos del pedido con
+# el que se hizo la plantilla, que es peor que quedarse vacío (se ha llegado a
+# ver la S. REF. de otro cliente en un planning entregado).
+#
+#   PLAN ING / PLAN ESP  →  B2 S. REF. · B3 N. REF. · G1 Inicio · G2 Fin
+#                           y las fases a partir de la fila 7 (B inicio, D fin)
+#   GRAF ING / GRAF ESP  →  F4 S. REF. · F5 N. REF.
+#
+# Las fases NO son las mismas en los dos idiomas —11 en inglés, 5 en español— ni
+# arrancan del mismo rango, así que cada hoja se escala con SUS propias fechas.
+_PLAN_SHEETS = ("PLAN ING", "PLAN ESP")
+_GRAF_SHEETS = ("GRAF ING", "GRAF ESP")
 
-
-# Filas de fases en PLAN ING (template original):
-# 7  PO sup0 date
-# 8  eGesDoc opening
-# 9  Critical Documentation
-# 10 Non critical Documentation
-# 11 Raw material and TT purchase
-# 12 Mechanisation
-# 13 Assembly and Testing
-# 14 Delivery of TT
-# 15 Final Assembly and Testing with TT
-# 16 Inspection
-# 17 Shipment of Material to Plant
-_PHASE_ROWS = list(range(7, 18))
+# Las fases empiezan bajo la cabecera 'Fase' (fila 6); hasta dónde llegan
+# depende del idioma, así que se recorre lo que haya y se escala lo que sea fecha.
+_FIRST_PHASE_ROW = 7
 
 
 def _scale_phase_dates(
@@ -780,12 +783,36 @@ def _scale_phase_dates(
     return new_start + timedelta(seconds=new_offset)
 
 
+def _fill_plan_sheet(ws, spec: OrderSpec) -> None:
+    """Cabecera (S. REF., N. REF., Inicio, Fin) y fases escaladas de una hoja PLAN."""
+    # El rango original de la hoja es la referencia para escalar sus fases.
+    tpl_start = ws["G1"].value
+    tpl_end = ws["G2"].value
+    if not isinstance(tpl_start, datetime) or not isinstance(tpl_end, datetime):
+        # Si la hoja viene sin fechas, usar las nuevas tal cual sin escalar
+        tpl_start = spec.fecha_entrada
+        tpl_end = spec.fecha_prevista
+
+    ws["G1"] = spec.fecha_entrada
+    ws["G2"] = spec.fecha_prevista
+    ws["B2"] = spec.sref or None    # sin S.REF, vacío: nunca el de la plantilla
+    ws["B3"] = spec.n_ref_short
+
+    for row in range(_FIRST_PHASE_ROW, ws.max_row + 1):
+        for col in (2, 4):          # B = Fecha Inicio · D = Fecha Fin
+            cell = ws.cell(row=row, column=col)
+            if isinstance(cell.value, datetime):
+                cell.value = _scale_phase_dates(
+                    tpl_start, tpl_end, spec.fecha_entrada, spec.fecha_prevista, cell.value
+                )
+
+
 def generate_planning(
     spec: OrderSpec,
     documentacion_dir: Path,
     planning_template: Path = DEFAULT_PLANNING_TEMPLATE,
 ) -> Path:
-    """Copia la plantilla Planning al pedido y rellena la hoja PLAN ING.
+    """Copia la plantilla Planning al pedido y rellena las hojas ING y ESP.
 
     Devuelve la ruta del Planning generado.
     """
@@ -801,47 +828,22 @@ def generate_planning(
 
     # Abrir manteniendo macros (.xlsm)
     wb = load_workbook(dst, keep_vba=True, data_only=False)
-    if "PLAN ING" not in wb.sheetnames:
+    plan_sheets = [s for s in _PLAN_SHEETS if s in wb.sheetnames]
+    if not plan_sheets:
         raise RuntimeError(
-            f"La plantilla no contiene hoja 'PLAN ING'. Hojas: {wb.sheetnames}"
+            f"La plantilla no contiene ninguna hoja {' ni '.join(_PLAN_SHEETS)}. "
+            f"Hojas: {wb.sheetnames}"
         )
 
-    ws = wb["PLAN ING"]
+    for name in plan_sheets:
+        _fill_plan_sheet(wb[name], spec)
 
-    # Leer fechas y fases originales de la plantilla
-    tpl_start = ws["G1"].value
-    tpl_end = ws["G2"].value
-    if not isinstance(tpl_start, datetime) or not isinstance(tpl_end, datetime):
-        # Si la plantilla viene sin fechas, usar las nuevas tal cual sin escalar
-        tpl_start = spec.fecha_entrada
-        tpl_end = spec.fecha_prevista
-
-    # Cabecera: fechas del rango global + S.REF + N.REF
-    ws["G1"] = spec.fecha_entrada
-    ws["G2"] = spec.fecha_prevista
-    if spec.sref:
-        ws["B2"] = spec.sref
-    ws["B3"] = spec.n_ref_short
-
-    # Escalar fases proporcionalmente
-    for row in _PHASE_ROWS:
-        b_cell = ws.cell(row=row, column=2)  # Fecha Inicio
-        d_cell = ws.cell(row=row, column=4)  # Fecha Fin
-        if isinstance(b_cell.value, datetime):
-            b_cell.value = _scale_phase_dates(
-                tpl_start, tpl_end, spec.fecha_entrada, spec.fecha_prevista, b_cell.value
-            )
-        if isinstance(d_cell.value, datetime):
-            d_cell.value = _scale_phase_dates(
-                tpl_start, tpl_end, spec.fecha_entrada, spec.fecha_prevista, d_cell.value
-            )
-
-    # GRAF ING — actualizar también las celdas de referencia visible
-    if "GRAF ING" in wb.sheetnames:
-        gws = wb["GRAF ING"]
-        if spec.sref:
-            gws["F4"] = spec.sref
-        gws["F5"] = spec.n_ref  # con sufijo S00
+    # Gráficos — las referencias que se ven impresas en el plan de fabricación
+    for name in _GRAF_SHEETS:
+        if name in wb.sheetnames:
+            gws = wb[name]
+            gws["F4"] = spec.sref or None   # E4 = 'S. REF.'
+            gws["F5"] = spec.n_ref          # E5 = 'N. REF.' (con sufijo S00)
 
     wb.save(dst)
     return dst
