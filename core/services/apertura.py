@@ -755,7 +755,7 @@ def copy_documentation_template(
 #
 #   PLAN ING / PLAN ESP  →  B2 S. REF. · B3 N. REF. · G1 Inicio · G2 Fin
 #                           y las fases a partir de la fila 7 (B inicio, D fin)
-#   GRAF ING / GRAF ESP  →  F4 S. REF. · F5 N. REF.
+#   GRAF ING / GRAF ESP  →  F4 S. REF. · F5 N. REF. · fecha de entrega
 #
 # Las fases NO son las mismas en los dos idiomas —11 en inglés, 5 en español— ni
 # ocupan el mismo tramo, así que cada hoja se escala con SUS propias fechas.
@@ -779,6 +779,13 @@ _FIRST_PHASE_ROW = 7
 
 _COL_INICIO, _COL_FIN = "B", "D"        # columnas de fecha de cada fase
 _MESES_AIRE = 1                          # margen del eje del gráfico, en meses
+
+# La fecha de entrega que se imprime en las hojas de gráfico no está en la misma
+# celda en los dos idiomas ('FECHA ESTIMADA DE ENTREGA:' en C31, 'DELIVERY DATE:'
+# en D32), así que se busca por la etiqueta y se escribe en la F de esa fila.
+# En español era una fórmula que apuntaba a G2, que ya no vale: G2 es el eje.
+_DELIVERY_LABELS = ("FECHA ESTIMADA DE ENTREGA", "DELIVERY DATE")
+_DELIVERY_COL = "F"
 
 # Excel cuenta los días desde el 30-12-1899 (el libro no usa el sistema 1904).
 _EXCEL_EPOCH = datetime(1899, 12, 30)
@@ -852,6 +859,29 @@ def _set_cell(xml: str, ref: str, value) -> str:
         txt = xml_escape(str(value))
         nueva = f'<c r="{ref}"{style} t="inlineStr"><is><t xml:space="preserve">{txt}</t></is></c>'
     return xml[:m.start()] + nueva + xml[m.end():]
+
+
+def _shared_strings(zf: zipfile.ZipFile) -> list[str]:
+    """Textos compartidos del libro, en crudo (basta para reconocer etiquetas)."""
+    try:
+        xml = zf.read("xl/sharedStrings.xml").decode("utf-8")
+    except KeyError:
+        return []
+    return [re.sub(r"<[^>]+>", "", s) for s in re.findall(r"<si>(.*?)</si>", xml, re.S)]
+
+
+def _delivery_cell(xml: str, shared: list[str]) -> str | None:
+    """Celda de la fecha de entrega de una hoja GRAF, localizada por su etiqueta."""
+    for m in re.finditer(r'<c r="[A-Z]+(\d+)"([^>]*)>(.*?)</c>', xml, re.S):
+        row, attrs, body = m.groups()
+        if 't="s"' not in attrs:
+            continue
+        idx = re.search(r"<v>(\d+)</v>", body)
+        txt = shared[int(idx.group(1))].upper() if idx and int(idx.group(1)) < len(shared) else ""
+        if any(lab in txt for lab in _DELIVERY_LABELS):
+            ref = f"{_DELIVERY_COL}{row}"
+            return ref if _cell_re(ref).search(xml) else None
+    return None
 
 
 def _sheet_files(zf: zipfile.ZipFile) -> dict[str, str]:
@@ -936,6 +966,7 @@ def generate_planning(
         orden = zf.infolist()
         partes = {i.filename: zf.read(i.filename) for i in orden}
         hojas = _sheet_files(zf)
+        shared = _shared_strings(zf)
 
     if not any(s in hojas for s in _PLAN_SHEETS):
         raise RuntimeError(
@@ -948,11 +979,19 @@ def generate_planning(
         if name in hojas:
             nuevos[hojas[name]] = _fill_plan_sheet(partes[hojas[name]].decode("utf-8"), spec)
 
-    # Gráficos — las referencias que se ven impresas en el plan de fabricación
+    # Gráficos — lo que se ve impreso en el plan de fabricación
     for name in _GRAF_SHEETS:
-        if name in hojas:
-            xml = _set_cell(partes[hojas[name]].decode("utf-8"), "F4", spec.sref)  # 'S. REF.'
-            nuevos[hojas[name]] = _set_cell(xml, "F5", spec.n_ref)                 # 'N. REF.'
+        if name not in hojas:
+            continue
+        xml = partes[hojas[name]].decode("utf-8")
+        entrega = _delivery_cell(xml, shared)
+        xml = _set_cell(xml, "F4", spec.sref)       # 'S. REF.'
+        xml = _set_cell(xml, "F5", spec.n_ref)      # 'N. REF.' (con sufijo S00)
+        if entrega:
+            xml = _set_cell(xml, entrega, spec.fecha_prevista)
+        else:
+            logger.warning("Planning: no se encontró la fecha de entrega en %s", name)
+        nuevos[hojas[name]] = xml
 
     with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as out:
         for info in orden:
