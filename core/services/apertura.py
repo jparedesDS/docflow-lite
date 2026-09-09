@@ -26,9 +26,11 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
 from openpyxl import load_workbook
 
@@ -756,13 +758,113 @@ def copy_documentation_template(
 #   GRAF ING / GRAF ESP  →  F4 S. REF. · F5 N. REF.
 #
 # Las fases NO son las mismas en los dos idiomas —11 en inglés, 5 en español— ni
-# arrancan del mismo rango, así que cada hoja se escala con SUS propias fechas.
+# ocupan el mismo tramo, así que cada hoja se escala con SUS propias fechas.
+#
+# G1/G2 no son el plazo del pedido sino el eje del gráfico: llevan un mes de aire
+# a cada lado (redondeado a primero de mes) para que el diagrama se vea entero y
+# centrado. El plazo real del pedido es el que marcan las fases.
+#
+# El .xlsm se edita ABRIÉNDOLO COMO ZIP, no con openpyxl: openpyxl reescribe el
+# libro entero y se deja por el camino el codeName del workbook —la firma que
+# ata el vbaProject.bin—, con lo que Excel da las macros por rotas. También
+# perdía los estilos y colores de los gráficos, la imagen, los ajustes de
+# impresión y el calcChain. Tocando solo las celdas en el XML, el otro 99 % del
+# fichero llega intacto byte a byte.
 _PLAN_SHEETS = ("PLAN ING", "PLAN ESP")
 _GRAF_SHEETS = ("GRAF ING", "GRAF ESP")
 
 # Las fases empiezan bajo la cabecera 'Fase' (fila 6); hasta dónde llegan
 # depende del idioma, así que se recorre lo que haya y se escala lo que sea fecha.
 _FIRST_PHASE_ROW = 7
+
+_COL_INICIO, _COL_FIN = "B", "D"        # columnas de fecha de cada fase
+_MESES_AIRE = 1                          # margen del eje del gráfico, en meses
+
+# Excel cuenta los días desde el 30-12-1899 (el libro no usa el sistema 1904).
+_EXCEL_EPOCH = datetime(1899, 12, 30)
+
+
+def _serial(f: datetime) -> int:
+    """datetime → número de día de Excel, al día más cercano.
+
+    Escalar deja horas sueltas ('15-09-2026 07:23'); al pedido le sirve el día.
+    """
+    return round((f - _EXCEL_EPOCH).total_seconds() / 86400)
+
+
+def _from_serial(n: float) -> datetime:
+    """Número de día de Excel → datetime."""
+    return _EXCEL_EPOCH + timedelta(days=float(n))
+
+
+def _chart_start(f: datetime) -> datetime:
+    """Primero del mes anterior al de `f` — extremo izquierdo del gráfico."""
+    y, m = (f.year - 1, 12) if f.month == 1 else (f.year, f.month - _MESES_AIRE)
+    return datetime(y, m, 1)
+
+
+def _chart_end(f: datetime) -> datetime:
+    """Primero del mes siguiente al de `f` — extremo derecho del gráfico."""
+    y, m = (f.year + 1, 1) if f.month == 12 else (f.year, f.month + _MESES_AIRE)
+    return datetime(y, m, 1)
+
+
+# ── Edición quirúrgica del XML de las hojas ─────────────────────────────────
+
+def _cell_re(ref: str) -> re.Pattern:
+    return re.compile(rf'<c r="{ref}"(?P<attrs>\s[^>/]*)?(?:/>|>(?P<body>.*?)</c>)', re.S)
+
+
+def _cell_number(xml: str, ref: str) -> float | None:
+    """Valor numérico de una celda, o None si está vacía, es texto o es fórmula."""
+    m = _cell_re(ref).search(xml)
+    if not m or m.group("body") is None:
+        return None
+    attrs, body = m.group("attrs") or "", m.group("body")
+    if 't="s"' in attrs or 't="str"' in attrs or "<f" in body:
+        return None
+    v = re.search(r"<v>([^<]*)</v>", body)
+    try:
+        return float(v.group(1)) if v else None
+    except ValueError:
+        return None
+
+
+def _set_cell(xml: str, ref: str, value) -> str:
+    """Escribe una celda conservando su estilo. Falla si la celda no existe.
+
+    Las fechas van como número de día (la celda ya trae el formato de la
+    plantilla) y los textos como cadena en línea, para no tocar sharedStrings.
+    """
+    m = _cell_re(ref).search(xml)
+    if not m:
+        raise RuntimeError(f"La plantilla del Planning no tiene la celda {ref}.")
+    style = re.search(r'\ss="\d+"', m.group("attrs") or "")
+    style = style.group(0) if style else ""
+
+    if value is None or value == "":
+        nueva = f'<c r="{ref}"{style}/>'
+    elif isinstance(value, datetime):
+        nueva = f'<c r="{ref}"{style}><v>{_serial(value)}</v></c>'
+    elif isinstance(value, (int, float)):
+        nueva = f'<c r="{ref}"{style}><v>{value}</v></c>'
+    else:
+        txt = xml_escape(str(value))
+        nueva = f'<c r="{ref}"{style} t="inlineStr"><is><t xml:space="preserve">{txt}</t></is></c>'
+    return xml[:m.start()] + nueva + xml[m.end():]
+
+
+def _sheet_files(zf: zipfile.ZipFile) -> dict[str, str]:
+    """Nombre de hoja → parte del ZIP que la contiene."""
+    wb = zf.read("xl/workbook.xml").decode("utf-8")
+    rels = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    targets = dict(re.findall(r'Id="([^"]+)"[^>]*Target="([^"]+)"', rels))
+    out = {}
+    for name, rid in re.findall(r'<sheet name="([^"]+)"[^>]*r:id="([^"]+)"', wb):
+        tgt = targets.get(rid, "")
+        if tgt:
+            out[name] = "xl/" + tgt.lstrip("/").removeprefix("xl/")
+    return out
 
 
 def _scale_phase_dates(
@@ -783,28 +885,35 @@ def _scale_phase_dates(
     return new_start + timedelta(seconds=new_offset)
 
 
-def _fill_plan_sheet(ws, spec: OrderSpec) -> None:
-    """Cabecera (S. REF., N. REF., Inicio, Fin) y fases escaladas de una hoja PLAN."""
-    # El rango original de la hoja es la referencia para escalar sus fases.
-    tpl_start = ws["G1"].value
-    tpl_end = ws["G2"].value
-    if not isinstance(tpl_start, datetime) or not isinstance(tpl_end, datetime):
-        # Si la hoja viene sin fechas, usar las nuevas tal cual sin escalar
-        tpl_start = spec.fecha_entrada
-        tpl_end = spec.fecha_prevista
+def _last_row(xml: str) -> int:
+    filas = [int(r) for r in re.findall(r'<row r="(\d+)"', xml)]
+    return max(filas) if filas else 0
 
-    ws["G1"] = spec.fecha_entrada
-    ws["G2"] = spec.fecha_prevista
-    ws["B2"] = spec.sref or None    # sin S.REF, vacío: nunca el de la plantilla
-    ws["B3"] = spec.n_ref_short
 
-    for row in range(_FIRST_PHASE_ROW, ws.max_row + 1):
-        for col in (2, 4):          # B = Fecha Inicio · D = Fecha Fin
-            cell = ws.cell(row=row, column=col)
-            if isinstance(cell.value, datetime):
-                cell.value = _scale_phase_dates(
-                    tpl_start, tpl_end, spec.fecha_entrada, spec.fecha_prevista, cell.value
-                )
+def _fill_plan_sheet(xml: str, spec: OrderSpec) -> str:
+    """Cabecera (S. REF., N. REF., eje del gráfico) y fases escaladas de una hoja PLAN."""
+    # Las fases de la plantilla son la referencia para escalar: ocupan un tramo
+    # distinto en cada idioma y G1/G2 llevan el aire del gráfico, así que no
+    # sirven de patrón.
+    fases: list[tuple[str, float]] = []
+    for row in range(_FIRST_PHASE_ROW, _last_row(xml) + 1):
+        for col in (_COL_INICIO, _COL_FIN):
+            n = _cell_number(xml, f"{col}{row}")
+            if n is not None:
+                fases.append((f"{col}{row}", n))
+
+    if fases:
+        seriales = [n for _, n in fases]
+        tpl_ini, tpl_fin = _from_serial(min(seriales)), _from_serial(max(seriales))
+        for ref, n in fases:
+            xml = _set_cell(xml, ref, _scale_phase_dates(
+                tpl_ini, tpl_fin, spec.fecha_entrada, spec.fecha_prevista, _from_serial(n)))
+
+    # Eje del gráfico: un mes de aire a cada lado del plazo del pedido
+    xml = _set_cell(xml, "G1", _chart_start(spec.fecha_entrada))
+    xml = _set_cell(xml, "G2", _chart_end(spec.fecha_prevista))
+    xml = _set_cell(xml, "B2", spec.sref)   # sin S.REF, vacío: nunca el de la plantilla
+    return _set_cell(xml, "B3", spec.n_ref_short)
 
 
 def generate_planning(
@@ -821,31 +930,43 @@ def generate_planning(
             f"Plantilla Planning no encontrada en {planning_template}"
         )
 
-    dst_name = f"03 PLANNING - {spec.pedido}.xlsm"
-    dst = documentacion_dir / dst_name
+    dst = documentacion_dir / f"03 PLANNING - {spec.pedido}.xlsm"
 
-    shutil.copy2(planning_template, dst)
+    with zipfile.ZipFile(planning_template) as zf:
+        orden = zf.infolist()
+        partes = {i.filename: zf.read(i.filename) for i in orden}
+        hojas = _sheet_files(zf)
 
-    # Abrir manteniendo macros (.xlsm)
-    wb = load_workbook(dst, keep_vba=True, data_only=False)
-    plan_sheets = [s for s in _PLAN_SHEETS if s in wb.sheetnames]
-    if not plan_sheets:
+    if not any(s in hojas for s in _PLAN_SHEETS):
         raise RuntimeError(
             f"La plantilla no contiene ninguna hoja {' ni '.join(_PLAN_SHEETS)}. "
-            f"Hojas: {wb.sheetnames}"
+            f"Hojas: {sorted(hojas)}"
         )
 
-    for name in plan_sheets:
-        _fill_plan_sheet(wb[name], spec)
+    nuevos: dict[str, str] = {}
+    for name in _PLAN_SHEETS:
+        if name in hojas:
+            nuevos[hojas[name]] = _fill_plan_sheet(partes[hojas[name]].decode("utf-8"), spec)
 
     # Gráficos — las referencias que se ven impresas en el plan de fabricación
     for name in _GRAF_SHEETS:
-        if name in wb.sheetnames:
-            gws = wb[name]
-            gws["F4"] = spec.sref or None   # E4 = 'S. REF.'
-            gws["F5"] = spec.n_ref          # E5 = 'N. REF.' (con sufijo S00)
+        if name in hojas:
+            xml = _set_cell(partes[hojas[name]].decode("utf-8"), "F4", spec.sref)  # 'S. REF.'
+            nuevos[hojas[name]] = _set_cell(xml, "F5", spec.n_ref)                 # 'N. REF.'
 
-    wb.save(dst)
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in orden:
+            datos = partes[info.filename]
+            if info.filename in nuevos:
+                datos = nuevos[info.filename].encode("utf-8")
+            elif info.filename == "xl/workbook.xml":
+                # Los valores cacheados de las fórmulas dejan de valer al cambiar
+                # las fechas: que Excel recalcule al abrir.
+                texto = datos.decode("utf-8")
+                if "fullCalcOnLoad" not in texto:
+                    datos = texto.replace("<calcPr ", '<calcPr fullCalcOnLoad="1" ', 1).encode("utf-8")
+            out.writestr(info, datos)
+
     return dst
 
 
