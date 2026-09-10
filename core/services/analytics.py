@@ -15,7 +15,9 @@ Expone:
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
+from datetime import date, datetime
 
 from core.services import monitoring
 
@@ -42,6 +44,21 @@ def _estado(d) -> str:
 
 def _es_critico(d) -> bool:
     return str(d.get("Crítico", "") or "").lower().strip() in ("sí", "si")
+
+
+def norm_cliente(valor) -> str:
+    """Nombre de cliente comparable, para no contar el mismo dos veces.
+
+    El ERP tiene «QATAR» y «Qatar», o «ARAMCO - RIYAS» y «ARAMCO / RIYAS», que
+    son el mismo cliente escrito de dos formas y salían como dos filas. Se pasa
+    a mayúsculas y se unifica el separador. No se toca nada más: «ARAMCO» a
+    secas se queda aparte de «ARAMCO - RIYAS», que puede ser otro proyecto.
+    """
+    txt = re.sub(r"\s+", " ", str(valor or "").strip())
+    if not txt:
+        return "Sin Cliente"
+    txt = re.sub(r"\s*[/\\-]\s*", " - ", txt)
+    return txt.upper()
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -105,7 +122,7 @@ def get_summary() -> dict:
 def _por_cliente(docs) -> list[dict]:
     grupos = defaultdict(lambda: {"total": 0, "aprobados": 0, "enviados": 0, "dias": []})
     for d in docs:
-        cliente = str(d.get("Cliente", "") or "").strip() or "Sin Cliente"
+        cliente = norm_cliente(d.get("Cliente"))
         est = _estado(d)
         dd = _num(d.get("Días Devolución"))
         g = grupos[cliente]
@@ -155,7 +172,7 @@ def _heatmap(docs) -> list[dict]:
     grupos = defaultdict(lambda: {"aprobado": 0, "enviado": 0, "com_menores": 0,
                                   "rechazado": 0, "sin_enviar": 0, "total": 0})
     for d in docs:
-        cliente = str(d.get("Cliente", "") or "").strip() or "Sin Cliente"
+        cliente = norm_cliente(d.get("Cliente"))
         est = _estado(d)
         g = grupos[cliente]
         g["total"] += 1
@@ -338,8 +355,8 @@ def get_scorecard() -> list[dict]:
         return []
     grupos = defaultdict(list)
     for d in docs:
-        cliente = str(d.get("Cliente", "") or "").strip()
-        if cliente:
+        cliente = norm_cliente(d.get("Cliente"))
+        if cliente != "Sin Cliente":
             grupos[cliente].append(d)
 
     results = []
@@ -397,3 +414,247 @@ def _score_metrics(items: list[dict]) -> dict:
 def get_predicciones() -> list[dict]:
     from core.services import erp
     return erp.get_seguimiento()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# Historia de cada documento — la columna «Historial Rev.»
+#
+# El ERP guarda en un solo campo todo lo que le ha pasado a un documento, de lo
+# más nuevo a lo más viejo y separado por «//»:
+#
+#   04/09/2026 Enviado Rev. 1 // 21/08/2026 Com. Menores Rev. 0 // 31/07/2026 Enviado Rev. 0
+#
+# Son 9.677 hechos con fecha (2023-2026) que hasta ahora no se usaban para nada:
+# de ahí salen la actividad mes a mes, el tiempo real que tarda el cliente en
+# contestar y cuántas vueltas da un documento hasta que se aprueba.
+# ════════════════════════════════════════════════════════════════════════════
+
+_HIST_RE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(.+?)\s+Rev\.\s*([A-Za-z0-9]*)\s*$")
+
+MESES_ES = ("ene", "feb", "mar", "abr", "may", "jun",
+            "jul", "ago", "sep", "oct", "nov", "dic")
+
+_RESOLUCIONES = ("aprobado", "com. menores", "com. mayores", "comentado", "rechazado")
+
+
+def _bucket(estado: str) -> str:
+    """Agrupa el estado de un hecho en enviado / aprobado / devuelto."""
+    e = estado.lower().strip()
+    if "aprobado" in e:
+        return "aprobado"
+    if e.startswith("enviado"):
+        return "enviado"
+    if any(r in e for r in _RESOLUCIONES):
+        return "devuelto"
+    return ""
+
+
+def doc_events(docs: list[dict] | None = None) -> list[dict]:
+    """Todos los hechos con fecha de todos los documentos, de viejo a nuevo."""
+    docs = monitoring.get_monitoring_data() if docs is None else docs
+    out = []
+    for d in docs:
+        hist = str(d.get("Historial Rev.", "") or "")
+        if not hist.strip():
+            continue
+        for trozo in hist.split("//"):
+            m = _HIST_RE.match(trozo)
+            if not m:
+                continue
+            dd, mm, yyyy, estado, rev = m.groups()
+            try:
+                f = date(int(yyyy), int(mm), int(dd))
+            except ValueError:
+                continue
+            if not (2015 <= f.year <= date.today().year + 1):
+                continue          # fechas basura del ERP (algún 2000 suelto)
+            out.append({
+                "fecha": f,
+                "estado": estado.strip(),
+                "grupo": _bucket(estado),
+                "rev": rev.strip().upper(),
+                "doc": str(d.get("Nº Doc. EIPSA", "") or ""),
+                "pedido": str(d.get("Nº Pedido", "") or ""),
+                "cliente": norm_cliente(d.get("Cliente")),
+                "responsable": str(d.get("Repsonsable", "") or "").strip() or "Sin Asignar",
+                "tipo": str(d.get("Tipo Doc.", "") or "").strip() or "Sin Tipo",
+                "critico": _es_critico(d),
+            })
+    out.sort(key=lambda e: e["fecha"])
+    return out
+
+
+def _meses(n: int) -> list[tuple[int, int]]:
+    """Los últimos `n` meses como (año, mes), terminando en el actual."""
+    hoy = date.today()
+    y, m = hoy.year, hoy.month
+    fuera = []
+    for _ in range(n):
+        fuera.append((y, m))
+        m -= 1
+        if m == 0:
+            y, m = y - 1, 12
+    return list(reversed(fuera))
+
+
+def get_actividad_mensual(meses: int = 18, eventos: list[dict] | None = None) -> dict:
+    """Documentos enviados / aprobados / devueltos por mes."""
+    eventos = doc_events() if eventos is None else eventos
+    periodo = _meses(meses)
+    idx = {ym: i for i, ym in enumerate(periodo)}
+    series = {k: [0] * len(periodo) for k in ("enviado", "aprobado", "devuelto")}
+    for e in eventos:
+        i = idx.get((e["fecha"].year, e["fecha"].month))
+        if i is not None and e["grupo"]:
+            series[e["grupo"]][i] += 1
+    return {
+        "labels": [f"{MESES_ES[m - 1]} {str(y)[2:]}" for y, m in periodo],
+        "enviados": series["enviado"],
+        "aprobados": series["aprobado"],
+        "devueltos": series["devuelto"],
+        "total_enviados": sum(series["enviado"]),
+        "total_aprobados": sum(series["aprobado"]),
+        "total_devueltos": sum(series["devuelto"]),
+    }
+
+
+def get_ciclo_respuesta(eventos: list[dict] | None = None) -> dict:
+    """Cuánto tarda el cliente en contestar, de verdad.
+
+    Empareja cada «Enviado» con la primera resolución posterior del mismo
+    documento. No es lo mismo que la columna «Días Devolución» del ERP, que solo
+    mira la última revisión: aquí entra todo el histórico.
+    """
+    eventos = doc_events() if eventos is None else eventos
+    por_doc: dict[str, list] = defaultdict(list)
+    for e in eventos:
+        if e["doc"]:
+            por_doc[e["doc"]].append(e)
+
+    ciclos: list[dict] = []
+    for hechos in por_doc.values():
+        pendiente = None
+        for e in hechos:                       # ya vienen ordenados por fecha
+            if e["grupo"] == "enviado":
+                pendiente = e
+            elif pendiente is not None and e["grupo"] in ("aprobado", "devuelto"):
+                dias = (e["fecha"] - pendiente["fecha"]).days
+                if 0 <= dias <= 365:
+                    ciclos.append({"dias": dias, "cliente": pendiente["cliente"],
+                                   "fecha": e["fecha"], "resultado": e["grupo"],
+                                   "critico": pendiente["critico"],
+                                   "tipo": pendiente["tipo"]})
+                pendiente = None
+
+    # Mediana mes a mes: es lo que se pinta en el sparkline de la tarjeta, para
+    # ver si el cliente está tardando más o menos que antes. Se deja fuera el mes
+    # en curso: con cuatro respuestas contadas la mediana se dispara y la tarjeta
+    # marcaba subidas del 200 % que no eran ciertas.
+    periodo = _meses(13)[:-1]
+    por_mes: dict[tuple, list] = {ym: [] for ym in periodo}
+    for c in ciclos:
+        clave = (c["fecha"].year, c["fecha"].month)
+        if clave in por_mes:
+            por_mes[clave].append(c["dias"])
+    medianas = []
+    for ym in periodo:
+        vals = sorted(por_mes[ym])
+        medianas.append(vals[len(vals) // 2] if vals else None)
+
+    dias = sorted(c["dias"] for c in ciclos)
+    n = len(dias)
+    tramos = [("0-7 d", 0, 7), ("8-15 d", 8, 15), ("16-30 d", 16, 30),
+              ("31-60 d", 31, 60), ("+60 d", 61, 10 ** 6)]
+    histograma = [{"label": lb, "value": sum(1 for d in dias if lo <= d <= hi)}
+                  for lb, lo, hi in tramos]
+    return {
+        "ciclos": ciclos,
+        "n": n,
+        "mediana": dias[n // 2] if n else 0,
+        "media": round(sum(dias) / n, 1) if n else 0,
+        "p90": dias[int(n * 0.9)] if n else 0,
+        "histograma": histograma,
+        "dentro_15": round(100 * sum(1 for d in dias if d <= 15) / n) if n else 0,
+        "mediana_mensual": medianas,
+        "labels_mensual": [f"{MESES_ES[m - 1]} {str(y)[2:]}" for y, m in periodo],
+    }
+
+
+def get_retrabajo(eventos: list[dict] | None = None) -> dict:
+    """Cuántas vueltas da un documento hasta que se aprueba.
+
+    «A la primera» = aprobado en la revisión 0. Cada revisión de más es trabajo
+    que hubo que repetir, así que es la métrica que mejor mide la calidad de lo
+    que se manda.
+    """
+    eventos = doc_events() if eventos is None else eventos
+    aprobados: dict[str, dict] = {}
+    envios: dict[str, int] = defaultdict(int)
+    for e in eventos:
+        if e["grupo"] == "enviado":
+            envios[e["doc"]] += 1
+        if e["grupo"] == "aprobado" and e["doc"] not in aprobados:
+            aprobados[e["doc"]] = e
+
+    primera = vueltas = 0
+    por_cliente: dict[str, dict] = defaultdict(lambda: {"total": 0, "primera": 0})
+    for doc, e in aprobados.items():
+        n_envios = max(1, envios.get(doc, 1))
+        a_la_primera = n_envios == 1 and e["rev"] in ("0", "", "A")
+        primera += a_la_primera
+        vueltas += n_envios - 1
+        g = por_cliente[e["cliente"]]
+        g["total"] += 1
+        g["primera"] += a_la_primera
+
+    total = len(aprobados)
+    ranking = [{"cliente": c, "total": g["total"], "primera": g["primera"],
+                "pct": round(100 * g["primera"] / g["total"]) if g["total"] else 0}
+               for c, g in por_cliente.items() if g["total"] >= 5]
+    ranking.sort(key=lambda r: r["pct"])
+    return {
+        "aprobados": total,
+        "a_la_primera": primera,
+        "pct_primera": round(100 * primera / total) if total else 0,
+        "vueltas_extra": vueltas,
+        "media_envios": round(1 + vueltas / total, 2) if total else 0,
+        "por_cliente": ranking,
+    }
+
+
+def get_clientes_cuadrante(eventos: list[dict] | None = None) -> list[dict]:
+    """Cliente a cliente: volumen, días medios de respuesta y % a la primera.
+
+    Es lo que alimenta el cuadrante: sirve para ver de un vistazo quién manda
+    mucho volumen y además contesta tarde.
+    """
+    ciclo = get_ciclo_respuesta(eventos)
+    retra = {r["cliente"]: r for r in get_retrabajo(eventos)["por_cliente"]}
+    por_cliente: dict[str, list] = defaultdict(list)
+    for c in ciclo["ciclos"]:
+        por_cliente[c["cliente"]].append(c["dias"])
+
+    out = []
+    for cliente, dias in por_cliente.items():
+        if len(dias) < 3:
+            continue
+        dias_ord = sorted(dias)
+        out.append({
+            "cliente": cliente,
+            "n": len(dias),
+            "mediana": dias_ord[len(dias_ord) // 2],
+            "media": round(sum(dias) / len(dias), 1),
+            "pct_primera": retra.get(cliente, {}).get("pct"),
+        })
+    out.sort(key=lambda r: r["n"], reverse=True)
+    return out
+
+
+def get_fecha_datos(eventos: list[dict] | None = None) -> str:
+    """Fecha del hecho más reciente, para avisar si los datos están parados."""
+    eventos = doc_events() if eventos is None else eventos
+    return eventos[-1]["fecha"].strftime("%d/%m/%Y") if eventos else ""
+
+
+def _hoy() -> date:
+    return datetime.now().date()

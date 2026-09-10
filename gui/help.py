@@ -199,13 +199,23 @@ HELP: dict[str, dict] = {
     },
     "informes": {
         "titulo": "Analítica",
-        "que": "Cómo va la documentación en conjunto: rendimiento por cliente y equipo, y previsión.",
+        "que": "Cómo va la empresa con los datos del ERP: documentación, clientes, ofertas y operaciones.",
         "pasos": [
-            "«Resumen»: distribución por estado, tiempos de respuesta y mapa de calor por cliente.",
-            "«Equipo»: carga y ritmo de cada responsable.",
-            "«Predicción & Scorecard»: fechas estimadas de cierre y puntuación por cliente."
+            "«Pulso»: el estado de toda la casa en una pantalla — cartera, ventas mes a mes, "
+            "actividad documental y un semáforo por área.",
+            "«Documentación»: cuánto tarda el cliente en contestar, cuántos documentos se aprueban "
+            "a la primera y la actividad mes a mes.",
+            "«Clientes»: el cuadrante de quién contesta rápido y quién hace repetir el trabajo, "
+            "el scorecard y el peso de cada uno en la cartera.",
+            "«Comercial»: ofertas ganadas y perdidas, tasa de adjudicación e importes de pedido.",
+            "«Operaciones»: taller, compras, calidad y almacén.",
+            "«Equipo»: carga y ritmo de cada responsable."
         ],
-        "atajos": ["Para un informe compartible usa Centro de Reportes ▸ Informe interactivo"],
+        "atajos": [
+            "La tasa de adjudicación solo cuenta las ofertas resueltas: las que siguen vivas van aparte",
+            "El mes en curso sale incompleto en los gráficos mensuales",
+            "Para un informe compartible usa Centro de Reportes ▸ Informe interactivo",
+        ],
     },
     "reportes": {
         "titulo": "Centro de Reportes",
