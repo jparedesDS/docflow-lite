@@ -39,7 +39,10 @@ from core.parsers.base_parser import norm_doc_code
 logger = logging.getLogger(__name__)
 
 _KIND_RE = re.compile(r"^(env|dev)\.?\s+(.+?)\s*$", re.I)
-_REV_DIR_RE = re.compile(r"^z?rev\s*(\d+)(?:\s*-\s*([A-Z0-9]+))?(?:\s+(AP|COM))?\s*$", re.I)
+# `rev<N>[-<revisión>][ <sufijo>]`. El sufijo se captura libre (AP, com, COM,
+# REJ, «AB - la rechazan»…): si solo se admitieran AP/COM, las carpetas con
+# cualquier otra anotación se ignorarían y no contarían para el correlativo.
+_REV_DIR_RE = re.compile(r"^z?rev\s*(\d+)(?:\s*-\s*([A-Z0-9]+))?(?:\s+(.*?))?\s*$", re.I)
 _LETTER_STYLE_RE = re.compile(r"^rev\s*\d+\s*-\s*[A-Z]\b", re.I)
 
 # Tipo de documento (parsers) → palabras que debe contener la carpeta env./dev.
@@ -214,21 +217,61 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
 
 
+def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int, str, str]]:
+    """Subcarpetas de revisión de una carpeta dev: (ruta, nº, revisión, sufijo)."""
+    out = []
+    if dev_dir.is_dir():
+        try:
+            for sub in dev_dir.iterdir():
+                m = _REV_DIR_RE.match(sub.name)
+                if sub.is_dir() and m:
+                    out.append((sub, int(m.group(1)), (m.group(2) or "").upper(), m.group(3) or ""))
+        except OSError:
+            pass
+    return out
+
+
 def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str) -> tuple[Path, bool]:
-    """Subcarpeta `rev<N>[-L] AP|COM|com` existente o la que habría que crear.
+    """Subcarpeta de revisión existente, o la que habría que crear.
+
+    Cada carpeta dev se nombra de una de estas dos formas, y se respeta la suya:
+
+    · Correlativo — `rev0`, `rev1`, `rev2-D`, `rev3-0`, `rev4-1`…  El número NO
+      es la revisión sino el orden de devolución de ESA carpeta, y tras el guion
+      va la revisión real del documento (letra del cliente o número). Es lo que
+      usan los pedidos donde la numeración del cliente se reinicia o salta
+      (rev D → rev 0 → … → rev 50): si se usara la revisión como número, las
+      carpetas dejarían de ir en orden. La siguiente es `rev<último+1>-<rev>`.
+
+    · Directo — `rev50`, `rev51`…  El número ES la revisión. Se usa cuando la
+      carpeta no tiene ninguna subcarpeta con guion.
 
     El sufijo de comentarios distingue mayúsculas (COM = mayores, com = menores);
     AP se acepta en cualquier caja.
     """
-    if dev_dir.is_dir():
-        for sub in dev_dir.iterdir():
-            m = _REV_DIR_RE.match(sub.name)
-            if not (sub.is_dir() and m and int(m.group(1)) == n):
-                continue
-            found = m.group(3) or ""
-            same = found.upper() == "AP" if suffix == "AP" else found == suffix
-            if same and (not letter or (m.group(2) or "").upper() == letter):
+    subs = _rev_subfolders(dev_dir)
+
+    def mismo_sufijo(found: str) -> bool:
+        return found.upper() == "AP" if suffix == "AP" else found == suffix
+
+    con_guion = [(sub, num, rev, found) for sub, num, rev, found in subs if rev]
+    if con_guion:                                # la carpeta ya va por correlativo
+        rev_text = letter or str(n)
+        for sub, _, rev, found in con_guion:
+            if rev == rev_text.upper() and mismo_sufijo(found):
                 return sub, True
+        # El correlativo sale SOLO de las que llevan guion: una carpeta suelta
+        # con la revisión por número (un «rev50» colado) dispararía la cuenta.
+        # Pero si ese número ya lo ocupa otra subcarpeta, se va detrás de todas:
+        # hay carpetas que mezclan los dos estilos (rev 1, rev 2-C, rev 3).
+        siguiente = max(num for _, num, _, _ in con_guion) + 1
+        if any(num == siguiente for _, num, _, _ in subs):
+            siguiente = max(num for _, num, _, _ in subs) + 1
+        return dev_dir / f"rev{siguiente}-{rev_text} {suffix}", False
+
+    for sub, num, rev, found in subs:
+        if num == n and mismo_sufijo(found) and (not letter or rev == letter):
+            return sub, True
     return dev_dir / f"rev{n}{'-' + letter if letter else ''} {suffix}", False
 
 
