@@ -340,17 +340,20 @@ class Bubble(ChartCard):
     """Dispersión con tamaño variable: dos ejes y el volumen en el radio."""
 
     def __init__(self, master, points: list, *, x_label: str = "", y_label: str = "",
-                 **kwargs):
+                 xmax: float | None = None, ymax: float | None = None,
+                 diagonal: bool = False, **kwargs):
         self._points = points
         self._xl, self._yl = x_label, y_label
+        self._xmax, self._ymax = xmax, ymax
+        self._diagonal = diagonal      # línea «lo que tocaría»: debajo = va tarde
         super().__init__(master, **kwargs)
         self._schedule()
 
     def _pintar(self, w, h) -> None:
         if not self._points:
             return self._vacio(w, h)
-        xmax = _nice_max(max(p["x"] for p in self._points))
-        ymax = _nice_max(max(p["y"] for p in self._points))
+        xmax = self._xmax or _nice_max(max(p["x"] for p in self._points))
+        ymax = self._ymax or _nice_max(max(p["y"] for p in self._points))
         rmax = max((p.get("r", 1) for p in self._points), default=1) or 1
         # Aire arriba y abajo para los rótulos de los ejes, que si no se montan
         # encima de las marcas de la rejilla.
@@ -364,6 +367,12 @@ class Bubble(ChartCard):
             x = x0 + (x1 - x0) * i / 4
             self.canvas.create_line(x, y0, x, y1, fill=theme.BORDER)
             self.canvas.create_text(x, y1 + 6, text=fmt_num(xmax * i / 4), anchor="n",
+                                    fill=theme.TEXT_MUTED, font=theme.font(9))
+
+        if self._diagonal:
+            self.canvas.create_line(x0, y1, x1, y0, fill=theme.BORDER_STRONG,
+                                    width=1, dash=(4, 4))
+            self.canvas.create_text(x1 - 4, y0 + 4, text="al día", anchor="ne",
                                     fill=theme.TEXT_MUTED, font=theme.font(9))
 
         # Solo se rotulan las burbujas gordas: con todas, en la zona densa no se

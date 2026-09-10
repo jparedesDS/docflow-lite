@@ -201,6 +201,7 @@ class InformesView(ctk.CTkFrame):
                 "cartera": ae.cartera(),
                 "comercial": ae.comercial(),
                 "ops": ae.operaciones(),
+                "avance": an.get_avance_pedidos(),
                 "erp": ae.disponible(),
             }
         self._run("Pulso", fetch, self._render_pulso)
@@ -254,6 +255,9 @@ class InformesView(ctk.CTkFrame):
                     "color": colores.get(e["estado"], theme.TEXT_MUTED)} for e in estados],
             center_label="ofertas", height=210,
             title="Ofertas por estado", subtitle=f"desde {ae.DESDE_ANIO}"), 1)
+
+        # Los pedidos que peor van, con la pelota de cada uno
+        self._pedidos_en_riesgo(p, d["avance"])
 
         # Actividad documental
         act = d["actividad"]
@@ -320,6 +324,50 @@ class InformesView(ctk.CTkFrame):
                 row=i // 3, column=i % 3, sticky="nsew",
                 padx=(0 if i % 3 == 0 else theme.SPACE_3, 0), pady=(0, theme.SPACE_3))
 
+    def _pedidos_en_riesgo(self, p, filas: list[dict], tope: int = 6) -> None:
+        """Los pedidos con la documentación más atrasada, y de quién es la pelota."""
+        peores = [r for r in filas if r["riesgo"] != "ok"][:tope]
+        if not peores:
+            return
+        caja = ctk.CTkFrame(p, fg_color=theme.BG_CARD, corner_radius=12,
+                            border_width=1, border_color=theme.BORDER)
+        caja.pack(fill="x", pady=(0, theme.SPACE_3))
+        cab = ctk.CTkFrame(caja, fg_color="transparent")
+        cab.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_3, theme.SPACE_1))
+        ctk.CTkLabel(cab, text="Pedidos con la documentación atrasada",
+                     font=theme.FONT_SECTION, text_color=theme.TEXT_MAIN,
+                     anchor="w").pack(side="left")
+        ctk.CTkLabel(cab, text=f"{len(filas)} sin cerrar · el detalle, en Documentación",
+                     font=theme.FONT_TINY, text_color=theme.TEXT_MUTED).pack(side="right")
+
+        for r in peores:
+            fila = ctk.CTkFrame(caja, fg_color="transparent")
+            fila.pack(fill="x", padx=theme.SPACE_3, pady=2)
+            col = self.RIESGO_COLOR.get(r["riesgo"], theme.TEXT_MUTED)
+            ctk.CTkLabel(fila, text=r["pedido"], font=theme.FONT_SMALL_BOLD,
+                         text_color=theme.ACCENT, anchor="w", width=120).pack(side="left")
+            ctk.CTkLabel(fila, text=r["cliente"][:24], font=theme.FONT_SMALL,
+                         text_color=theme.TEXT_SUB, anchor="w", width=190).pack(side="left")
+            dias = r["dias_al_plazo"]
+            plazo = "—" if dias is None else (f"{abs(dias)} d tarde" if dias < 0
+                                              else f"faltan {dias} d")
+            ctk.CTkLabel(fila, text=plazo, font=theme.FONT_SMALL_BOLD, text_color=col,
+                         anchor="w", width=100).pack(side="left")
+            ctk.CTkLabel(fila, text=f"{r['aprobados']}/{r['total']} aprobados",
+                         font=theme.FONT_TINY, text_color=theme.TEXT_MUTED,
+                         anchor="w", width=110).pack(side="left")
+            # De quién es la pelota: lo que está en nuestro tejado frente a lo
+            # que espera respuesta del cliente.
+            quien = []
+            if r["en_nuestro_tejado"]:
+                quien.append(f"{r['en_nuestro_tejado']} nuestros")
+            if r["en_cliente"]:
+                quien.append(f"{r['en_cliente']} en el cliente")
+            ctk.CTkLabel(fila, text=" · ".join(quien) or "—", font=theme.FONT_TINY,
+                         text_color=theme.AMBER if r["en_nuestro_tejado"] else theme.BLUE,
+                         anchor="e").pack(side="right")
+        ctk.CTkFrame(caja, fg_color="transparent", height=theme.SPACE_2).pack()
+
     # ════════════════════════════════════════════════════════════════════════
     #  DOCUMENTACIÓN
     # ════════════════════════════════════════════════════════════════════════
@@ -334,6 +382,7 @@ class InformesView(ctk.CTkFrame):
                 "retrabajo": an.get_retrabajo(eventos),
                 "ultima": an.get_fecha_datos(eventos),
                 "n_eventos": len(eventos),
+                "avance": an.get_avance_pedidos(),
             }
         self._run("Documentación", fetch, self._render_documentacion)
 
@@ -407,6 +456,72 @@ class InformesView(ctk.CTkFrame):
 
         _section_header(p, "Heatmap cliente × estado").pack(fill="x", pady=(0, theme.SPACE_2))
         self._heatmap_grid(p, s["heatmap_cliente"][:15])
+
+        self._avance_pedidos(p, d["avance"])
+
+    # ── Avance de la documentación por pedido ────────────────────────────────
+
+    RIESGO_COLOR = {"fuera": theme.RED, "atrasado": theme.AMBER, "ok": theme.GREEN}
+    RIESGO_TEXTO = {"fuera": "✗ Fuera de plazo", "atrasado": "⚠ Atrasado", "ok": "✓ En plazo"}
+
+    def _avance_pedidos(self, p, filas: list[dict]) -> None:
+        """Qué pedidos llevan la documentación por detrás de su fecha."""
+        _section_header(p, "Avance de la documentación por pedido").pack(
+            fill="x", pady=(0, theme.SPACE_2))
+        if not filas:
+            ui.empty_state(p, "Todos los pedidos tienen su documentación aprobada.",
+                           compact=True, anchor="w", pady=(0, theme.SPACE_3))
+            return
+
+        fuera = sum(1 for r in filas if r["riesgo"] == "fuera")
+        nuestros = sum(r["en_nuestro_tejado"] for r in filas)
+        cliente = sum(r["en_cliente"] for r in filas)
+
+        # En el gráfico solo entran los que aún están en fecha: a los que ya la
+        # pasaron el avance esperado les sale 100 % por definición, se amontonan
+        # todos en el borde derecho y no dejan ver nada. Esos van en la tabla,
+        # que para ellos dice más (cuántos días llevan tarde).
+        en_fecha = [r for r in filas if (r["dias_al_plazo"] or 0) >= 0]
+        charts.Bubble(
+            p,
+            [{"x": r["pct_esperado"], "y": r["pct"], "r": r["total"],
+              "label": r["pedido"].replace("-S00", ""),
+              "color": self.RIESGO_COLOR.get(r["riesgo"], theme.TEXT_MUTED)}
+             for r in en_fecha],
+            x_label="avance que tocaría a estas alturas →", y_label="% aprobado de verdad",
+            xmax=100, ymax=100, diagonal=True, height=280,
+            title="Cada pedido frente a su plazo",
+            subtitle=f"los {len(en_fecha)} que aún están en fecha · por debajo de la línea van "
+                     f"con retraso · el tamaño es el nº de documentos",
+        ).pack(fill="x", pady=(0, theme.SPACE_3))
+
+        ctk.CTkLabel(
+            p, text=(f"{len(filas)} pedidos con documentación sin cerrar, {fuera} ya fuera de "
+                     f"plazo. De lo que falta, {nuestros} documentos están en nuestro tejado "
+                     f"(sin enviar o devueltos con comentarios) y {cliente} en el del cliente."),
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w",
+            justify="left", wraplength=1100).pack(fill="x", pady=(0, theme.SPACE_2))
+
+        cols = ["Pedido", "Cliente", "Aprob.", "% Real", "% Esper.", "Desv.",
+                "Sin enviar", "Con coment.", "En cliente", "Plazo", "Estado"]
+        host = _table_host(p, _tbl_height(len(filas[:25])))
+        t = DataTable(host, columns=cols)
+        t.pack(fill="both", expand=True)
+        t.set_columns_anchor({c: ("w" if c in ("Pedido", "Cliente") else "center") for c in cols})
+        t.tree.tag_configure("fuera", foreground=theme.RED)
+        t.tree.tag_configure("atrasado", foreground=theme.AMBER)
+        t.tree.tag_configure("ok", foreground=theme.GREEN)
+        for i, r in enumerate(filas[:25]):
+            dias = r["dias_al_plazo"]
+            plazo = "—" if dias is None else (f"{abs(dias)} d tarde" if dias < 0
+                                              else f"faltan {dias} d")
+            t.add_row(values=[r["pedido"], r["cliente"][:26], f"{r['aprobados']}/{r['total']}",
+                              f"{r['pct']}%", f"{r['pct_esperado']}%", f"{r['desviacion']:+d} pp",
+                              r["sin_enviar"] or "—", r["con_comentarios"] or "—",
+                              r["en_cliente"] or "—", plazo,
+                              self.RIESGO_TEXTO.get(r["riesgo"], "—")],
+                      iid=f"av_{i}", tags=(r["riesgo"],))
+        t.autofit_columns(max_per={"Pedido": 140, "Cliente": 200})
 
     def _heatmap_grid(self, parent, rows: list[dict]) -> None:
         if not rows:

@@ -650,6 +650,80 @@ def get_clientes_cuadrante(eventos: list[dict] | None = None) -> list[dict]:
     return out
 
 
+def get_avance_pedidos(solo_abiertos: bool = True) -> list[dict]:
+    """Cómo va la documentación de cada pedido frente a lo que tocaría a estas alturas.
+
+    Se apoya en `erp.get_seguimiento()` (avance real contra el esperado según lo
+    que se lleva del plazo) y añade lo que hacía falta para poder actuar:
+
+    · El cliente, para saber a quién hay que apretar.
+    · Los días que faltan (o que sobran) hasta la fecha prevista.
+    · **De quién es la pelota**: los documentos sin enviar y los devueltos con
+      comentarios están en nuestro tejado; los enviados, en el del cliente. Un
+      pedido atrasado porque no hemos mandado nada no es lo mismo que uno
+      atrasado porque el cliente no contesta, y la tabla anterior no lo distinguía.
+    """
+    from core.services import erp
+
+    docs = monitoring.get_monitoring_data()
+    por_pedido: dict[str, dict] = defaultdict(
+        lambda: {"cliente": "", "sin_enviar": 0, "en_cliente": 0, "con_comentarios": 0})
+    for d in docs:
+        pedido = str(d.get("Nº Pedido", "") or "").strip()
+        if not pedido:
+            continue
+        g = por_pedido[pedido]
+        if not g["cliente"]:
+            g["cliente"] = norm_cliente(d.get("Cliente"))
+        est = _estado(d)
+        if "aprobado" in est:
+            continue
+        if any(s in est for s in ESTADOS_DEVOLUCION):
+            g["con_comentarios"] += 1
+        elif est in ESTADOS_ENVIADOS:
+            g["en_cliente"] += 1
+        else:
+            g["sin_enviar"] += 1
+
+    hoy = date.today()
+    out = []
+    for r in erp.get_seguimiento():
+        if r.get("pct_esperado") is None:
+            continue
+        if solo_abiertos and r["pct"] >= 100:
+            continue
+        g = por_pedido.get(r["pedido"], {})
+        prevista = None
+        txt = str(r.get("fecha_prevista") or "")
+        if len(txt) == 10:
+            try:
+                prevista = date(int(txt[6:]), int(txt[3:5]), int(txt[:2]))
+            except ValueError:
+                prevista = None
+        dias = (prevista - hoy).days if prevista else None
+        desviacion = r["pct"] - r["pct_esperado"]
+        nuestros = g.get("sin_enviar", 0) + g.get("con_comentarios", 0)
+        if dias is not None and dias < 0:
+            riesgo = "fuera"
+        elif desviacion <= -15:
+            riesgo = "atrasado"
+        else:
+            riesgo = "ok"
+        out.append({
+            **r,
+            "cliente": g.get("cliente", ""),
+            "dias_al_plazo": dias,
+            "desviacion": desviacion,
+            "sin_enviar": g.get("sin_enviar", 0),
+            "en_cliente": g.get("en_cliente", 0),
+            "con_comentarios": g.get("con_comentarios", 0),
+            "en_nuestro_tejado": nuestros,
+            "riesgo": riesgo,
+        })
+    out.sort(key=lambda r: (r["desviacion"], r["dias_al_plazo"] if r["dias_al_plazo"] is not None else 0))
+    return out
+
+
 def get_fecha_datos(eventos: list[dict] | None = None) -> str:
     """Fecha del hecho más reciente, para avisar si los datos están parados."""
     eventos = doc_events() if eventos is None else eventos
