@@ -70,6 +70,12 @@ def folder_name(code: str) -> str:
     return str(code or "").replace("/", "_").strip()
 
 
+def _clave(texto: str) -> str:
+    """Solo letras y números, en mayúsculas: así el código del documento es el
+    mismo lo escriban con barra, con guion bajo o con espacios."""
+    return re.sub(r"[^A-Za-z0-9]", "", str(texto or "")).upper()
+
+
 # ── Dónde buscar ──────────────────────────────────────────────────────────────
 
 def local_root() -> Path | None:
@@ -85,37 +91,85 @@ def is_configured() -> bool:
     return local_root() is not None
 
 
-def find_package(code: str, root: Path | None = None) -> Path | None:
-    """Carpeta o zip de esa devolución dentro de la carpeta configurada.
-
-    Acepta las dos formas en las que puede acabar en el disco: la carpeta tal
-    cual (biblioteca sincronizada) o el zip que descarga SharePoint al pulsar
-    «Descargar» sobre ella. **Si están las dos, gana la carpeta**: solo con los
-    ficheros sueltos se puede emparejar cada PDF con su documento.
-    """
-    root = root or local_root()
-    if root is None or not code:
-        return None
-    objetivo = folder_name(code).lower()
-    comprimidos = {objetivo + ext for ext in (".zip", ".7z")}
-    zip_encontrado = None
+def _candidatos(root: Path) -> list[Path]:
+    """Carpetas y zips que hay dentro de la carpeta configurada, del más nuevo
+    al más viejo (lo recién descargado primero)."""
+    fuera: list[Path] = []
     pendientes = [(root, 0)]
-    while pendientes:
+    while pendientes and len(fuera) < 200:
         carpeta, nivel = pendientes.pop(0)
         try:
             hijos = list(carpeta.iterdir())
         except OSError:
             continue
         for hijo in hijos:
-            nombre = hijo.name.lower()
             if hijo.is_dir():
-                if nombre == objetivo:
-                    return hijo
+                fuera.append(hijo)
                 if nivel < _MAX_DEPTH:
                     pendientes.append((hijo, nivel + 1))
-            elif nombre in comprimidos and zip_encontrado is None:
-                zip_encontrado = hijo
-    return zip_encontrado
+            elif hijo.suffix.lower() == ".zip":
+                fuera.append(hijo)
+    fuera.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    return fuera
+
+
+def _contenido(paquete: Path) -> list[str]:
+    """Nombres de los ficheros que hay dentro (carpeta o zip)."""
+    try:
+        if paquete.is_file():
+            with zipfile.ZipFile(paquete) as zf:
+                return [zi.filename for zi in zf.infolist() if not zi.is_dir()]
+        return [p.name for p in paquete.iterdir() if p.is_file()]
+    except (OSError, zipfile.BadZipFile):
+        return []
+
+
+def find_package(code: str, docs: list[dict] | None = None,
+                 root: Path | None = None) -> Path | None:
+    """Carpeta o zip de esa devolución dentro de la carpeta configurada.
+
+    Se busca en dos pasadas:
+
+    1. **Por nombre**: la carpeta que publica SACYR se llama como el WF#, y el
+       zip que genera SharePoint al descargarla, igual. Si están las dos gana la
+       carpeta: solo con los ficheros sueltos se puede emparejar cada PDF con su
+       documento.
+    2. **Por contenido**, si se pasan los documentos del correo: al descargar
+       desde un enlace compartido, SharePoint a veces nombra el zip
+       «OneDrive_1_10-09-2026.zip» en vez de con el nombre de la carpeta. Se mira
+       dentro de lo que haya (lo más reciente primero) y se acepta lo que
+       contenga alguno de los códigos de documento del correo, así no hay que
+       andar renombrando nada.
+    """
+    root = root or local_root()
+    if root is None or not code:
+        return None
+
+    objetivo = folder_name(code).lower()
+    comprimidos = {objetivo + ext for ext in (".zip", ".7z")}
+    zip_encontrado = None
+    for candidato in _candidatos(root):
+        nombre = candidato.name.lower()
+        if candidato.is_dir() and nombre == objetivo:
+            return candidato
+        if candidato.is_file() and nombre in comprimidos and zip_encontrado is None:
+            zip_encontrado = candidato
+    if zip_encontrado is not None:
+        return zip_encontrado
+
+    if not docs:
+        return None
+    claves = [_clave(d.get("Doc. Cliente", "")) for d in docs]
+    claves = [c for c in claves if len(c) >= 8]
+    if not claves:
+        return None
+    for candidato in _candidatos(root):
+        ficheros = [_clave(Path(f).stem) for f in _contenido(candidato)]
+        if any(clave in fichero for clave in claves for fichero in ficheros):
+            logger.info("SACYR: %s reconocido por su contenido como %s",
+                        candidato.name, code)
+            return candidato
+    return None
 
 
 def package_files(paquete: Path) -> list[Path]:
@@ -126,7 +180,8 @@ def package_files(paquete: Path) -> list[Path]:
                   if p.is_file() and p.name.lower() not in _IGNORAR)
 
 
-def collect(code: str, dest_dir: Path | str) -> Path:
+def collect(code: str, dest_dir: Path | str,
+            docs: list[dict] | None = None) -> Path:
     """Deja la devolución como un zip en `dest_dir`. Devuelve la ruta del zip.
 
     Es la función que consume `portal_downloads.download_for_email`, con la misma
@@ -134,7 +189,7 @@ def collect(code: str, dest_dir: Path | str) -> Path:
     """
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    paquete = find_package(code)
+    paquete = find_package(code, docs)
     if paquete is None:
         raiz = local_root()
         if raiz is None:
@@ -164,12 +219,6 @@ def collect(code: str, dest_dir: Path | str) -> Path:
 
 # ── Emparejar ficheros con documentos ─────────────────────────────────────────
 
-def _clave(texto: str) -> str:
-    """Solo letras y números, en mayúsculas: así el código del documento es el
-    mismo lo escriban con barra, con guion bajo o con espacios."""
-    return re.sub(r"[^A-Za-z0-9]", "", str(texto or "")).upper()
-
-
 def file_map(code: str, docs: list[dict]) -> dict[str, dict]:
     """{fichero → {vendor_number, tr_number}} para que el archivado sepa qué es
     cada PDF.
@@ -181,7 +230,7 @@ def file_map(code: str, docs: list[dict]) -> dict[str, dict]:
     «REC627-627-J-C.181752/01-00002» casa con
     «REC627-627-J-C.181752_01-00002 rev0 COMENTADO.pdf» sin depender del formato.
     """
-    paquete = find_package(code)
+    paquete = find_package(code, docs)
     if paquete is None or paquete.is_file():
         return {}
 

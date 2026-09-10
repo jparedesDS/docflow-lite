@@ -268,7 +268,9 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             logger.warning("eGesDoc: no se pudo obtener el mapa de ficheros de %s: %s", code, exc)
     elif info["portal"] == "sacyr":
         def fetch(dest: Path) -> Path:
-            return sacyr.collect(code, dest)
+            # Los documentos del correo sirven para reconocer el paquete aunque
+            # SharePoint lo haya bautizado «OneDrive_1_<fecha>.zip».
+            return sacyr.collect(code, dest, docs)
 
         # Los ficheros de SACYR llevan el código del documento con la barra
         # cambiada, así que se emparejan por el nº de orden final.

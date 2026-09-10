@@ -627,10 +627,12 @@ class AjustesView(ctk.CTkFrame):
         ctk.CTkLabel(
             s, text="SACYR no se puede automatizar como Técnicas Reunidas: tanto Proarc como su "
                     "SharePoint van contra el inicio de sesión de Microsoft de SACYR, sin formulario "
-                    "propio. Lo que sí funciona: sincroniza en el equipo la carpeta «Outbound from "
-                    "SacyrProyecta» de SharePoint (botón «Sincronizar» o «Añadir acceso directo a "
-                    "OneDrive») e indícala aquí. La app busca en ella la carpeta de cada devolución "
-                    "—se llama igual que el WF# del asunto— y la archiva como las demás.",
+                    "propio. Cómo se usa: abre el enlace de «Comments» del correo, descarga la "
+                    "carpeta de la devolución y déjala aquí (vale la carpeta o el zip, y da igual "
+                    "cómo lo llame SharePoint: se reconoce por los documentos que trae dentro). "
+                    "Después, «⤓ Descargar devolución» en Devoluciones lo archiva como los demás "
+                    "portales. Si algún día se puede sincronizar esa biblioteca en el equipo, "
+                    "apunta aquí la carpeta sincronizada y va solo.",
             font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w", justify="left",
             wraplength=720).pack(anchor="w", pady=(0, theme.SPACE_2))
         self.sacyr_dir = self._setting_row(s, "Carpeta", "sacyr_folder")
