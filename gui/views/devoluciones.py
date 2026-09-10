@@ -18,7 +18,7 @@ from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
 
-COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha", "Descarga"]
+COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha", "Descarga", "Enviado"]
 
 # Preview de devolución: columnas a nivel de DOCUMENTO (varían por fila) que se
 # muestran en la tabla. El resto (pedido, cliente, material, PO, transmittal…)
@@ -105,11 +105,13 @@ class DevolucionesView(ctk.CTkFrame):
         self.table = DataTable(self, columns=COLUMNS, on_double_click=self._on_row_double)
         self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_columns_width({
-            "Plataforma": 130, "Asunto": 460, "Remitente": 240, "Fecha": 140, "Descarga": 120,
+            "Plataforma": 130, "Asunto": 420, "Remitente": 220, "Fecha": 140,
+            "Descarga": 120, "Enviado": 120,
         })
         self.table.set_columns_anchor({
             "Plataforma": "center", "Asunto": "w",
-            "Remitente": "w", "Fecha": "center", "Descarga": "center",
+            "Remitente": "w", "Fecha": "center",
+            "Descarga": "center", "Enviado": "center",
         })
         self.table.tree.tag_configure("downloaded", foreground=theme.GREEN)
         self.table.set_context_menu(self._ctx_menu)
@@ -161,6 +163,7 @@ class DevolucionesView(ctk.CTkFrame):
                     e.get("from", ""),
                     _fmt_date(e.get("date", "")),
                     _download_label(dl),
+                    _sent_label(e),
                 ],
                 iid=e.get("uid"),
                 tags=tags,
@@ -1177,6 +1180,17 @@ def _download_label(dl: dict) -> str:
     if not dl or not dl.get("downloadable"):
         return "—"
     return "✓  guardada" if dl.get("downloaded") else "⤓  pendiente"
+
+
+def _sent_label(e: dict) -> str:
+    """Texto de la columna Enviado: si ya se mandó la notificación al responsable.
+
+    Se apoya en el mismo registro que usa la idempotencia (`state/processed_emails.json`),
+    que guarda el uid justo después de enviar el correo.
+    """
+    if not e.get("parseable", True):
+        return "—"
+    return "✓  enviado" if e.get("processed") else "✉  pendiente"
 
 
 def _fmt_date(iso: str) -> str:

@@ -114,10 +114,12 @@ def _download_status(e: dict) -> dict:
 
 def fetch_unread_emails(folder: str = "INBOX") -> list[dict]:
     raw = imap_service.list_unread(folder)
+    processed = _load_processed()
     results = []
     for e in raw:
         parser, platform = _detect_platform_for(e)
         results.append({**e, "platform": platform, "parseable": parser is not None,
+                        "processed": e["uid"] in processed,
                         **({"download": _download_status(e)} if parser else {})})
     return results
 

@@ -125,6 +125,8 @@ HELP: dict[str, dict] = {
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
             "antes de enviar la notificación (que indica dónde está guardada).",
+            "La columna «Enviado» marca «✓ enviado» cuando ya se mandó la notificación al responsable, "
+            "y «✉ pendiente» mientras no se haya hecho.",
             "Solo se listan transmittals de verdad: respuestas (RE:/FW:), acuses de lectura y avisos de los portales quedan fuera."
         ],
         "atajos": [
