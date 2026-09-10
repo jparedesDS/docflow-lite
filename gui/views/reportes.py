@@ -126,7 +126,8 @@ class ReportesView(ctk.CTkFrame):
         ctk.CTkLabel(inner, text="PERIODO", font=theme.FONT_TINY,
                      text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
         self._ir_seg = ctk.CTkSegmentedButton(
-            inner, values=["Semanal", "Mensual", "Ejecutivo", "Por pedido"], command=self._on_ir_period,
+            inner, values=["Semanal", "Mensual", "Análisis", "Ejecutivo", "Por pedido"],
+            command=self._on_ir_period,
             height=theme.HEIGHT_BUTTON_SM, font=theme.FONT_SMALL_BOLD,
             corner_radius=theme.RADIUS_MD, fg_color=theme.BG_PAGE,
             selected_color=theme.ACCENT, selected_hover_color=theme.ACCENT_HOVER,
@@ -172,6 +173,16 @@ class ReportesView(ctk.CTkFrame):
             self._ir_mode = "pedido"
             self._ir_sel_label.configure(text="PEDIDO")
             self._ir_refresh_pedidos()
+        elif value == "Análisis":
+            # Un informe por cada pestaña de Analítica, con la misma lectura que
+            # la pantalla pero en un archivo que se puede mandar y archivar.
+            from core.services import analysis_reports as ar
+            self._ir_mode = "analisis"
+            self._ir_sel_label.configure(text="INFORME")
+            self._ir_analisis = {ar.NOMBRES[k]: k for k in ar.INFORMES}
+            nombres = list(self._ir_analisis)
+            self._ir_menu.configure(values=nombres)
+            self._ir_menu.set(nombres[0])
         elif value == "Ejecutivo":
             self._ir_mode = "executive"
             self._ir_sel_label.configure(text="ALCANCE")
@@ -225,10 +236,13 @@ class ReportesView(ctk.CTkFrame):
         return datetime.fromisoformat(iso) if iso else None
 
     def _ir_target(self):
-        """('pedido', p) | ('executive', None) | ('period', (period, ref)) | None."""
+        """('pedido', p) | ('analisis', clave) | ('executive', None) | ('period', …) | None."""
         if self._ir_mode == "pedido":
             pedido = self._ir_pedidos.get(self._ir_menu.get())
             return ("pedido", pedido) if pedido else None
+        if self._ir_mode == "analisis":
+            clave = getattr(self, "_ir_analisis", {}).get(self._ir_menu.get())
+            return ("analisis", clave) if clave else None
         if self._ir_mode == "executive":
             return ("executive", None)
         return ("period", (self._ir_period, self._ir_refdate()))
@@ -236,7 +250,7 @@ class ReportesView(ctk.CTkFrame):
     def _ir_generate(self) -> None:
         target = self._ir_target()
         if target is None:
-            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            self._ir_status.configure(text="✗  Elige qué informe generar", text_color=theme.RED)
             return
         self._ir_status.configure(text="⏳  Generando informe…", text_color=theme.TEXT_MUTED)
 
@@ -244,6 +258,9 @@ class ReportesView(ctk.CTkFrame):
             try:
                 if target[0] == "pedido":
                     path, _ = self._ir.generate_pedido(target[1])
+                elif target[0] == "analisis":
+                    from core.services import analysis_reports as ar
+                    path, _ = ar.generate(target[1])
                 elif target[0] == "executive":
                     path, _ = self._ir.generate_executive()
                 else:
@@ -280,7 +297,7 @@ class ReportesView(ctk.CTkFrame):
             return
         target = self._ir_target()
         if target is None:
-            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            self._ir_status.configure(text="✗  Elige qué informe generar", text_color=theme.RED)
             return
         self._ir_status.configure(text="⏳  Enviando informe…", text_color=theme.TEXT_MUTED)
 
@@ -288,6 +305,9 @@ class ReportesView(ctk.CTkFrame):
             try:
                 if target[0] == "pedido":
                     self._ir.send_pedido_email(pedido=target[1], to=to)
+                elif target[0] == "analisis":
+                    from core.services import analysis_reports as ar
+                    ar.send_email(target[1], to=to)
                 elif target[0] == "executive":
                     self._ir.send_executive_html_email(to=to)
                 else:
@@ -309,7 +329,7 @@ class ReportesView(ctk.CTkFrame):
     def _ir_teams(self) -> None:
         target = self._ir_target()
         if target is None:
-            self._ir_status.configure(text="✗  Selecciona un pedido", text_color=theme.RED)
+            self._ir_status.configure(text="✗  Elige qué informe generar", text_color=theme.RED)
             return
         from core.services import teams
         if not teams.is_configured():
@@ -322,6 +342,9 @@ class ReportesView(ctk.CTkFrame):
             try:
                 if target[0] == "pedido":
                     res = self._ir.post_pedido_to_teams(target[1])
+                elif target[0] == "analisis":
+                    from core.services import analysis_reports as ar
+                    res = ar.post_to_teams(target[1])
                 elif target[0] == "executive":
                     res = self._ir.post_executive_to_teams()
                 else:

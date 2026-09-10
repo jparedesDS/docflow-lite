@@ -50,9 +50,13 @@ _SQL_MACHINES = """
     FROM verification.machines_workshop
 """
 
+# Esta tabla no sigue el nombrado de las otras dos: no tiene `equipment_number`
+# ni `location`, sino `number`, `instrument` y las fechas como `*_revision`. La
+# consulta anterior fallaba entera y los 17 manómetros no aparecían por ningún
+# lado —ni en Calidad ni en los avisos de equipos vencidos—.
 _SQL_MANOMETERS = """
-    SELECT equipment_number AS codigo, type_equipment AS tipo, location AS ubicacion,
-           brand AS marca, last_check_date AS ultima, next_check_date AS proxima
+    SELECT number AS codigo, instrument AS tipo, master AS ubicacion,
+           model AS marca, last_revision AS ultima, next_revision AS proxima
     FROM verification.manometers_thermoelements_workshop
 """
 

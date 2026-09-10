@@ -724,6 +724,30 @@ def get_avance_pedidos(solo_abiertos: bool = True) -> list[dict]:
     return out
 
 
+def get_actividad_por_responsable(meses: int = 6, eventos: list[dict] | None = None) -> dict:
+    """Envíos mes a mes de cada responsable de documento.
+
+    El ranking del equipo mira el acumulado de siempre; esto mira el ritmo, que
+    es lo que dice si alguien se ha atascado este mes.
+    """
+    eventos = doc_events() if eventos is None else eventos
+    periodo = _meses(meses)
+    idx = {ym: i for i, ym in enumerate(periodo)}
+    por_resp: dict[str, list] = {}
+    for e in eventos:
+        if e["grupo"] != "enviado" or e["responsable"] in _OCULTAR_DOC:
+            continue
+        i = idx.get((e["fecha"].year, e["fecha"].month))
+        if i is None:
+            continue
+        por_resp.setdefault(e["responsable"], [0] * len(periodo))[i] += 1
+    filas = [{"responsable": r, "valores": v, "total": sum(v)}
+             for r, v in por_resp.items() if sum(v) > 0]
+    filas.sort(key=lambda r: r["total"], reverse=True)
+    return {"labels": [f"{MESES_ES[m - 1]} {str(y)[2:]}" for y, m in periodo],
+            "responsables": filas}
+
+
 def get_fecha_datos(eventos: list[dict] | None = None) -> str:
     """Fecha del hecho más reciente, para avisar si los datos están parados."""
     eventos = doc_events() if eventos is None else eventos

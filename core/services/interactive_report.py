@@ -1807,15 +1807,15 @@ def post_pedido_to_teams(pedido: str) -> dict:
 
 def post_executive_to_teams(ref_date: datetime | None = None) -> dict:
     data = build_executive_report_data(ref_date, with_ai=False)
-    t = data["totals"]
+    t, c, p = data["totals"], data["ciclo"], data["pelota"]
     riesgo = next((k["value"] for k in data["kpis"] if k["label"] == "En riesgo"), 0)
     facts = [
         ("Documentos", t["total"]),
         ("Aprobación global", f"{t['pct']}%"),
-        ("Enviados", t["enviados"]),
-        ("Devoluciones", t["devoluciones"]),
+        ("Respuesta del cliente", f"{c['mediana']} d de mediana"),
         ("En riesgo (+15d)", riesgo),
-        ("Pedidos en riesgo", len(data["pred"])),
+        ("Pedidos atrasados", f"{p['atrasados']} de {p['total']}"),
+        ("Pendiente en nuestro tejado", f"{p['nuestros']} docs"),
     ]
     from core.services import teams
     return teams.post_card(data["meta"]["title"], data["meta"]["period_label"],

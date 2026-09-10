@@ -28,6 +28,14 @@ def eur(v: float) -> str:
     return num(v) + " €"
 
 
+def dec(v: float, decimales: int = 1) -> str:
+    """Decimal con coma, como se escribe en castellano: 19.9 → «19,9»."""
+    try:
+        return f"{float(v or 0):.{decimales}f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return "0"
+
+
 def pct(v: float, decimales: int = 0) -> str:
     """Porcentaje con coma decimal: 74.8 → «75%» o «74,8%»."""
     try:

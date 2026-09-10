@@ -186,6 +186,43 @@ def pedidos_mensuales(meses: int = 24) -> dict:
     return _cache.get(f"mensual::{meses}", build)
 
 
+def pipeline() -> dict:
+    """Ofertas vivas: lo que está encima de la mesa esperando respuesta.
+
+    Es la parte del embudo que no se veía en ningún sitio: cuánto dinero hay
+    presentado, desde cuándo y de quién. `Presentada` y `Registrada` son los dos
+    estados que el ERP usa para lo que aún no se ha resuelto.
+    """
+    def build():
+        rows = ec.safe_query("""
+            SELECT f.num_offer AS oferta,
+                   coalesce(nullif(nullif(trim(f.final_client), ''), 'No hay datos'),
+                            nullif(nullif(trim(f.client), ''), 'No hay datos'),
+                            'Sin cliente') AS cliente,
+                   coalesce(nullif(i.initials, 'No hay datos'), '—') AS comercial,
+                   f.register_date AS registrada,
+                   f.presentation_date AS presentada,
+                   f.limit_date AS limite,
+                   coalesce(f.offer_amount::numeric, 0) AS importe,
+                   coalesce(nullif(trim(f.probability), ''), '') AS probabilidad,
+                   coalesce(nullif(trim(f.material), ''), '') AS material,
+                   trim(f.state) AS estado,
+                   (current_date - f.register_date) AS dias
+            FROM public.offers f
+            LEFT JOIN users_data.initials i ON lower(i.username) = lower(f.responsible)
+            WHERE lower(trim(f.state)) IN ('presentada', 'registrada')
+            ORDER BY f.offer_amount::numeric DESC NULLS LAST
+        """, label="pipeline")
+        for r in rows:
+            r["importe"] = _f(r.get("importe"))
+            r["dias"] = int(r.get("dias") or 0)
+        return {"ofertas": rows, "n": len(rows),
+                "importe": sum(r["importe"] for r in rows),
+                "dias_max": max((r["dias"] for r in rows), default=0)}
+
+    return _cache.get("pipeline", build)
+
+
 def cartera() -> dict:
     """Pedidos abiertos: cuántos, por cuánto y cuánto llevan andando."""
     def build():
