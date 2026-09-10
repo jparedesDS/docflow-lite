@@ -162,6 +162,11 @@ def list_all(folder="INBOX", imap_user=None, imap_pass=None):
                 date_iso = date_str
             results.append({
                 "uid": uid.decode(),
+                # Identificador estable del correo. `uid` es el nº de secuencia
+                # del mensaje en la carpeta (search devuelve secuencia, no UID):
+                # cambia en cuanto se borra un correo anterior, así que no sirve
+                # para recordar nada entre sesiones. El Message-ID sí.
+                "message_id": (msg.get("Message-ID") or "").strip(),
                 "subject": subject,
                 "from": sender,
                 "date": date_iso,
@@ -194,6 +199,11 @@ def list_unread(folder="INBOX", imap_user=None, imap_pass=None):
                 date_iso = date_str
             results.append({
                 "uid": uid.decode(),
+                # Identificador estable del correo. `uid` es el nº de secuencia
+                # del mensaje en la carpeta (search devuelve secuencia, no UID):
+                # cambia en cuanto se borra un correo anterior, así que no sirve
+                # para recordar nada entre sesiones. El Message-ID sí.
+                "message_id": (msg.get("Message-ID") or "").strip(),
                 "subject": subject,
                 "from": sender,
                 "date": date_iso,

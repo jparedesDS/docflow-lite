@@ -2,7 +2,7 @@
 
 Detecta la plataforma del email, parsea con el parser correspondiente, construye
 el HTML de notificación y lo envía por SMTP. Idempotencia local con un fichero
-JSON en `state/processed_emails.json`.
+JSON en `state/processed_emails.json`, indexado por Message-ID (ver `email_key`).
 """
 
 import logging
@@ -56,14 +56,37 @@ def _load_processed() -> set:
     return set(read_json(PROCESSED_EMAILS_FILE, default=[]))
 
 
-def _save_processed(uid: str) -> None:
+def _save_processed(key: str) -> None:
     processed = _load_processed()
-    processed.add(uid)
+    processed.add(key)
     write_json(PROCESSED_EMAILS_FILE, sorted(processed))
 
 
-def is_processed(uid: str) -> bool:
-    return uid in _load_processed()
+def email_key(e: dict) -> str:
+    """Identificador con el que se recuerda un correo ya notificado.
+
+    El Message-ID, que no cambia nunca. NO vale el `uid`: es el nº de secuencia
+    del mensaje dentro de la carpeta (IMAP SEARCH devuelve secuencia, no UID), y
+    se renumera al borrar cualquier correo anterior — el mismo «uid 41» era un
+    correo distinto la semana pasada. Los números sueltos que quedan en
+    `processed_emails.json` son de esa época y ya no casan con nada, que es
+    justo lo que se busca.
+    """
+    return str(e.get("message_id") or "").strip() or str(e.get("uid", ""))
+
+
+def _message_id_from_raw(raw: bytes) -> str:
+    """Message-ID de los bytes MIME del correo ('' si no trae)."""
+    try:
+        from email import message_from_bytes
+        return (message_from_bytes(raw).get("Message-ID") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def is_processed(key: str) -> bool:
+    """`key` es el de `email_key()`, no el uid."""
+    return key in _load_processed()
 
 
 # ── Detección de plataforma ───────────────────────────────────────────────────
@@ -121,7 +144,7 @@ def fetch_unread_emails(folder: str = "INBOX") -> list[dict]:
     for e in raw:
         parser, platform = _detect_platform_for(e)
         results.append({**e, "platform": platform, "parseable": parser is not None,
-                        "processed": e["uid"] in processed,
+                        "processed": email_key(e) in processed,
                         **({"download": _download_status(e)} if parser else {})})
     return results
 
@@ -139,7 +162,7 @@ def fetch_all_emails(folder: str = "INBOX") -> list[dict]:
             **e,
             "platform": platform,
             "parseable": True,
-            "processed": e["uid"] in processed,
+            "processed": email_key(e) in processed,
             "download": _download_status(e),
         })
     return out
@@ -479,7 +502,7 @@ def process_and_notify(
     )
 
     imap_service.mark_as_read(uid, folder)
-    _save_processed(uid)
+    _save_processed(_message_id_from_raw(raw_eml) or uid)
 
     # Archivado .eml en la carpeta 02 DEVOLUCIONES del pedido (bytes reales
     # del MIME enviado, no un .eml reconstruido — preserva Date/Message-ID).
