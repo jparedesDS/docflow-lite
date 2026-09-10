@@ -623,6 +623,18 @@ class AjustesView(ctk.CTkFrame):
         self.eg_user = self._setting_row(s, "Usuario", "egesdoc_user")
         self.eg_pass, self.eg_pass_state = self._secret_row(s, "Contraseña", "egesdoc_pass", "EGESDOC_PASS")
 
+        ui.section_header(s, "SACYR · Proarc").pack(fill="x", pady=(theme.SPACE_4, theme.SPACE_2))
+        ctk.CTkLabel(
+            s, text="SACYR no se puede automatizar como Técnicas Reunidas: tanto Proarc como su "
+                    "SharePoint van contra el inicio de sesión de Microsoft de SACYR, sin formulario "
+                    "propio. Lo que sí funciona: sincroniza en el equipo la carpeta «Outbound from "
+                    "SacyrProyecta» de SharePoint (botón «Sincronizar» o «Añadir acceso directo a "
+                    "OneDrive») e indícala aquí. La app busca en ella la carpeta de cada devolución "
+                    "—se llama igual que el WF# del asunto— y la archiva como las demás.",
+            font=theme.FONT_SMALL, text_color=theme.TEXT_SUB, anchor="w", justify="left",
+            wraplength=720).pack(anchor="w", pady=(0, theme.SPACE_2))
+        self.sacyr_dir = self._setting_row(s, "Carpeta", "sacyr_folder")
+
         ui.section_header(s, "Descarga de devoluciones").pack(fill="x", pady=(theme.SPACE_3, theme.SPACE_2))
         ctk.CTkLabel(
             s, text="Cada devolución (zip + correo) se guarda en la carpeta del pedido: "
@@ -652,6 +664,7 @@ class AjustesView(ctk.CTkFrame):
 
     def _save_portales(self) -> None:
         pref.set_value("egesdoc_user", self.eg_user.get().strip())
+        pref.set_value("sacyr_folder", self.sacyr_dir.get().strip())
         pref.set_value("portal_auto_download", bool(self.sw_eg_auto.get()))
         self._save_secret(self.eg_pass, self.eg_pass_state, "egesdoc_pass")
         ui.toast(self, "Guardado", "Acceso a eGesDoc guardado.", kind="success")

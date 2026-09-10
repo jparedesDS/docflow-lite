@@ -5,6 +5,11 @@ Portales soportados:
     baja del portal con las credenciales de Ajustes ▸ Portales (`egesdoc.py`).
   · AYESA: el propio correo trae el enlace de descarga; no hace falta usuario
     (`ayesa.py`).
+  · SACYR: sus dos caminos (Proarc y SharePoint) van contra el inicio de sesión
+    de Microsoft del tenant de SACYR, así que no hay nada que scrapear. La app
+    recoge el paquete de la carpeta local donde aparece —la biblioteca de
+    SharePoint sincronizada o una descarga a mano— y de ahí en adelante hace lo
+    mismo que con los otros (`sacyr.py`).
 
 Convención de carpetas (la misma que se seguía a mano):
 
@@ -38,8 +43,8 @@ from typing import Callable
 
 from core import preferences
 from core.config import PEDIDOS_BASE_PATH, PORTAL_DOWNLOADS_FILE
-from core.parsers import ayesa_parser, tr_parser
-from core.services import ayesa, egesdoc
+from core.parsers import ayesa_parser, sacyr_parser, tr_parser
+from core.services import ayesa, egesdoc, sacyr
 from core.services import imap as imap_service
 from core.utils.json_store import read_json, write_json
 
@@ -47,7 +52,8 @@ logger = logging.getLogger(__name__)
 
 TRANS_FOLDER = "00 TRANS Y RES"
 MAX_AUTO_ATTEMPTS = 6          # tras 6 fallos seguidos el job deja de insistir (el botón sigue funcionando)
-PORTAL_NAMES = {"egesdoc": "eGesDoc (Técnicas Reunidas)", "ayesa": "AYESA"}
+PORTAL_NAMES = {"egesdoc": "eGesDoc (Técnicas Reunidas)", "ayesa": "AYESA",
+                "sacyr": "SACYR (Proarc)"}
 
 _listeners: list = []          # callbacks(result) para que la GUI avise de descargas automáticas
 
@@ -80,6 +86,10 @@ def describe_email(sender: str, subject: str) -> dict | None:
         code = ayesa.parse_subject(subject)
         if code:
             return {"portal": "ayesa", "code": code, "po": ""}
+    elif sacyr_parser.can_parse(sender or ""):
+        info = sacyr.parse_subject(subject)
+        if info["code"]:
+            return {"portal": "sacyr", "code": info["code"], "po": info["po"]}
     return None
 
 
@@ -87,6 +97,9 @@ def portal_ready(portal: str) -> tuple[bool, str]:
     """(listo, motivo) — si el portal puede usarse ahora mismo."""
     if portal == "egesdoc" and not egesdoc.is_configured():
         return False, "configura el acceso a eGesDoc en Ajustes ▸ Portales"
+    if portal == "sacyr" and not sacyr.is_configured():
+        return False, ("indica en Ajustes ▸ Portales dónde aparecen las devoluciones "
+                       "de SACYR (la carpeta de SharePoint sincronizada)")
     return True, ""
 
 
@@ -228,7 +241,8 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
     subject = pv.get("subject", "")
     info = describe_email(pv.get("from", ""), subject)
     if info is None:
-        raise ValueError("Este correo no es una devolución descargable (solo Técnicas Reunidas y AYESA)")
+        raise ValueError("Este correo no es una devolución descargable "
+                         "(solo Técnicas Reunidas, AYESA y SACYR)")
     ok, why = portal_ready(info["portal"])
     if not ok:
         raise RuntimeError(why)
@@ -252,6 +266,16 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             file_docs = egesdoc.transmittal_file_map(info["po"], code, project_hint=hint, session=session)
         except Exception as exc:  # noqa: BLE001
             logger.warning("eGesDoc: no se pudo obtener el mapa de ficheros de %s: %s", code, exc)
+    elif info["portal"] == "sacyr":
+        def fetch(dest: Path) -> Path:
+            return sacyr.collect(code, dest)
+
+        # Los ficheros de SACYR llevan el código del documento con la barra
+        # cambiada, así que se emparejan por el nº de orden final.
+        try:
+            file_docs = sacyr.file_map(code, docs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
     else:
         html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
         url = ayesa.download_link(html)
