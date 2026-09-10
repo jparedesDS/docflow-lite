@@ -22,6 +22,7 @@ import tkinter as tk
 
 import customtkinter as ctk
 
+from core.utils import fmt
 from gui import theme
 from gui.widgets import ui
 
@@ -45,20 +46,10 @@ def _nice_max(value: float) -> float:
     return step * (10 ** exp)
 
 
-def fmt_num(v: float) -> str:
-    """Número corto para ejes y etiquetas: 1.234.567 → 1,2 M."""
-    a = abs(v)
-    if a >= 1_000_000:
-        return f"{v / 1_000_000:.1f}".replace(".", ",").rstrip("0").rstrip(",") + " M"
-    if a >= 1_000:
-        return f"{v / 1_000:.1f}".replace(".", ",").rstrip("0").rstrip(",") + "k"
-    if isinstance(v, float) and v != int(v):
-        return f"{v:.1f}".replace(".", ",")
-    return str(int(v))
-
-
-def fmt_eur(v: float) -> str:
-    return fmt_num(v) + " €"
+# El formateo vive en core/utils/fmt para que lo compartan la app y los informes
+# HTML, que se generan desde los servicios y no pueden importar la interfaz.
+fmt_num = fmt.num
+fmt_eur = fmt.eur
 
 
 class ChartCard(ctk.CTkFrame):

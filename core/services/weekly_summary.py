@@ -139,6 +139,16 @@ def _collect_executive_data() -> dict:
         })
     formatted_docs.sort(key=lambda x: x["dias"], reverse=True)
 
+    # Pedidos con la documentación atrasada y de quién es la pelota: es el
+    # único dato del resumen que dice qué hacer el lunes, en vez de solo cómo
+    # fue la semana.
+    try:
+        from core.services import analytics as analytics_service
+        avance = analytics_service.get_avance_pedidos()
+    except Exception:  # noqa: BLE001 — el resumen sale igual sin esta parte
+        avance = []
+    atrasados = [r for r in avance if r["riesgo"] != "ok"]
+
     return {
         "fecha": datetime.now().strftime("%Y-%m-%d"),
         "week_start": start.strftime("%d/%m"),
@@ -152,6 +162,16 @@ def _collect_executive_data() -> dict:
         "total_global": total_global,
         "pct_global": pct_global,
         "weekly_docs": formatted_docs,
+        "pedidos_atrasados": len(atrasados),
+        "pedidos_abiertos": len(avance),
+        "pend_nuestros": sum(r["en_nuestro_tejado"] for r in avance),
+        "pend_cliente": sum(r["en_cliente"] for r in avance),
+        "peores_pedidos": [
+            {"pedido": r["pedido"], "cliente": r["cliente"],
+             "dias": r["dias_al_plazo"], "nuestros": r["en_nuestro_tejado"],
+             "cliente_docs": r["en_cliente"]}
+            for r in atrasados[:5]
+        ],
     }
 
 
@@ -341,13 +361,52 @@ def _alert_box_html(count: int, message: str, color: str) -> str:
     )
 
 
+def _atrasados_html(data: dict) -> str:
+    """Bloque «pedidos que van tarde», con el reparto de lo pendiente."""
+    peores = data.get("peores_pedidos") or []
+    if not peores:
+        return ""
+    filas = []
+    for r in peores:
+        dias = r.get("dias")
+        plazo = "—" if dias is None else (f"{abs(dias)} d tarde" if dias < 0
+                                          else f"faltan {dias} d")
+        color = "#DC2626" if (dias is not None and dias < 0) else "#D97706"
+        quien = []
+        if r.get("nuestros"):
+            quien.append(f'{r["nuestros"]} nuestros')
+        if r.get("cliente_docs"):
+            quien.append(f'{r["cliente_docs"]} en el cliente')
+        filas.append(
+            f'<tr><td style="padding:7px 0;font-size:13px;font-weight:600;color:#4F46E5;">'
+            f'{_escape(r["pedido"])}</td>'
+            f'<td style="padding:7px 0;font-size:12px;color:#475569;">'
+            f'{_escape(str(r["cliente"])[:26])}</td>'
+            f'<td style="padding:7px 0;font-size:12px;font-weight:600;color:{color};'
+            f'text-align:right;white-space:nowrap;">{_escape(plazo)}</td>'
+            f'<td style="padding:7px 0 7px 14px;font-size:11px;color:#94A3B8;'
+            f'text-align:right;white-space:nowrap;">{_escape(" · ".join(quien) or "—")}</td></tr>'
+        )
+    return f"""
+  <tr><td style="padding:8px 28px 4px;">
+    <p style="margin:0 0 6px;font-size:10px;font-weight:700;color:#4F46E5;
+              text-transform:uppercase;letter-spacing:0.08em;">Pedidos que van tarde</p>
+    <p style="margin:0 0 10px;font-size:12px;color:#64748B;line-height:1.6;">
+      {data.get('pedidos_atrasados', 0)} de {data.get('pedidos_abiertos', 0)} pedidos con
+      documentación abierta. De lo pendiente,
+      <b style="color:#D97706">{data.get('pend_nuestros', 0)} documentos están en nuestro tejado</b>
+      y {data.get('pend_cliente', 0)} esperan al cliente.</p>
+    <table width="100%" cellpadding="0" cellspacing="0">{''.join(filas)}</table>
+  </td></tr>"""
+
+
 def _render_executive_html(data: dict, ai_paragraph: str) -> str:
     cards = [
         (str(data["total_docs"]), "Movimientos", "#2563EB"),
         (f'{data["total_aprobados"]} ({data["pct_aprobados"]}%)', "Aprobados", "#16A34A"),
         (f'{data["velocidad_media"]}d', "Vel. Media", "#4F46E5"),
         (str(data["docs_riesgo"]), "En Riesgo", "#DC2626"),
-        (str(data["a_vencer_3d"]), "Vencen 3d", "#D97706"),
+        (str(data.get("pedidos_atrasados", 0)), "Pedidos Tarde", "#D97706"),
         (f'{data["pct_global"]}%', "Aprob. Global", "#0D9488"),
     ]
     table = _docs_table_html(data.get("weekly_docs", []))
@@ -367,6 +426,7 @@ def _render_executive_html(data: dict, ai_paragraph: str) -> str:
       </td>
     </tr></table>
   </td></tr>
+  {_atrasados_html(data)}
   <tr><td style="padding:8px 28px 24px;">{table_section}</td></tr>"""
     return _email_shell(
         "DocFlow — Resumen Ejecutivo",
@@ -438,13 +498,16 @@ de la semana ({data['week_start']} al {data['week_end']}):
 - Documentos en riesgo (>15 días): {data['docs_riesgo']}
 - A vencer en 3 días: {data['a_vencer_3d']}
 - Aprobación global del proyecto: {data['pct_global']}% ({data['total_global']} docs totales)
+- Pedidos con la documentación atrasada: {data.get('pedidos_atrasados', 0)} de {data.get('pedidos_abiertos', 0)} abiertos
+- Reparto de lo pendiente: {data.get('pend_nuestros', 0)} documentos en nuestro tejado (sin enviar o devueltos con comentarios) y {data.get('pend_cliente', 0)} esperando al cliente
 
-Menciona la tendencia general, el punto de atención más crítico, y una acción recomendada.
+Menciona la tendencia general, di si el cuello de botella está en nuestro lado o en el del
+cliente según el reparto de lo pendiente, y propón una acción concreta.
 Solo un párrafo corto narrativo. Sin HTML ni markdown. Sé directo y accionable."""
 
 
 def _fallback_paragraph(data: dict) -> str:
-    return (
+    texto = (
         f"Esta semana ({data['week_start']} al {data['week_end']}) se registraron "
         f"{data['total_docs']} movimientos con una velocidad media de devolución de "
         f"{data['velocidad_media']} días. El {data['pct_aprobados']}% está aprobado "
@@ -452,6 +515,14 @@ def _fallback_paragraph(data: dict) -> str:
         f"del proyecto del {data['pct_global']}%. Hay {data['docs_riesgo']} documentos "
         f"en riesgo y {data['a_vencer_3d']} por vencer en 3 días."
     )
+    if data.get("pedidos_abiertos"):
+        nuestros, del_cliente = data.get("pend_nuestros", 0), data.get("pend_cliente", 0)
+        donde = ("la mayor parte del trabajo pendiente está en nuestro tejado"
+                 if nuestros > del_cliente else "lo pendiente está sobre todo en el cliente")
+        texto += (f" {data.get('pedidos_atrasados', 0)} de {data['pedidos_abiertos']} pedidos "
+                  f"abiertos llevan la documentación atrasada y {donde} "
+                  f"({nuestros} documentos nuestros frente a {del_cliente} del cliente).")
+    return texto
 
 
 def _generate_ai_paragraph(data: dict) -> str:
