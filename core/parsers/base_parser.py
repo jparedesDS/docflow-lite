@@ -306,22 +306,27 @@ EMAIL_TO_INITIALS = {
 
 # Iniciales del comercial en el ERP (users_data.initials) → email.
 #
-# OJO: NO son las iniciales que usa EIPSA para el equipo. En el ERP «JM» es
-# Julián Martínez (usuario julian.martinez), no Jesús Martínez; y «ECI» es
-# Ernesto Carrillo, que como responsable de documento aparece como «EC».
-# «SS» es Sandra Sanz, que ya no está: sus pedidos los lleva Luis Bravo.
+# El email lo da el propio ERP (users_data.registration), así que un comercial
+# nuevo funciona sin tocar nada. OJO: NO son las iniciales que usa EIPSA para el
+# equipo. En el ERP «JM» es Julián Martínez (usuario julian.martinez), no Jesús
+# Martínez; y «ECI» es Ernesto Carrillo, que como responsable de documento
+# aparece como «EC». Por eso nunca se traducen por parecido.
 #
-# La tabla es explícita a propósito: una inicial que no esté aquí no manda
-# correo a nadie (se cae al mapa de abajo) en vez de acertar por parecido.
-# Sin email conocido, todas de pedidos antiguos salvo JM: CC, CF, GM, MS,
-# RM (Rubén Massó), RP (Raúl Payá), JM (Julián Martínez).
+# Quien está de baja en el ERP no recibe correo. Aquí van solo las reasignaciones
+# que el ERP no puede saber:
+ERP_INITIALS_OVERRIDE = {
+    'SS': _EMAIL_SS,   # Sandra Sanz se fue; sus pedidos los lleva Luis Bravo
+}
+
+# Respaldo si el ERP no está disponible (la app funciona sin él).
 ERP_INITIALS_EMAIL = {
     'AC': _EMAIL_AC,
     'LB': _EMAIL_LB,
     'CCH': _EMAIL_CCH,
     'LM': 'laura-minguez@eipsa.es',
     'ECI': 'ernesto-carrillo@eipsa.es',
-    'SS': _EMAIL_SS,          # Sandra Sanz (ex) → Luis Bravo
+    'JM': 'julian-martinez@eipsa.es',   # Julián Martínez, NO Jesús Martínez
+    **ERP_INITIALS_OVERRIDE,
 }
 
 # Doc type code → email CC responsable técnico
@@ -390,7 +395,16 @@ def _comercial_email(numero_pedido: str) -> str | None:
         iniciales = erp.comercial_por_pedido().get(pedido, "")
     except Exception:  # noqa: BLE001 — sin ERP se sigue con el mapa
         return None
-    return ERP_INITIALS_EMAIL.get(iniciales)
+    if not iniciales:
+        return None
+    if iniciales in ERP_INITIALS_OVERRIDE:
+        return ERP_INITIALS_OVERRIDE[iniciales]
+    try:
+        from core.services import erp_db
+        email = erp_db.emails_por_iniciales().get(iniciales)
+    except Exception:  # noqa: BLE001
+        email = None
+    return email or ERP_INITIALS_EMAIL.get(iniciales)
 
 
 def get_responsable_email(numero_pedido: str) -> str | None:
@@ -411,10 +425,28 @@ def get_responsable_email(numero_pedido: str) -> str | None:
 
 
 def get_responsable_initials(numero_pedido: str) -> str:
-    """Devuelve iniciales del responsable (LB, AC, etc.) por Nº Pedido."""
+    """Iniciales de quien recibe la devolución (columna Responsable).
+
+    Salen del email y no del ERP directamente: así, cuando una inicial está
+    reasignada (SS → Luis Bravo), la columna enseña a quien de verdad le llega.
+    """
     email = get_responsable_email(numero_pedido)
-    if email:
-        return EMAIL_TO_INITIALS.get(email, "")
+    if not email:
+        return ""
+    if email in EMAIL_TO_INITIALS:
+        return EMAIL_TO_INITIALS[email]
+    try:
+        from core.services import erp_db
+        for iniciales, correo in erp_db.emails_por_iniciales().items():
+            if correo.lower() == email.lower():
+                return iniciales
+    except Exception:  # noqa: BLE001
+        pass
+    # Sin ERP, por la tabla de respaldo (LB va antes que SS, así que un pedido
+    # reasignado de Sandra sale como LB, que es quien lo lleva).
+    for iniciales, correo in ERP_INITIALS_EMAIL.items():
+        if correo.lower() == email.lower():
+            return iniciales
     return ""
 
 

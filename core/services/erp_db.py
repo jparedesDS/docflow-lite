@@ -20,6 +20,7 @@ from __future__ import annotations
 import configparser
 import logging
 import shutil
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -169,6 +170,50 @@ def test_connection() -> tuple[bool, str]:
         return True, f"Conectado a {db} · {n} pedidos"
     except Exception as exc:  # noqa: BLE001
         return False, str(exc).splitlines()[0] if str(exc) else repr(exc)
+
+
+# Iniciales → email de la gente del ERP. `registration.profile` = 'Baja' es
+# quien ya no está: se deja fuera para no mandarle correo (son 4 hoy, entre
+# ellos Sandra Sanz). Los que no tienen ficha en registration —comerciales
+# viejos: AB, CC, CF, GM, JB, RM, RP— no salen, y quien los use se queda sin
+# responsable en vez de con uno equivocado.
+_SQL_EMAILS = """
+    SELECT i.initials, r.email, r.name, r.surname
+    FROM users_data.initials i
+    JOIN users_data.registration r ON lower(r.username) = lower(i.username)
+    WHERE r.email <> '' AND r.email IS NOT NULL
+      AND coalesce(lower(r.profile), '') <> 'baja'
+"""
+
+_EMAILS_TTL = 3600
+_emails_cache: tuple[float, dict] | None = None
+
+
+def emails_por_iniciales(force: bool = False) -> dict:
+    """{iniciales → email} de la gente de alta en el ERP. {} si no se puede leer."""
+    global _emails_cache
+    now = time.time()
+    if not force and _emails_cache and (now - _emails_cache[0]) < _EMAILS_TTL:
+        return _emails_cache[1]
+    out: dict[str, str] = {}
+    if is_configured():
+        try:
+            conn = _connect()
+            try:
+                cur = conn.cursor()
+                cur.execute("SET statement_timeout = 10000;")
+                cur.execute(_SQL_EMAILS)
+                for iniciales, email, *_ in cur.fetchall():
+                    key = str(iniciales or "").strip().upper()
+                    if key and key != "NO HAY DATOS":
+                        out[key] = str(email).strip()
+                cur.close()
+            finally:
+                conn.close()
+        except Exception as exc:  # noqa: BLE001 — sin ERP se tira de la tabla fija
+            logger.debug("No se pudieron leer los emails del ERP: %s", exc)
+    _emails_cache = (now, out)
+    return out
 
 
 # ── Lectura ───────────────────────────────────────────────────────────────────
