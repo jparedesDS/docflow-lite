@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 import tkinter as tk
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -13,12 +14,25 @@ from tkinter import messagebox
 from core.services import transmittal
 from gui import theme
 from gui.widgets import ui
+from gui.widgets.pilltable import PillTable
 from gui.widgets.scrollframe import ScrollFrame
 from gui.widgets.table import DataTable
 
 logger = logging.getLogger(__name__)
 
-COLUMNS = ["Plataforma", "Asunto", "Remitente", "Fecha", "Descarga", "Enviado"]
+# Columnas de la lista (key · cabecera · ancho mínimo · estira · alineación),
+# con el mismo formato por celda que Documentos, Pedidos y Reclamaciones.
+COLUMNS = [
+    {"key": "Plataforma", "label": "Portal",    "min": 156, "anchor": "center"},
+    {"key": "Asunto",     "label": "Asunto",    "min": 360, "anchor": "w", "stretch": True},
+    {"key": "Remitente",  "label": "Remitente", "min": 214, "anchor": "w"},
+    {"key": "Fecha",      "label": "Recibido",  "min": 128, "anchor": "center"},
+    {"key": "Descarga",   "label": "Descarga",  "min": 126, "anchor": "center"},
+    {"key": "Enviado",    "label": "Enviado",   "min": 126, "anchor": "center"},
+]
+
+# Una devolución sin notificar envejece: a partir de aquí la fecha avisa.
+DIAS_AVISO, DIAS_ALERTA = 3, 7
 
 # Preview de devolución: columnas a nivel de DOCUMENTO (varían por fila) que se
 # muestran en la tabla. El resto (pedido, cliente, material, PO, transmittal…)
@@ -101,20 +115,15 @@ class DevolucionesView(ctk.CTkFrame):
         )
         self.status_label.pack(fill="x", padx=theme.SPACE_6)
 
-        # Table
-        self.table = DataTable(self, columns=COLUMNS, on_double_click=self._on_row_double)
-        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(theme.SPACE_2, theme.SPACE_6))
-        self.table.set_columns_width({
-            "Plataforma": 130, "Asunto": 420, "Remitente": 220, "Fecha": 140,
-            "Descarga": 120, "Enviado": 120,
-        })
-        self.table.set_columns_anchor({
-            "Plataforma": "center", "Asunto": "w",
-            "Remitente": "w", "Fecha": "center",
-            "Descarga": "center", "Enviado": "center",
-        })
-        self.table.tree.tag_configure("downloaded", foreground=theme.GREEN)
+        # Tabla con color por celda y selección múltiple (ctrl/mayús + clic)
+        self.table = PillTable(
+            self, columns=COLUMNS, on_double_click=self._on_row_double,
+            on_sort=self._on_sort, multiselect=True, rowheight=40,
+        )
+        self.table.pack(fill="both", expand=True, padx=theme.SPACE_6,
+                        pady=(theme.SPACE_2, theme.SPACE_6))
         self.table.set_context_menu(self._ctx_menu)
+        self._sort: tuple[str, bool] = ("Fecha", False)   # lo más reciente arriba
 
     # ── Acciones ──────────────────────────────────────────────────────────────
 
@@ -144,47 +153,106 @@ class DevolucionesView(ctk.CTkFrame):
     def _populate(self, emails: list[dict]) -> None:
         self._emails = emails
         self.btn_reload.configure(state="normal")
-        self.status_label.configure(text="")
         self.table.clear()
 
         if not emails:
             self.count_label.configure(text="0 emails")
+            self.status_label.configure(
+                text="Ninguna devolución en el buzón.", text_color=theme.TEXT_MUTED)
             return
 
-        for e in emails:
-            dl = e.get("download") or {}
-            tags = ("processed",) if e.get("processed") else ()
-            if dl.get("downloaded"):
-                tags = tags + ("downloaded",)
-            self.table.add_row(
-                values=[
-                    e.get("platform", "—"),
-                    e.get("subject", "(sin asunto)"),
-                    e.get("from", ""),
-                    _fmt_date(e.get("date", "")),
-                    _download_label(dl),
-                    _sent_label(e),
-                ],
-                iid=e.get("uid"),
-                tags=tags,
-            )
+        self._render_rows()
+        pendientes = sum(1 for e in emails if not e.get("processed"))
         self.count_label.configure(text=f"{len(emails)} emails")
+        self.status_label.configure(
+            text=(f"✓  {len(emails)} devoluciones · {pendientes} sin notificar. "
+                  "Doble clic en una fila para revisarla y enviar la notificación."),
+            text_color=theme.TEXT_MUTED)
+
+    # ── Pintado de la tabla ───────────────────────────────────────────────────
+
+    def _build_cells(self, e: dict) -> dict:
+        """Celdas con estilo de un correo: color solo donde dice algo."""
+        dl = e.get("download") or {}
+        enviado = bool(e.get("processed"))
+        descargada = bool(dl.get("downloaded"))
+        dias = _dias_desde(e.get("date", ""))
+
+        if not dl.get("downloadable"):
+            descarga = {"text": "—", "fg": theme.TEXT_MUTED}
+        elif descargada:
+            descarga = {"text": "✓  guardada", "pill": True, "fg": theme.GREEN,
+                        "pill_bg": ui.blend(theme.GREEN, theme.BG_CARD, 0.20)}
+        else:
+            # «↓» y no «⤓»: la negrita del tema no trae ese glifo y sale un cuadro.
+            descarga = {"text": "↓  pendiente", "pill": True, "fg": theme.AMBER,
+                        "pill_bg": ui.blend(theme.AMBER, theme.BG_CARD, 0.20)}
+
+        if enviado:
+            envio = {"text": "✓  enviado", "pill": True, "fg": theme.GREEN,
+                     "pill_bg": ui.blend(theme.GREEN, theme.BG_CARD, 0.20)}
+        else:
+            envio = {"text": "✉  pendiente", "pill": True, "fg": theme.AMBER,
+                     "pill_bg": ui.blend(theme.AMBER, theme.BG_CARD, 0.20)}
+
+        # La fecha avisa cuando una devolución lleva días sin notificar; una vez
+        # enviada ya no dice nada y se queda en gris.
+        fcolor = theme.TEXT_SUB
+        if not enviado and dias is not None:
+            if dias >= DIAS_ALERTA:
+                fcolor = theme.RED
+            elif dias >= DIAS_AVISO:
+                fcolor = theme.AMBER
+
+        return {
+            "Plataforma": {"text": e.get("platform", "—"), "pill": True,
+                           "fg": theme.TEXT_SUB, "pill_bg": theme.BG_INPUT},
+            # El asunto es la identidad de la fila: en acento mientras esté por
+            # notificar, apagado cuando ya se ha mandado.
+            "Asunto": {"text": _trunc(e.get("subject") or "(sin asunto)", 90),
+                       "fg": theme.ACCENT if not enviado else theme.TEXT_SUB,
+                       "bold": not enviado},
+            "Remitente": {"text": _trunc(_remitente(e.get("from", "")), 30),
+                          "fg": theme.TEXT_MUTED},
+            "Fecha": {"text": _fmt_date(e.get("date", "")), "fg": fcolor,
+                      "bold": fcolor != theme.TEXT_SUB},
+            "Descarga": descarga,
+            "Enviado": envio,
+        }
+
+    _SORT_KEY = {
+        "Plataforma": lambda e: str(e.get("platform", "")),
+        "Asunto": lambda e: str(e.get("subject", "")).lower(),
+        "Remitente": lambda e: _remitente(e.get("from", "")).lower(),
+        "Fecha": lambda e: (_parse_dt(e.get("date", "")) or datetime.min).timestamp(),
+        "Descarga": lambda e: _orden_descarga(e.get("download") or {}),
+        "Enviado": lambda e: 1 if e.get("processed") else 0,
+    }
+
+    def _on_sort(self, key: str) -> None:
+        col, asc = self._sort
+        self._sort = (key, not asc if key == col else True)
+        self._render_rows()
+
+    def _render_rows(self) -> None:
+        col, asc = self._sort
+        key = self._SORT_KEY.get(col, self._SORT_KEY["Fecha"])
+        filas = sorted(self._emails, key=key, reverse=not asc)
+        self.table.set_sort_arrow(col, asc)
+        self.table.set_rows([(e["uid"], self._build_cells(e)) for e in filas])
 
     def _show_error(self, msg: str) -> None:
         self.btn_reload.configure(state="normal")
         friendly = _friendly_error(msg)
         self.status_label.configure(text=f"✗  {friendly}", text_color=theme.RED)
 
-    def _on_row_double(self, item) -> None:
-        # En treeview con iid custom, el item viene con id real:
-        sel = self.table.selected_iid()
-        if not sel:
-            return
-        PreviewWindow(self, uid=sel, on_sent=self._reload)
+    def _on_row_double(self, rowid: str) -> None:
+        if rowid:
+            PreviewWindow(self, uid=rowid, on_sent=self._reload)
 
     # ── Menú contextual ────────────────────────────────────────────────────
 
-    def _ctx_menu(self, iid: str, col_idx: int):
+    def _ctx_menu(self, iid: str):
         email = next((e for e in self._emails if e.get("uid") == iid), None)
         if not email:
             return None
@@ -1175,35 +1243,53 @@ def _open_return_folders(folder, dev_folders=()) -> None:
                 logger.warning("No se pudo abrir %s: %s", p, exc)
 
 
-def _download_label(dl: dict) -> str:
-    """Texto de la columna Descarga: '✓ guardada' / '⤓ pendiente' / '—' (portal sin descarga)."""
+def _orden_descarga(dl: dict) -> int:
+    """Para ordenar la columna Descarga: sin descarga < pendiente < guardada."""
     if not dl or not dl.get("downloadable"):
-        return "—"
-    return "✓  guardada" if dl.get("downloaded") else "⤓  pendiente"
+        return 0
+    return 2 if dl.get("downloaded") else 1
 
 
-def _sent_label(e: dict) -> str:
-    """Texto de la columna Enviado: si ya se mandó la notificación al responsable.
+def _trunc(text, n: int) -> str:
+    txt = str(text or "").strip()
+    return txt if len(txt) <= n else txt[:n - 1] + "…"
 
-    Se apoya en el mismo registro que usa la idempotencia (`state/processed_emails.json`),
-    que guarda el uid justo después de enviar el correo.
-    """
-    if not e.get("parseable", True):
-        return "—"
-    return "✓  enviado" if e.get("processed") else "✉  pendiente"
+
+def _remitente(value: str) -> str:
+    """«"Proarc@SACYR" <sacyr@proarconline.com>» → «sacyr@proarconline.com»."""
+    txt = str(value or "").strip()
+    if "<" in txt and ">" in txt:
+        txt = txt[txt.rfind("<") + 1:txt.rfind(">")]
+    return txt.strip().strip('"')
+
+
+def _parse_dt(iso: str) -> datetime | None:
+    """Fecha del correo, venga en ISO (con o sin zona) o en formato RFC 2822."""
+    txt = str(iso or "").strip()
+    if not txt:
+        return None
+    try:
+        return datetime.fromisoformat(txt)
+    except ValueError:
+        pass
+    try:
+        return parsedate_to_datetime(txt)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _fmt_date(iso: str) -> str:
-    if not iso:
-        return ""
-    try:
-        dt = parsedate_to_datetime(iso) if " " in iso or "+" in iso else None
-        if dt is None:
-            from datetime import datetime
-            dt = datetime.fromisoformat(iso)
-        return dt.strftime("%d %b · %H:%M")
-    except Exception:
-        return iso[:16]
+    dt = _parse_dt(iso)
+    return dt.strftime("%d %b · %H:%M") if dt else str(iso or "")[:16]
+
+
+def _dias_desde(iso: str) -> int | None:
+    """Días transcurridos desde que llegó el correo."""
+    dt = _parse_dt(iso)
+    if dt is None:
+        return None
+    ahora = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+    return max(0, (ahora - dt).days)
 
 
 def _status_tag(estado: str) -> str:
