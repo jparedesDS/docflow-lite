@@ -67,7 +67,7 @@ class DevolucionesView(ctk.CTkFrame):
         ui.page_header(
             self, "Devoluciones",
             "Correos en los que el cliente devuelve documentación (TR, GAIA, ACONEX, SENDOC, "
-            "AYESA…). Recarga, doble clic para revisar y envía la notificación.",
+            "AYESA, SACYR…). Recarga, doble clic para revisar y envía la notificación.",
             help_key="devoluciones")
 
         # Toolbar

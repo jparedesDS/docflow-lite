@@ -20,6 +20,7 @@ from core.parsers import (
     docspace_parser,
     gaia_parser,
     prodoc_parser,
+    sacyr_parser,
     sendoc_parser,
     tr_parser,
 )
@@ -36,7 +37,7 @@ from core.utils.json_store import read_json, write_json
 logger = logging.getLogger(__name__)
 
 PARSERS = [tr_parser, aconex_parser, sendoc_parser, gaia_parser, prodoc_parser,
-           docspace_parser, ayesa_parser]
+           docspace_parser, ayesa_parser, sacyr_parser]
 PLATFORM_NAMES = {
     "tr_parser": "TÉCNICAS REUNIDAS",
     "aconex_parser": "ACONEX",
@@ -45,6 +46,7 @@ PLATFORM_NAMES = {
     "prodoc_parser": "PRODOC",
     "docspace_parser": "DOCUMENT SPACE",
     "ayesa_parser": "AYESA",
+    "sacyr_parser": "SACYR",
 }
 
 

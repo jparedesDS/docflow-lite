@@ -113,7 +113,7 @@ HELP: dict[str, dict] = {
     },
     "devoluciones": {
         "titulo": "Devoluciones",
-        "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA…).",
+        "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA, SACYR…).",
         "pasos": [
             "«Recargar» trae los correos del buzón.",
             "Doble clic en un correo: la app lo interpreta y muestra los documentos y su estado.",
@@ -127,6 +127,9 @@ HELP: dict[str, dict] = {
             "antes de enviar la notificación (que indica dónde está guardada).",
             "La columna «Enviado» marca «✓ enviado» cuando ya se mandó la notificación al responsable, "
             "y «✉ pendiente» mientras no se haya hecho.",
+            "SACYR (Proarc) no dice en el correo si el documento va aprobado o con comentarios: eso está en el "
+            "enlace de SharePoint del apartado «Comments». El Estado sale vacío y se pone a mano en la preview, "
+            "igual que en Document Space.",
             "Solo se listan transmittals de verdad: respuestas (RE:/FW:), acuses de lectura y avisos de los portales quedan fuera."
         ],
         "atajos": [
