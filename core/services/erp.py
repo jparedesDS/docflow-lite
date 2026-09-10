@@ -135,6 +135,29 @@ def consulta(pedido: str = "") -> list[dict]:
     return [r for r in rows if q in str(r.get("Nº Pedido", "")).lower()]
 
 
+def comercial_por_pedido() -> dict:
+    """{Nº Pedido sin sufijo de suministro → iniciales del comercial} del ERP.
+
+    Se cachea igual que la propia consulta: se consulta una vez por documento
+    al preparar una devolución y son ~3.700 pedidos.
+    """
+    path = _consulta_path()
+    key = f"comercial::{path}::{os.path.getmtime(path) if os.path.exists(path) else 0}"
+    now = time.time()
+    hit = _cache.get(key)
+    if hit and (now - hit[0]) < CACHE_TTL:
+        return hit[1]
+    idx: dict[str, str] = {}
+    for row in consulta():
+        # Hay pedidos escritos con espacio antes del suministro («P-18/021 -S00»).
+        ped = str(row.get("Nº Pedido", "")).split("-S")[0].strip()
+        ini = str(row.get("Responsable", "") or "").strip().upper()
+        if ped and ini and ped not in idx:
+            idx[ped] = ini
+    _cache[key] = (now, idx)
+    return idx
+
+
 # Campos de la ficha de Consulta (orden y etiqueta)
 CONSULTA_INFO_FIELDS = [
     ("Proyecto", "Proyecto"),
