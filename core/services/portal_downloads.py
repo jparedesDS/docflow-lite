@@ -43,8 +43,8 @@ from typing import Callable
 
 from core import preferences
 from core.config import PEDIDOS_BASE_PATH, PORTAL_DOWNLOADS_FILE
-from core.parsers import ayesa_parser, sacyr_parser, tr_parser
-from core.services import ayesa, egesdoc, sacyr
+from core.parsers import ayesa_parser, prodoc_parser, sacyr_parser, tr_parser
+from core.services import ayesa, egesdoc, prodoc, sacyr
 from core.services import imap as imap_service
 from core.utils.json_store import read_json, write_json
 
@@ -53,7 +53,17 @@ logger = logging.getLogger(__name__)
 TRANS_FOLDER = "00 TRANS Y RES"
 MAX_AUTO_ATTEMPTS = 6          # tras 6 fallos seguidos el job deja de insistir (el botón sigue funcionando)
 PORTAL_NAMES = {"egesdoc": "eGesDoc (Técnicas Reunidas)", "ayesa": "AYESA",
-                "sacyr": "SACYR (Proarc)"}
+                "sacyr": "SACYR (Proarc)", "prodoc": "PRODOC (Wood)"}
+
+
+class NothingToDownload(Exception):
+    """El correo es una devolución, pero no trae nada que bajar.
+
+    Le pasa a los transmittals de Wood que solo avisan de que la documentación
+    se subió «para información» (`2I - FOR INFORMATION ONLY`): llegan sin enlace
+    de descarga. No es un fallo, así que no cuenta como intento fallido ni se
+    reintenta cada diez minutos."""
+
 
 _listeners: list = []          # callbacks(result) para que la GUI avise de descargas automáticas
 
@@ -90,6 +100,12 @@ def describe_email(sender: str, subject: str) -> dict | None:
         info = sacyr.parse_subject(subject)
         if info["code"]:
             return {"portal": "sacyr", "code": info["code"], "po": info["po"]}
+    elif prodoc_parser.can_parse(sender or ""):
+        # Solo los transmittals: del mismo buzón llegan acuses de subida y avisos
+        # del sistema que no traen ni tabla ni zip.
+        info = prodoc.parse_subject(subject)
+        if info["code"]:
+            return {"portal": "prodoc", "code": info["code"], "po": info["po"]}
     return None
 
 
@@ -125,6 +141,8 @@ def download_status(sender: str, subject: str) -> dict:
     if info is None:
         return {"code": "", "downloadable": False, "downloaded": False, "folder": ""}
     done = downloaded_info(info["code"])
+    if done is None and nothing_to_download(info["code"]):
+        return {"code": info["code"], "downloadable": False, "downloaded": False, "folder": ""}
     return {"code": info["code"], "downloadable": True, "downloaded": done is not None,
             "folder": (done or {}).get("folder", ""),
             "dev_folders": list((done or {}).get("dev_folders") or [])}
@@ -156,6 +174,20 @@ def _mark_error(code: str, msg: str) -> None:
 
 def _attempts(code: str) -> int:
     return int(_registry().get("errors", {}).get(code, {}).get("count", 0))
+
+
+def _mark_nothing(code: str, msg: str) -> None:
+    """Apunta que este correo no tiene nada que bajar, para no volver a mirarlo."""
+    reg = _registry()
+    reg.setdefault("nothing", {})[code] = {"msg": msg[:300],
+                                          "when": datetime.now().isoformat(timespec="seconds")}
+    reg.get("errors", {}).pop(code, None)
+    write_json(PORTAL_DOWNLOADS_FILE, reg)
+
+
+def nothing_to_download(code: str) -> str:
+    """Motivo por el que este correo no trae descarga, o '' si sí la trae."""
+    return str(_registry().get("nothing", {}).get(code, {}).get("msg", ""))
 
 
 # ── Carpetas del pedido ───────────────────────────────────────────────────────
@@ -281,6 +313,21 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             docs = sacyr.docs_con_estado(code, docs)
         except Exception as exc:  # noqa: BLE001
             logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
+    elif info["portal"] == "prodoc":
+        html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
+        url = prodoc.download_link(html)
+        if not url:
+            motivo = ("Este transmittal de Wood no trae enlace de descarga: la "
+                      "documentación se subió solo para información "
+                      "(2I - FOR INFORMATION ONLY)")
+            # Se apunta aquí, y no solo en el job, para que también deje de
+            # pedirse desde el botón de la lista.
+            _mark_nothing(code, motivo)
+            raise NothingToDownload(motivo)
+
+        def fetch(dest: Path) -> Path:
+            return prodoc.download(url, dest, code)
+
     else:
         html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
         url = ayesa.download_link(html)
@@ -369,7 +416,7 @@ def pending_emails(days: int = 7) -> list[dict]:
         if is_noise_email(e):
             continue
         info = describe_email(e.get("from", ""), e.get("subject") or "")
-        if info is None or is_downloaded(info["code"]):
+        if info is None or is_downloaded(info["code"]) or nothing_to_download(info["code"]):
             continue
         out.append({**e, **info})
     return out
@@ -409,6 +456,9 @@ def auto_download(days: int = 7, *, force: bool = False) -> list[dict]:
                 res = download_for_email(e["uid"], session=session)
                 results.append(res)
                 _notify(res)
+            except NothingToDownload as exc:
+                # Ya queda apuntado en el registro; aquí solo se deja constancia.
+                logger.info("Descarga automática: %s no trae descarga (%s)", e["code"], exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Descarga automática: %s → %s", e["code"], exc)
                 _mark_error(e["code"], str(exc))

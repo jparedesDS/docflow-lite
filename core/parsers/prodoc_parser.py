@@ -163,7 +163,7 @@ def _parse_from_text(text: str, subject: str, received_time: str) -> pd.DataFram
         elif 's.r' in h_clean or 'status' in h_clean:
             col_idx['status'] = i
 
-    print(f"[PRODOC TEXT] col_idx={col_idx}", flush=True)
+    logger.debug("PRODOC (texto): columnas %s", col_idx)
 
     def _get_cell(cells, key):
         idx = col_idx.get(key)
@@ -202,7 +202,7 @@ def _parse_from_text(text: str, subject: str, received_time: str) -> pd.DataFram
     if not documents:
         raise ValueError("No se encontraron documentos con código EIPSA en el texto plano")
 
-    print(f"[PRODOC TEXT] {len(documents)} documentos extraídos del texto plano", flush=True)
+    logger.debug("PRODOC (texto): %d documento(s)", len(documents))
 
     # 4. Extraer campos de cada documento usando índices de columna
     records = []
@@ -272,7 +272,7 @@ def _parse_from_html(html_body: str, subject: str, received_time: str) -> pd.Dat
     if df is None:
         df = max(df_list, key=len).copy()
 
-    print(f"[PRODOC HTML] columnas={list(df.columns)}, filas={len(df)}", flush=True)
+    logger.debug("PRODOC (HTML): columnas %s · %d fila(s)", list(df.columns), len(df))
 
     # 2. Normalizar nombres de columnas
     col_map = {}

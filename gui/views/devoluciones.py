@@ -533,6 +533,10 @@ class PreviewWindow(ctk.CTkToplevel):
             try:
                 res = portal_downloads.download_for_email(uid)
                 self.after(0, lambda: self._transmittal_done(res))
+            except portal_downloads.NothingToDownload as exc:
+                # No es un fallo: este correo no tenía nada que bajar.
+                msg = str(exc)
+                self.after(0, lambda: self._transmittal_empty(msg))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Descarga de transmittal")
                 msg = str(exc)
@@ -559,6 +563,14 @@ class PreviewWindow(ctk.CTkToplevel):
         ui.toast(self, "Devolución descargada",
                  f"{res['zip'].name} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
                  kind="success" if not archive.get("skipped") else "warn")
+
+    def _transmittal_empty(self, msg: str) -> None:
+        """El correo es una devolución, pero no trae paquete que descargar."""
+        self.btn_transmittal.configure(state="disabled", text="—  Sin descarga")
+        self.lbl_status.configure(text=f"ℹ  {msg}")
+        ui.toast(self, "Sin descarga", msg, kind="info")
+        if self._on_sent:
+            self._on_sent()          # la columna Descarga deja de pedirlo
 
     def _transmittal_failed(self, msg: str) -> None:
         self.btn_transmittal.configure(state="normal", text="⤓  Reintentar descarga")
