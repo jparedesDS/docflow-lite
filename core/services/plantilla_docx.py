@@ -156,6 +156,78 @@ def etiquetas(plantilla: Path | str) -> list[dict]:
     return out
 
 
+# ── Marcadores ────────────────────────────────────────────────────────────────
+#
+# La tabla «ETIQUETA : valor» solo sirve cuando la plantilla está hecha así. La
+# de Técnicas Reunidas, por ejemplo, reparte los números por las cabeceras y por
+# párrafos sueltos, y ahí no hay etiqueta a la que agarrarse. Para esos casos se
+# escribe en la plantilla, una vez y donde haga falta, un marcador:
+#
+#     COMPANY DOC. NO.: {{DOC CLIENTE}}      Rev. {{REV}}
+#
+# y aquí se sustituye. Vale en el cuerpo, en las cabeceras y en los pies.
+
+_MARCA = re.compile(r"\{\{\s*([^{}]{1,60}?)\s*\}\}")
+
+
+def _clave_marca(nombre: str) -> str:
+    """«{{ Doc  Cliente }}» y «{{DOC_CLIENTE}}» son el mismo marcador."""
+    return re.sub(r"[\s_-]+", " ", str(nombre or "")).strip().lower()
+
+
+def _parrafos(raiz):
+    return raiz.iter(_w("p"))
+
+
+def _texto_parrafo(p) -> str:
+    return "".join(t.text or "" for t in p.iter(_w("t")))
+
+
+def marcadores(plantilla: Path | str) -> list[str]:
+    """Marcadores `{{…}}` que hay escritos en la plantilla, sin repetir."""
+    out: list[str] = []
+    vistos: set[str] = set()
+    with zipfile.ZipFile(plantilla) as z:
+        for parte in [n for n in z.namelist() if _PARTES.match(n)]:
+            raiz = ET.fromstring(z.read(parte))
+            for p in _parrafos(raiz):
+                for nombre in _MARCA.findall(_texto_parrafo(p)):
+                    clave = _clave_marca(nombre)
+                    if clave not in vistos:
+                        vistos.add(clave)
+                        out.append(nombre.strip())
+    return out
+
+
+def _sustituir_marcas(raiz, valores: dict) -> bool:
+    """Cambia los `{{…}}` de todos los párrafos. Devuelve si tocó algo."""
+    tocado = False
+    for p in list(_parrafos(raiz)):
+        entero = _texto_parrafo(p)
+        if "{{" not in entero:
+            continue
+        nuevo = _MARCA.sub(
+            lambda m: valores.get(_clave_marca(m.group(1)), m.group(0)), entero)
+        if nuevo == entero:
+            continue
+        # Word parte el texto en trozos por sus propias razones, así que el
+        # marcador puede estar repartido entre varios: se junta todo en el
+        # primero (que es el que lleva la fuente) y los demás se quitan.
+        runs = p.findall(_w("r"))
+        if not runs:
+            continue
+        primero = runs[0]
+        for t in list(primero.findall(_w("t"))):
+            primero.remove(t)
+        for extra in runs[1:]:
+            p.remove(extra)
+        t = ET.SubElement(primero, _w("t"))
+        t.text = nuevo
+        t.set(_XML_SPACE, "preserve")
+        tocado = True
+    return tocado
+
+
 # ── Escribir ──────────────────────────────────────────────────────────────────
 
 def _escribir(celda, texto: str) -> None:
@@ -189,13 +261,19 @@ def _escribir(celda, texto: str) -> None:
             extra.remove(r)
 
 
-def rellenar(plantilla: Path | str, destino: Path | str, valores: dict) -> Path:
-    """Copia la plantilla a `destino` poniendo `valores` = {etiqueta: texto}.
+def rellenar(plantilla: Path | str, destino: Path | str,
+             valores: dict | None = None, marcas: dict | None = None) -> Path:
+    """Copia la plantilla a `destino` rellenándola de las dos maneras posibles.
 
-    Las etiquetas se comparan sin mayúsculas ni espacios de sobra. Lo que no
-    esté en `valores` se queda como estaba.
+    · `valores` = {etiqueta de la tabla: texto} — para las portadas que son una
+      tabla «ETIQUETA : valor», como la de WOOD.
+    · `marcas` = {nombre del marcador: texto} — para las que no, donde se
+      escribe `{{DOC CLIENTE}}` a mano en el sitio que toque.
+
+    Se pueden usar a la vez. Lo que no esté se queda como estaba.
     """
     quiere = {str(k).strip().lower(): str(v) for k, v in (valores or {}).items()}
+    quiere_marcas = {_clave_marca(k): str(v) for k, v in (marcas or {}).items()}
     destino = Path(destino)
     with zipfile.ZipFile(plantilla) as z:
         orden = z.namelist()
@@ -213,6 +291,8 @@ def rellenar(plantilla: Path | str, destino: Path | str, valores: dict) -> Path:
                 _escribir(_celda_valor(celdas), quiere[clave])
                 puestas.add(clave)
                 tocado = True
+        if quiere_marcas and _sustituir_marcas(raiz, quiere_marcas):
+            tocado = True
         if tocado:
             partes[nombre] = _serializar(raiz, crudo)
 
