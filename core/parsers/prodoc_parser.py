@@ -10,7 +10,11 @@ from core.parsers.base_parser import (
 
 logger = logging.getLogger(__name__)
 
-SENDER_MATCH = "prodoc.postmaster@woodplc.com"
+# Wood cambió el dominio del remitente de woodplc.com a woodgroup.com (visto el
+# 2026-09-10), y desde entonces sus correos no se reconocían. El buzón
+# «prodoc.postmaster@» ya identifica al portal él solo, y el asunto se filtra
+# aparte en `matches_subject`, así que no hace falta atarse al dominio.
+SENDER_MATCH = "prodoc.postmaster@"
 TRANSMITTAL_REGEX = r'TL-\d{2,4}[A-Z0-9]+-VDC-\d{4}'
 
 # Regex para detectar código de documento EIPSA en texto plano
@@ -59,13 +63,18 @@ def _build_df_from_records(records: list[dict], subject: str, received_time: str
     if df.empty:
         return df
 
-    # Doc. EIPSA y Doc. Cliente
-    df['Doc. EIPSA'] = df.get('Name', pd.Series([''] * len(df)))
-    df['Doc. Cliente'] = df['Doc. EIPSA']
+    # La columna Name es el código del CLIENTE (V-2401HG04A-2206-300-MAN-001),
+    # no el de EIPSA. El nº EIPSA lo pone el ERP en `enrich_missing_from_erp`
+    # emparejando por ese mismo código; si no lo conoce se queda vacío, que es
+    # más honesto que repetir el del cliente en la columna que no le toca.
+    df['Doc. Cliente'] = df.get('Name', pd.Series([''] * len(df)))
+    df['Doc. EIPSA'] = ''
 
-    # PO → Nº Pedido
+    # PO → Nº Pedido. El mapa es el respaldo de los pedidos viejos; lo normal
+    # es que lo resuelva el ERP. Al poner el PO cuando no se sabía el pedido se
+    # tapaba el hueco y la red del ERP ya no entraba: mejor dejarlo vacío.
     df['PO'] = df.get('P.O.', pd.Series([''] * len(df))).fillna('')
-    df['Nº Pedido'] = df['PO'].map(PRODOC_PO_MAP).fillna(df['PO'])
+    df['Nº Pedido'] = df['PO'].map(PRODOC_PO_MAP).fillna('')
 
     # Título y Rev.
     df['Título'] = df.get('Title', pd.Series([''] * len(df))).fillna('')
@@ -76,7 +85,7 @@ def _build_df_from_records(records: list[dict], subject: str, received_time: str
     df['Estado'] = status_raw.map(ACONEX_STATUS_MAP).fillna(status_raw)
 
     # Tipo de documento — extraer código del nombre
-    name_col = df['Doc. EIPSA'].astype(str)
+    name_col = df['Doc. Cliente'].astype(str)
     df['_doc_code'] = name_col.str.extract(r'-([A-Z]{2,5})-\d{3}', expand=False)
     df['Tipo de documento'] = df['_doc_code'].map(DOC_TYPE_MAP)
 

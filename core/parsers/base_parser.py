@@ -105,6 +105,7 @@ CRITICO_MAP = {
 ACONEX_STATUS_MAP = {
     "A - REJECTED": "Rechazado",
     "1 - WITH COMMENTS": "Com. Mayores",
+    "1R - WITH COMMENTS - REJECTED": "Rechazado",
     "2 - WITHOUT COMMENTS": "Aprobado",
     "2I - FOR INFORMATION ONLY": "Informativo",
     "3 - WITH MINOR COMMENTS": "Com. Menores",
