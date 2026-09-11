@@ -131,8 +131,24 @@ def _uses_letter(folders: list[dict]) -> bool:
     return False
 
 
-def _find_sent_file(folders: list[dict], codes: list[str]) -> list[tuple[dict, Path | None]]:
-    """Carpetas env (y subcarpeta rev) que contienen un fichero con alguno de los códigos."""
+def _find_sent_file(folders: list[dict], codes: list[str],
+                    names: list[str] | None = None) -> list[tuple[dict, Path | None]]:
+    """Carpetas env (y subcarpeta rev) donde está el fichero que se envió.
+
+    Se reconoce de dos maneras: porque el nombre lleva el código del documento,
+    o porque es exactamente el fichero que el portal da como suyo (`names`). Lo
+    segundo hace falta con Técnicas Reunidas, donde el fichero se llama con el
+    id interno del cliente (AD-3000-G-00968.pdf) y el código no aparece por
+    ningún lado.
+    """
+    quiere = {_fold(n) for n in (names or []) if n}
+
+    def casa(fichero: Path) -> bool:
+        if _fold(fichero.name) in quiere:
+            return True
+        norm = norm_doc_code(fichero.name)
+        return any(c in norm for c in codes)
+
     hits = []
     for f in folders:
         if f["kind"] != "env":
@@ -140,16 +156,29 @@ def _find_sent_file(folders: list[dict], codes: list[str]) -> list[tuple[dict, P
         try:
             for entry in f["path"].iterdir():
                 if entry.is_file():
-                    if any(c in norm_doc_code(entry.name) for c in codes):
+                    if casa(entry):
                         hits.append((f, None))
                 elif entry.is_dir():
                     for sub in entry.iterdir():
-                        if sub.is_file() and any(c in norm_doc_code(sub.name) for c in codes):
+                        if sub.is_file() and casa(sub):
                             hits.append((f, entry))
                             break
         except OSError:
             continue
     return hits
+
+
+def _env_rev_casa(sub_name: str, n: int, letter: str) -> bool:
+    """¿La subcarpeta de envío «rev0-1» corresponde a esta revisión?
+
+    Con el estilo correlativo el número de delante es el orden de envío, no la
+    revisión: la que manda es la de detrás del guion.
+    """
+    m = _REV_DIR_RE.match(sub_name)
+    if not m:
+        return False
+    num, rev = int(m.group(1)), (m.group(2) or "").upper()
+    return rev == (letter or str(n)).upper() if rev else num == n
 
 
 # Palabras que aparecen en casi cualquier título y no distinguen carpetas
@@ -231,7 +260,8 @@ def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int, str, str]]:
     return out
 
 
-def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str) -> tuple[Path, bool]:
+def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
+                    envio: Path | None = None) -> tuple[Path, bool]:
     """Subcarpeta de revisión existente, o la que habría que crear.
 
     Cada carpeta dev se nombra de una de estas dos formas, y se respeta la suya:
@@ -248,6 +278,11 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str) -> tuple[Pa
 
     El sufijo de comentarios distingue mayúsculas (COM = mayores, com = menores);
     AP se acepta en cualquier caja.
+
+    `envio` es la subcarpeta de la carpeta env de la que salió el documento. Si
+    la carpeta dev todavía está vacía, es ella la que dice el nombre: lo que se
+    mandó desde «env. Manual\\rev0-1» vuelve a «dev. Manual\\rev0-1 COM». Sin esa
+    pista habría que inventarse el correlativo, y saldría «rev1 COM».
     """
     subs = _rev_subfolders(dev_dir)
 
@@ -272,6 +307,11 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str) -> tuple[Pa
     for sub, num, rev, found in subs:
         if num == n and mismo_sufijo(found) and (not letter or rev == letter):
             return sub, True
+
+    if envio is not None:
+        m = _REV_DIR_RE.match(envio.name)
+        if m and m.group(2):
+            return dev_dir / f"rev{int(m.group(1))}-{m.group(2).upper()} {suffix}", False
     return dev_dir / f"rev{n}{'-' + letter if letter else ''} {suffix}", False
 
 
@@ -283,6 +323,11 @@ def _match_docs(names: list[str], docs: list[dict], file_docs: dict[str, dict] |
     1. Si el portal nos dio el mapa fichero → códigos (`file_docs`, caso TR con
        ids internos), se usa ese.
     2. Si no, por el código más largo (Doc. Cliente / Doc. EIPSA) contenido en el nombre.
+    3. Por descarte, cuando queda un solo fichero suelto y un solo documento sin
+       fichero: entonces no puede ser otro. Hace falta porque el nombre que da el
+       portal no siempre es el que acaba dentro del zip — el documento que se
+       descarga suelto como «AD-3000-I-50160.pdf» viene en el zip del transmittal
+       como «AD-3000-I-500239-SHT-001.pdf»—, y sin esto el PDF se quedaba fuera.
     """
     by_code: dict[str, dict] = {}
     for d in docs:
@@ -308,6 +353,34 @@ def _match_docs(names: list[str], docs: list[dict], file_docs: dict[str, dict] |
                 if code in norm and len(code) > best_len:
                     best, best_len = d, len(code)
         out[name] = best
+
+    huerfanos = [n for n, d in out.items() if d is None]
+    colocados = {id(d) for d in out.values() if d is not None}
+    sin_fichero = [d for d in docs if id(d) not in colocados]
+    if len(huerfanos) == 1 and len(sin_fichero) == 1:
+        out[huerfanos[0]] = sin_fichero[0]
+        logger.info("Archivo dev.: %s se asigna por descarte a %s (es el único "
+                    "fichero y el único documento que quedaban sin pareja)",
+                    Path(huerfanos[0]).name,
+                    sin_fichero[0].get("Doc. EIPSA") or sin_fichero[0].get("Doc. Cliente"))
+    return out
+
+
+def _portal_names(docs: list[dict], file_docs: dict[str, dict] | None) -> dict[int, list[str]]:
+    """{documento → nombres de fichero que el portal le atribuye}.
+
+    Sirve para reconocer el fichero que se envió dentro de las carpetas `env.`:
+    en Técnicas Reunidas el fichero se guarda con el nombre del cliente
+    (AD-3000-G-00968.pdf) y ese nombre solo lo sabe el portal.
+    """
+    out: dict[int, list[str]] = {}
+    for fichero, info in (file_docs or {}).items():
+        claves = {norm_doc_code(info.get("vendor_number")), norm_doc_code(info.get("tr_number"))}
+        claves.discard("")
+        for d in docs:
+            suyas = {norm_doc_code(d.get("Doc. Cliente", "")), norm_doc_code(d.get("Doc. EIPSA", ""))}
+            if claves & suyas:
+                out.setdefault(id(d), []).append(Path(fichero).name)
     return out
 
 
@@ -334,6 +407,7 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
     with zipfile.ZipFile(zip_path) as zf:
         entries = [zi for zi in zf.infolist() if not zi.is_dir()]
         matched = _match_docs([zi.filename for zi in entries], docs, file_docs)
+        portal_names = _portal_names(docs, file_docs)
         touched: set[Path] = set()
         for zi in entries:
             fname = Path(zi.filename).name
@@ -350,11 +424,12 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 res["skipped"].append((fname, f"revisión desconocida ({doc.get('Rev.')!r})"))
                 continue
             codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
+            letter = _rev_letter(doc.get("_rev_cliente")) if (uses_letter or _rev_letter(doc.get("_rev_cliente"))) else ""
 
             # 1) carpeta env por el fichero enviado
-            hits = _find_sent_file(folders, codes)
-            same_rev = [(f, sub) for f, sub in hits if sub is not None and (_rev_number(sub.name) == n)]
-            env = (same_rev or hits or [(None, None)])[0][0]
+            hits = _find_sent_file(folders, codes, portal_names.get(id(doc)))
+            same_rev = [(f, sub) for f, sub in hits if sub is not None and _env_rev_casa(sub.name, n, letter)]
+            env, envio = (same_rev or hits or [(None, None)])[0]
             name, dotted, how = (env["name"], env["dotted"], "fichero enviado") if env else (None, default_dotted, "")
             # 2) por tipo + título
             if name is None:
@@ -371,8 +446,7 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 continue
 
             dev_dir, dev_exists = _dev_folder_for(folders, name, dotted)
-            letter = _rev_letter(doc.get("_rev_cliente")) if (uses_letter or _rev_letter(doc.get("_rev_cliente"))) else ""
-            rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado))
+            rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
             if dry_run:
