@@ -290,15 +290,19 @@ def file_map(code: str, docs: list[dict] | None = None) -> dict[str, dict]:
 # Esa letra es la resolución, que el correo NO trae. Coincide con cómo están
 # archivadas ya las carpetas del pedido a mano: el cálculo rev 0 con código A
 # está en «dev Cálculos\rev0 AP», y el plano rev 1 con código B en
-# «dev planos\rev1 com». Solo se traducen las dos letras de las que hay
-# constancia; con cualquier otra el estado se queda vacío y se pone a mano, que
-# es lo que se hacía hasta ahora.
+# «dev planos\rev1 com». La tabla la confirmó JP (2026-09-11), menos la D: ni
+# él está seguro —supone que es rechazado— y suponer aquí sale caro, porque el
+# estado decide en qué carpeta acaba el PDF y lo que dice el aviso al jefe de
+# proyecto. Con una letra que no esté en la tabla el estado se queda vacío y se
+# pone a mano, que es lo que se hacía hasta ahora, y queda avisado en el log para
+# poder confirmarla la primera vez que salga.
 
 _REV_RE = re.compile(r"[-_]R\d+[-_]([A-Z])\b", re.I)
 
 ESTADO_POR_CODIGO = {
     "A": "Aprobado",
     "B": "Com. Menores",
+    "C": "Com. Mayores",
 }
 
 
@@ -321,8 +325,12 @@ def docs_con_estado(code: str, docs: list[dict]) -> list[dict]:
         if not str(copia.get("Estado", "") or "").strip():
             codigo = str(copia.get("Doc. Cliente", ""))
             fichero = next((f for f in ficheros if casa_documento(codigo, Path(f).stem)), "")
-            estado = ESTADO_POR_CODIGO.get(codigo_revision(fichero), "")
+            letra = codigo_revision(fichero)
+            estado = ESTADO_POR_CODIGO.get(letra, "")
             if estado:
                 copia["Estado"] = estado
+            elif letra:
+                logger.warning("SACYR: código de revisión «%s» desconocido en %s; "
+                               "el estado de %s se queda vacío.", letra, fichero, codigo)
         fuera.append(copia)
     return fuera
