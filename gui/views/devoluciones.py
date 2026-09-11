@@ -179,7 +179,11 @@ class DevolucionesView(ctk.CTkFrame):
         dias = _dias_desde(e.get("date", ""))
 
         if not dl.get("downloadable"):
-            descarga = {"text": "—", "fg": theme.TEXT_MUTED}
+            # Un transmittal «solo información» no trae paquete, pero su correo sí
+            # se archiva: conviene verlo para no ir a buscar una descarga que no hay.
+            descarga = ({"text": "✓  solo correo", "pill": True, "fg": theme.TEXT_SUB,
+                         "pill_bg": ui.blend(theme.TEXT_SUB, theme.BG_CARD, 0.16)}
+                        if dl.get("only_email") else {"text": "—", "fg": theme.TEXT_MUTED})
         elif descargada:
             descarga = {"text": "✓  guardada", "pill": True, "fg": theme.GREEN,
                         "pill_bg": ui.blend(theme.GREEN, theme.BG_CARD, 0.20)}
@@ -261,7 +265,7 @@ class DevolucionesView(ctk.CTkFrame):
             ("✉  Procesar / Preview",
              lambda: PreviewWindow(self, uid=iid, on_sent=self._reload)),
         ]
-        if dl.get("downloaded") and dl.get("folder"):
+        if (dl.get("downloaded") or dl.get("only_email")) and dl.get("folder"):
             items.append(("📂  Abrir carpetas de la devolución (TRANS Y RES + dev.)",
                           lambda: _open_return_folders(dl["folder"], dl.get("dev_folders") or [])))
         return items + [
@@ -534,9 +538,9 @@ class PreviewWindow(ctk.CTkToplevel):
                 res = portal_downloads.download_for_email(uid)
                 self.after(0, lambda: self._transmittal_done(res))
             except portal_downloads.NothingToDownload as exc:
-                # No es un fallo: este correo no tenía nada que bajar.
-                msg = str(exc)
-                self.after(0, lambda: self._transmittal_empty(msg))
+                # No es un fallo: este correo no traía paquete, solo se archiva él.
+                msg, carpeta = str(exc), exc.folder
+                self.after(0, lambda: self._transmittal_empty(msg, carpeta))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Descarga de transmittal")
                 msg = str(exc)
@@ -564,11 +568,21 @@ class PreviewWindow(ctk.CTkToplevel):
                  f"{res['zip'].name} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
                  kind="success" if not archive.get("skipped") else "warn")
 
-    def _transmittal_empty(self, msg: str) -> None:
-        """El correo es una devolución, pero no trae paquete que descargar."""
-        self.btn_transmittal.configure(state="disabled", text="—  Sin descarga")
-        self.lbl_status.configure(text=f"ℹ  {msg}")
-        ui.toast(self, "Sin descarga", msg, kind="info")
+    def _transmittal_empty(self, msg: str, folder=None) -> None:
+        """El correo es una devolución, pero no trae paquete que descargar.
+
+        El correo sí queda archivado en su carpeta del pedido, así que el botón
+        pasa a abrirla en vez de a reintentar una descarga que no existe.
+        """
+        donde = f" El correo queda en {Path(folder).name}." if folder else ""
+        self.lbl_status.configure(text=f"ℹ  {msg}.{donde}")
+        if folder:
+            self.btn_transmittal.configure(
+                state="normal", text="📂  Abrir la carpeta de la devolución",
+                command=lambda: _open_return_folders(folder, []))
+        else:
+            self.btn_transmittal.configure(state="disabled", text="—  Sin descarga")
+        ui.toast(self, "Sin paquete que descargar", msg + donde, kind="info")
         if self._on_sent:
             self._on_sent()          # la columna Descarga deja de pedirlo
 
@@ -1256,10 +1270,10 @@ def _open_return_folders(folder, dev_folders=()) -> None:
 
 
 def _orden_descarga(dl: dict) -> int:
-    """Para ordenar la columna Descarga: sin descarga < pendiente < guardada."""
+    """Para ordenar la columna Descarga: nada < solo correo < pendiente < guardada."""
     if not dl or not dl.get("downloadable"):
-        return 0
-    return 2 if dl.get("downloaded") else 1
+        return 1 if dl.get("only_email") else 0
+    return 3 if dl.get("downloaded") else 2
 
 
 def _trunc(text, n: int) -> str:

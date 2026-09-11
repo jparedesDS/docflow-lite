@@ -62,7 +62,15 @@ class NothingToDownload(Exception):
     Le pasa a los transmittals de Wood que solo avisan de que la documentación
     se subió «para información» (`2I - FOR INFORMATION ONLY`): llegan sin enlace
     de descarga. No es un fallo, así que no cuenta como intento fallido ni se
-    reintenta cada diez minutos."""
+    reintenta cada diez minutos.
+
+    El correo sí se archiva —queda constancia de la devolución en su carpeta
+    `NNN (fecha)` aunque no haya paquete—, y `folder`/`eml` dicen dónde."""
+
+    def __init__(self, msg: str, *, folder=None, eml=None):
+        super().__init__(msg)
+        self.folder = folder
+        self.eml = eml
 
 
 _listeners: list = []          # callbacks(result) para que la GUI avise de descargas automáticas
@@ -142,7 +150,11 @@ def download_status(sender: str, subject: str) -> dict:
         return {"code": "", "downloadable": False, "downloaded": False, "folder": ""}
     done = downloaded_info(info["code"])
     if done is None and nothing_to_download(info["code"]):
-        return {"code": info["code"], "downloadable": False, "downloaded": False, "folder": ""}
+        # Sin paquete: no hay descarga que pedir, pero el correo sí está archivado.
+        vacio = nothing_info(info["code"])
+        return {"code": info["code"], "downloadable": False, "downloaded": False,
+                "only_email": bool(vacio.get("folder")), "folder": vacio.get("folder", ""),
+                "dev_folders": []}
     return {"code": info["code"], "downloadable": True, "downloaded": done is not None,
             "folder": (done or {}).get("folder", ""),
             "dev_folders": list((done or {}).get("dev_folders") or [])}
@@ -176,13 +188,21 @@ def _attempts(code: str) -> int:
     return int(_registry().get("errors", {}).get(code, {}).get("count", 0))
 
 
-def _mark_nothing(code: str, msg: str) -> None:
+def _mark_nothing(code: str, msg: str, *, folder: Path | None = None,
+                  eml: Path | None = None, **extra) -> None:
     """Apunta que este correo no tiene nada que bajar, para no volver a mirarlo."""
     reg = _registry()
-    reg.setdefault("nothing", {})[code] = {"msg": msg[:300],
-                                          "when": datetime.now().isoformat(timespec="seconds")}
+    reg.setdefault("nothing", {})[code] = {
+        "msg": msg[:300], "when": datetime.now().isoformat(timespec="seconds"),
+        "folder": str(folder) if folder else "", "eml": str(eml) if eml else "",
+        **extra}
     reg.get("errors", {}).pop(code, None)
     write_json(PORTAL_DOWNLOADS_FILE, reg)
+
+
+def nothing_info(code: str) -> dict:
+    """Lo apuntado de un correo sin descarga: {msg, when, folder, eml, …}."""
+    return dict(_registry().get("nothing", {}).get(code) or {})
 
 
 def nothing_to_download(code: str) -> str:
@@ -254,6 +274,22 @@ def safe_filename(name: str, limit: int = 150) -> str:
     return (cleaned or "correo")[:limit]
 
 
+# Windows no traga rutas de más de 260 caracteres, y las carpetas de pedido ya
+# se comen la mitad. Los asuntos de algunos portales son kilométricos («Wood
+# Transmittal TL-… - 1DD5598E – Moeve Energy Park La Rábida – Huelva - …»), así
+# que el nombre del .eml se recorta a lo que quede, y si ni recortando cabe se
+# usa el código de la devolución, que siempre es corto.
+MAX_RUTA = 255
+
+
+def eml_path_de(dest: Path, subject: str, code: str) -> Path:
+    """Ruta del .eml dentro de `dest`, con el nombre recortado si hace falta."""
+    hueco = MAX_RUTA - len(str(dest)) - len("/.eml")
+    if hueco >= 20:
+        return dest / (safe_filename(subject or code, min(150, hueco)) + ".eml")
+    return dest / (safe_filename(code, max(8, hueco)) + ".eml")
+
+
 def _remove_if_empty(folder: Path) -> None:
     try:
         if folder.is_dir() and not any(folder.iterdir()):
@@ -320,10 +356,11 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             motivo = ("Este transmittal de Wood no trae enlace de descarga: la "
                       "documentación se subió solo para información "
                       "(2I - FOR INFORMATION ONLY)")
-            # Se apunta aquí, y no solo en el job, para que también deje de
-            # pedirse desde el botón de la lista.
-            _mark_nothing(code, motivo)
-            raise NothingToDownload(motivo)
+            # No hay paquete, pero la devolución existe: se archiva el correo en
+            # su carpeta «NNN (fecha)» y queda apuntada para no volver a pedirla.
+            vacia = save_email_only(code, pedido, subject=subject, raw_email=raw,
+                                    portal="prodoc", po=info["po"], motivo=motivo)
+            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"])
 
         def fetch(dest: Path) -> Path:
             return prodoc.download(url, dest, code)
@@ -380,7 +417,7 @@ def download(code: str, pedido: str, fetch: Callable[[Path], Path], *, subject: 
         eml_path = None
         if raw_email:
             try:
-                eml_path = dest / (safe_filename(subject or code) + ".eml")
+                eml_path = eml_path_de(dest, subject, code)
                 eml_path.write_bytes(raw_email)
             except Exception as exc:  # noqa: BLE001 — el zip ya está; el correo es un extra
                 logger.warning("No se pudo guardar el correo junto a %s: %s", code, exc)
@@ -393,6 +430,43 @@ def download(code: str, pedido: str, fetch: Callable[[Path], Path], *, subject: 
     _mark_done(code, _info(res))
     logger.info("Devolución %s (%s) guardada en %s", code, PORTAL_NAMES.get(portal, portal), dest)
     return res
+
+
+def save_email_only(code: str, pedido: str, *, subject: str = "", raw_email: bytes | None = None,
+                    portal: str = "", po: str = "", motivo: str = "") -> dict:
+    """Archiva el correo de una devolución que no trae paquete.
+
+    Se crea la carpeta `NNN (fecha)` igual que en una descarga normal y dentro
+    queda el .eml: aunque no haya nada que bajar, la devolución existe y tiene
+    que dejar rastro en el pedido. Si ya se archivó antes, se devuelve la misma
+    carpeta en vez de crear otra."""
+    previo = nothing_info(code)
+    if previo.get("folder"):
+        carpeta = Path(previo["folder"])
+        if carpeta.is_dir():
+            eml = Path(previo["eml"]) if previo.get("eml") else None
+            return {"code": code, "po": po, "pedido": pedido, "portal": portal,
+                    "folder": carpeta, "eml": eml if (eml and eml.is_file()) else None,
+                    "motivo": previo.get("msg", motivo), "already": True}
+
+    root = trans_root(pedido)
+    if root is None:
+        raise FileNotFoundError(f"No se localiza la carpeta del pedido {pedido} (¿unidad M: conectada?)")
+    dest = next_folder(root)
+    eml_path = None
+    try:
+        if raw_email:
+            eml_path = eml_path_de(dest, subject, code)
+            eml_path.write_bytes(raw_email)
+    except Exception:
+        _remove_if_empty(dest)     # no dejar un «NNN (fecha)» vacío
+        raise
+
+    _mark_nothing(code, motivo, folder=dest, eml=eml_path, pedido=pedido, portal=portal, po=po)
+    logger.info("Devolución %s (%s) sin paquete: se archiva solo el correo en %s",
+                code, PORTAL_NAMES.get(portal, portal), dest)
+    return {"code": code, "po": po, "pedido": pedido, "portal": portal,
+            "folder": dest, "eml": eml_path, "motivo": motivo, "already": False}
 
 
 def _info(res: dict) -> dict:
