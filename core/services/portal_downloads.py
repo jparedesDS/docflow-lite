@@ -272,10 +272,13 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             # SharePoint lo haya bautizado «OneDrive_1_<fecha>.zip».
             return sacyr.collect(code, dest, docs)
 
-        # Los ficheros de SACYR llevan el código del documento con la barra
-        # cambiada, así que se emparejan por el nº de orden final.
+        # Los ficheros de SACYR llevan el código del ERP, no el del correo, así
+        # que hace falta el mapa para archivarlos. Y su nombre acaba con el
+        # código de revisión del cliente (…_R0_A), que es la resolución que el
+        # correo no trae: de ahí sale si la carpeta va «AP» o «com».
         try:
             file_docs = sacyr.file_map(code, docs)
+            docs = sacyr.docs_con_estado(code, docs)
         except Exception as exc:  # noqa: BLE001
             logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
     else:

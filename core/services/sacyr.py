@@ -76,6 +76,42 @@ def _clave(texto: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", str(texto or "")).upper()
 
 
+def _partes(codigo: str) -> tuple[str, int | None]:
+    """Código de documento partido en (tramo común normalizado, nº de orden)."""
+    texto = str(codigo or "").strip()
+    if "-" not in texto:
+        return "", None
+    base, cola = texto.rsplit("-", 1)
+    m = re.fullmatch(r"0*(\d+)", cola.strip())
+    return (_clave(base), int(m.group(1))) if m else ("", None)
+
+
+def casa_documento(codigo: str, nombre: str) -> bool:
+    """¿Este fichero es ese documento?
+
+    Los PDF que publica SACYR llevan el código **del ERP**, no el del correo:
+
+        correo   REC627-627-J-C.181752/01-00002
+        fichero  V-REC627-627-J-C.181752_01-002_R0_A.pdf
+
+    Sobra el prefijo del proveedor, el nº de orden va con menos ceros y detrás
+    van la revisión y el código de revisión del cliente. Es el mismo desfase que
+    ya hay entre el correo y el ERP, así que se compara igual: el tramo común
+    tiene que aparecer en el nombre y el número que va justo después tiene que
+    ser el mismo. Comparar el código entero no vale: «…0100002» nunca casaría
+    con «…01002».
+    """
+    base, orden = _partes(codigo)
+    if not base or orden is None or len(base) < 8:
+        return False
+    fichero = _clave(nombre)
+    desde = fichero.find(base)
+    if desde < 0:
+        return False
+    m = re.match(r"0*(\d+)", fichero[desde + len(base):])
+    return bool(m) and int(m.group(1)) == orden
+
+
 # ── Dónde buscar ──────────────────────────────────────────────────────────────
 
 def local_root() -> Path | None:
@@ -159,13 +195,13 @@ def find_package(code: str, docs: list[dict] | None = None,
 
     if not docs:
         return None
-    claves = [_clave(d.get("Doc. Cliente", "")) for d in docs]
-    claves = [c for c in claves if len(c) >= 8]
-    if not claves:
+    codigos = [str(d.get("Doc. Cliente", "")) for d in docs]
+    codigos = [c for c in codigos if _partes(c)[1] is not None]
+    if not codigos:
         return None
     for candidato in _candidatos(root):
-        ficheros = [_clave(Path(f).stem) for f in _contenido(candidato)]
-        if any(clave in fichero for clave in claves for fichero in ficheros):
+        ficheros = [Path(f).stem for f in _contenido(candidato)]
+        if any(casa_documento(c, f) for c in codigos for f in ficheros):
             logger.info("SACYR: %s reconocido por su contenido como %s",
                         candidato.name, code)
             return candidato
@@ -219,37 +255,74 @@ def collect(code: str, dest_dir: Path | str,
 
 # ── Emparejar ficheros con documentos ─────────────────────────────────────────
 
-def file_map(code: str, docs: list[dict]) -> dict[str, dict]:
+def file_map(code: str, docs: list[dict] | None = None) -> dict[str, dict]:
     """{fichero → {vendor_number, tr_number}} para que el archivado sepa qué es
     cada PDF.
 
-    SACYR nombra los ficheros con el código del documento, pero el código lleva
-    una barra («…181752/01-00002») que no cabe en un nombre de fichero y aparece
-    cambiada por un guion bajo, con la revisión y algún comentario detrás. Se
-    comparan quitando todo lo que no sea letra o número, así que
-    «REC627-627-J-C.181752/01-00002» casa con
-    «REC627-627-J-C.181752_01-00002 rev0 COMENTADO.pdf» sin depender del formato.
+    Funciona igual si el paquete es una carpeta o un zip: lo que hace falta son
+    los nombres de dentro. El emparejado lo hace `casa_documento`, porque SACYR
+    nombra los ficheros con el código del ERP y el correo trae el suyo.
     """
+    docs = docs or []
     paquete = find_package(code, docs)
-    if paquete is None or paquete.is_file():
+    if paquete is None:
         return {}
-
-    # De más largo a más corto: si un código es prefijo de otro (…-0002 y
-    # …-00021), gana el más específico.
-    candidatos = []
-    for d in docs:
-        clave = _clave(d.get("Doc. Cliente", ""))
-        if len(clave) >= 8:
-            candidatos.append((clave, d))
-    candidatos.sort(key=lambda x: -len(x[0]))
-
     out: dict[str, dict] = {}
-    for f in package_files(paquete):
-        nombre = _clave(f.stem)
-        doc = next((d for clave, d in candidatos if clave in nombre), None)
+    for entrada in _contenido(paquete):
+        nombre = Path(entrada).name
+        doc = next((d for d in docs
+                    if casa_documento(str(d.get("Doc. Cliente", "")), Path(nombre).stem)), None)
         if doc is not None:
-            out[f.relative_to(paquete).as_posix()] = {
+            out[nombre] = {
                 "vendor_number": str(doc.get("Doc. Cliente", "")),
                 "tr_number": str(doc.get("Doc. EIPSA", "")),
             }
     return out
+
+
+# ── Código de revisión del cliente ────────────────────────────────────────────
+#
+# Los PDF de SACYR acaban con la revisión y una letra:
+#
+#     V-REC627-627-J-C.181752_01-002_R0_A.pdf   → rev 0, código A
+#     V-REC627-627-J-C.181752_01-003-R1_B.pdf   → rev 1, código B
+#
+# Esa letra es la resolución, que el correo NO trae. Coincide con cómo están
+# archivadas ya las carpetas del pedido a mano: el cálculo rev 0 con código A
+# está en «dev Cálculos\rev0 AP», y el plano rev 1 con código B en
+# «dev planos\rev1 com». Solo se traducen las dos letras de las que hay
+# constancia; con cualquier otra el estado se queda vacío y se pone a mano, que
+# es lo que se hacía hasta ahora.
+
+_REV_RE = re.compile(r"[-_]R\d+[-_]([A-Z])\b", re.I)
+
+ESTADO_POR_CODIGO = {
+    "A": "Aprobado",
+    "B": "Com. Menores",
+}
+
+
+def codigo_revision(nombre: str) -> str:
+    """Letra del código de revisión del nombre del fichero ('' si no la lleva)."""
+    m = _REV_RE.search(Path(str(nombre or "")).stem + " ")
+    return m.group(1).upper() if m else ""
+
+
+def docs_con_estado(code: str, docs: list[dict]) -> list[dict]:
+    """Copia de los documentos con el Estado que dice el nombre del fichero.
+
+    Solo rellena lo que está vacío: si el estado ya viene puesto —porque se editó
+    en la preview— no se toca.
+    """
+    ficheros = [Path(f).name for f in _contenido(find_package(code, docs) or Path("."))]
+    fuera = []
+    for d in docs:
+        copia = dict(d)
+        if not str(copia.get("Estado", "") or "").strip():
+            codigo = str(copia.get("Doc. Cliente", ""))
+            fichero = next((f for f in ficheros if casa_documento(codigo, Path(f).stem)), "")
+            estado = ESTADO_POR_CODIGO.get(codigo_revision(fichero), "")
+            if estado:
+                copia["Estado"] = estado
+        fuera.append(copia)
+    return fuera
