@@ -13,6 +13,8 @@ from datetime import date, datetime
 
 import pandas as pd
 
+from core.parsers.base_parser import es_anulado
+
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +246,7 @@ def _build_merged_dataset() -> list[dict]:
 
     # Excluir Eliminado
     if "Estado" in merged.columns:
-        mask = ~merged["Estado"].astype(str).str.strip().str.lower().isin(
-            ["eliminado", "deleted", "borrado"]
-        )
+        mask = ~merged["Estado"].apply(es_anulado)
         merged = merged[mask]
 
     result = merged.fillna("").to_dict(orient="records")
@@ -301,7 +301,7 @@ def compute_kpis(docs: list[dict]) -> dict:
             aprobados += 1
 
         # Crítico: excluye aprobados Y eliminados (alineado con DocFlow original)
-        if es_critico and "aprobado" not in estado and "eliminado" not in estado:
+        if es_critico and "aprobado" not in estado and not es_anulado(estado):
             criticos += 1
             dd = _try_int(d.get("Días Devolución"))
             if dd is not None and dd >= 15:
@@ -466,7 +466,7 @@ def get_monitoring_report_sections() -> dict:
         elif any(s in estado for s in ESTADOS_DEVOLUCION):
             devoluciones.append(doc)
 
-        if es_critico and "aprobado" not in estado and "eliminado" not in estado:
+        if es_critico and "aprobado" not in estado and not es_anulado(estado):
             criticos.append(doc)
 
     criticos_15d = [

@@ -20,7 +20,7 @@ TR_STATUS_MAP = {
     "F - REVIEWED WITHOUT COMMENTS": "Aprobado",
     "F - ACCEPTED WITHOUT COMMENTS": "Aprobado",
     "W - ISSUED FOR CERTIFICATION": "Certificación",
-    "M - VOID": "Eliminado",
+    "M - VOID": "VOID",          # se deja tal cual: aquí nadie dice «eliminado»
     "R - REVIEWED AS BUILT": "Aprobado",
 }
 

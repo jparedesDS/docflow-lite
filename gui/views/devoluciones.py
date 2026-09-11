@@ -62,7 +62,7 @@ META_FIELDS = [
 # Ordenados por frecuencia de uso real del Document Controller.
 VALID_STATUSES = [
     "Aprobado", "Com. Menores", "Com. Mayores", "Comentado",
-    "Rechazado", "Informativo", "Enviado", "Sin Enviar",
+    "Rechazado", "Informativo", "VOID", "Enviado", "Sin Enviar",
 ]
 
 

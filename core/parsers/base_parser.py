@@ -588,11 +588,11 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
 
     # Colores por estado
     STATUS_BG   = {"Rechazado": "#FFEBEE", "Com. Menores": "#FFF3E0", "Com. Mayores": "#FCE4EC",
-                   "Aprobado": "#E8F5E9", "Comentado": "#F3E5F5", "Informativo": "#E3F2FD", "Eliminado": "#F5F5F5"}
+                   "Aprobado": "#E8F5E9", "Comentado": "#F3E5F5", "Informativo": "#E3F2FD", "Eliminado": "#F5F5F5", "VOID": "#F5F5F5"}
     STATUS_TEXT = {"Rechazado": "#C62828", "Com. Menores": "#E65100", "Com. Mayores": "#AD1457",
-                   "Aprobado": "#2E7D32", "Comentado": "#6A1B9A", "Informativo": "#1565C0", "Eliminado": "#757575"}
+                   "Aprobado": "#2E7D32", "Comentado": "#6A1B9A", "Informativo": "#1565C0", "Eliminado": "#757575", "VOID": "#757575"}
     STATUS_DOT  = {"Rechazado": "#E53935", "Com. Menores": "#FB8C00", "Com. Mayores": "#EC407A",
-                   "Aprobado": "#43A047", "Comentado": "#AB47BC", "Informativo": "#1E88E5", "Eliminado": "#BDBDBD"}
+                   "Aprobado": "#43A047", "Comentado": "#AB47BC", "Informativo": "#1E88E5", "Eliminado": "#BDBDBD", "VOID": "#BDBDBD"}
 
     # ── Fecha límite ──
     deadline_str = deadline_date.strftime("%d de %B de %Y").replace(
@@ -897,6 +897,19 @@ def lookup_erp_by_npo(npo: str) -> dict:
 # ═══════════════════════════════════════════════════════
 
 _BLANK_VALUES = {"", "nan", "none", "nat", "-"}
+
+
+# Un documento anulado por el cliente. Técnicas Reunidas lo llama «M - VOID» y
+# así se deja escrito, que es como lo nombra todo el mundo aquí; pero en los
+# datos viejos (y en el ERP) está guardado como «Eliminado», y algunos portales
+# lo mandan en inglés, así que hay que reconocer las cuatro formas.
+_ANULADO = ("void", "elimin", "deleted", "borrado")
+
+
+def es_anulado(estado) -> bool:
+    """¿Este estado dice que el documento está anulado?"""
+    texto = str(estado or "").strip().lower()
+    return any(p in texto for p in _ANULADO)
 
 
 def norm_doc_code(code) -> str:

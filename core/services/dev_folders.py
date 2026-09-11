@@ -34,7 +34,7 @@ import unicodedata
 import zipfile
 from pathlib import Path
 
-from core.parsers.base_parser import norm_doc_code
+from core.parsers.base_parser import es_anulado, norm_doc_code
 
 logger = logging.getLogger(__name__)
 
@@ -416,8 +416,8 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 res["skipped"].append((fname, "no coincide con ningún documento del correo"))
                 continue
             estado = str(doc.get("Estado", ""))
-            if _fold(estado).startswith("elimin"):
-                res["skipped"].append((fname, "documento eliminado"))
+            if es_anulado(estado):
+                res["skipped"].append((fname, "documento anulado (VOID)"))
                 continue
             n = _rev_number(doc.get("Rev."))
             if n is None:
