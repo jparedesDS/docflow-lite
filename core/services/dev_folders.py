@@ -202,8 +202,13 @@ def _folder_score(folder_name: str, title_words: set[str], tipo: str) -> float:
     pequeño bonus si el nombre encaja con el tipo de documento."""
     fwords = _title_words(folder_name)
     score = sum(0.3 if w in _GENERIC_WORDS else 1.0 for w in title_words & fwords)
-    if any(k in _fold(folder_name) for k in TYPE_KEYWORDS.get(tipo or "", [])):
+    carpeta = _fold(folder_name)
+    if any(k in carpeta for k in TYPE_KEYWORDS.get(tipo or "", [])):
         score += 0.5
+    # El tipo del ERP a veces ES el nombre de la carpeta («VDDL», «ITP») y no
+    # está en TYPE_KEYWORDS ni se parece al título («Lista de documentos»).
+    elif tipo and _fold(tipo) == carpeta:
+        score += 1.5
     return score
 
 

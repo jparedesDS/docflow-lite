@@ -78,10 +78,87 @@ class Word:
         return destino
 
 
+class Excel:
+    """Excel abierto una sola vez, para las portadas que son una hoja.
+
+    La de MOEVE lo es. Mismo trato que `Word`: se usa como gestor de contexto
+    para que no quede un Excel invisible bloqueando ficheros.
+    """
+
+    def __init__(self) -> None:
+        self._excel = None
+        self._com = None
+
+    def __enter__(self) -> "Excel":
+        import pythoncom
+        import win32com.client as win32
+
+        self._com = pythoncom
+        pythoncom.CoInitialize()
+        self._excel = win32.DispatchEx("Excel.Application")
+        self._excel.Visible = False
+        self._excel.DisplayAlerts = False
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        try:
+            if self._excel is not None:
+                self._excel.Quit()
+        except Exception:  # noqa: BLE001 — cerrar Excel nunca debe tapar el error real
+            logger.debug("Excel no cerró limpiamente", exc_info=True)
+        finally:
+            self._excel = None
+            if self._com is not None:
+                self._com.CoUninitialize()
+                self._com = None
+
+    def a_pdf(self, xlsx: Path | str, pdf: Path | str | None = None) -> Path:
+        origen = Path(xlsx).resolve()
+        destino = Path(pdf).resolve() if pdf else origen.with_suffix(".pdf")
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        libro = self._excel.Workbooks.Open(str(origen), ReadOnly=True, UpdateLinks=0)
+        try:
+            libro.ExportAsFixedFormat(0, str(destino))     # 0 = xlTypePDF
+        finally:
+            libro.Close(False)
+        return destino
+
+
+class Oficina:
+    """Word y Excel a la vez, cada uno abierto solo si hace falta.
+
+    Una portada puede encadenar un .docx del cliente con una hoja suya, y hay
+    clientes que solo usan uno de los dos: arrancar los dos siempre serían diez
+    segundos de espera para nada.
+    """
+
+    def __init__(self) -> None:
+        self._word: Word | None = None
+        self._excel: Excel | None = None
+
+    def __enter__(self) -> "Oficina":
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        for app in (self._word, self._excel):
+            if app is not None:
+                app.__exit__(None, None, None)
+        self._word = self._excel = None
+
+    def a_pdf(self, fichero: Path | str, pdf: Path | str | None = None) -> Path:
+        if Path(fichero).suffix.lower() in (".xlsx", ".xlsm", ".xls"):
+            if self._excel is None:
+                self._excel = Excel().__enter__()
+            return self._excel.a_pdf(fichero, pdf)
+        if self._word is None:
+            self._word = Word().__enter__()
+        return self._word.a_pdf(fichero, pdf)
+
+
 def a_pdf(docx: Path | str, pdf: Path | str | None = None) -> Path:
-    """Un solo documento a PDF (abre y cierra Word)."""
-    with Word() as w:
-        return w.a_pdf(docx, pdf)
+    """Un solo documento a PDF (abre y cierra la aplicación que toque)."""
+    with Oficina() as o:
+        return o.a_pdf(docx, pdf)
 
 
 def unir(pdfs: list[Path | str], destino: Path | str) -> Path:
@@ -105,14 +182,16 @@ def unir(pdfs: list[Path | str], destino: Path | str) -> Path:
 
 def generar(plantillas: list[Path | str], destino: Path | str,
             valores: dict | None = None, marcas: dict | None = None,
-            word: Word | None = None) -> Path:
+            oficina: "Oficina | Word | None" = None) -> Path:
     """La portada de un documento: rellena las plantillas y deja un solo PDF.
 
     `valores` son las etiquetas de las tablas «ETIQUETA : valor» y `marcas` los
     marcadores `{{…}}`; se pasan tal cual a cada plantilla, que coge lo suyo.
-    Si se va a generar más de una portada conviene pasar un `Word` ya abierto.
+    Si se va a generar más de una portada conviene pasar una `Oficina` ya
+    abierta: arrancar Word (o Excel) por cada documento son cinco segundos por
+    portada.
     """
-    from core.services import plantilla_docx
+    from core.services import plantilla_docx, plantilla_xlsx
 
     destino = Path(destino)
     tmp = Path(tempfile.mkdtemp(prefix="portada_"))
@@ -120,9 +199,12 @@ def generar(plantillas: list[Path | str], destino: Path | str,
         pdfs = []
         for i, plantilla in enumerate(plantillas):
             plantilla = Path(plantilla)
-            relleno = plantilla_docx.rellenar(
-                plantilla, tmp / f"{i:02d}_{plantilla.stem}.docx", valores, marcas)
-            pdfs.append((word.a_pdf(relleno) if word is not None else a_pdf(relleno)))
+            copia = tmp / f"{i:02d}_{plantilla.stem}{plantilla.suffix}"
+            if plantilla.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
+                relleno = plantilla_xlsx.rellenar(plantilla, copia, marcas)
+            else:
+                relleno = plantilla_docx.rellenar(plantilla, copia, valores, marcas)
+            pdfs.append(oficina.a_pdf(relleno) if oficina is not None else a_pdf(relleno))
         if not pdfs:
             raise ValueError("No hay ninguna plantilla con la que hacer la portada")
         destino = files.libre(destino)      # una portada ya hecha no se pisa

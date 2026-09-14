@@ -111,6 +111,26 @@ HELP: dict[str, dict] = {
             "Solo hay datos desde 2025, que es cuando se empezó a rellenar el aviso",
         ],
     },
+    "portadas": {
+        "titulo": "Portadas",
+        "que": "Genera la portada de cada documento rellenando la plantilla que manda el cliente "
+               "(Word o Excel) con los datos del ERP.",
+        "pasos": [
+            "Elige el pedido: salen sus documentos con la carpeta env. donde irá cada portada.",
+            "«Plantillas…» (solo la primera vez de cada cliente): elige el Word o el Excel del cliente. "
+            "Si la portada son varias hojas, marca todas: se encadenan en un solo PDF.",
+            "«Campos…»: escribe qué va en cada hueco. Los datos del ERP van entre llaves y se pueden "
+            "mezclar con texto fijo — «{Tag} ALL ITEMS», «{Nº Doc. Cliente}», «{Fecha}». Al lado se ve "
+            "cómo quedaría con el primer documento del pedido.",
+            "Marca los documentos y pulsa «Generar portadas».",
+            "Cada portada se guarda en la carpeta env. de su documento como «PORTADA <nº del cliente>.pdf».",
+        ],
+        "atajos": [
+            "Las plantillas y el emparejamiento se guardan por cliente: el siguiente pedido sale solo",
+            "En Excel solo valen los marcadores {{…}}: escríbelos una vez en la plantilla",
+            "Una portada ya existente no se pisa nunca: la nueva se guarda al lado",
+        ],
+    },
     "devoluciones": {
         "titulo": "Devoluciones",
         "que": "Correos en los que el cliente devuelve documentación revisada (TR, GAIA, ACONEX, SENDOC, AYESA, SACYR…).",
