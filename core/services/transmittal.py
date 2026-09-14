@@ -196,6 +196,43 @@ def folder_link_html(folder: str, depth: int = 1) -> str:
 
 # ── Preview ───────────────────────────────────────────────────────────────────
 
+def rellenar_estado(df, parser, subject: str, msg=None):
+    """Pone el Estado de los documentos cuando se puede deducir.
+
+    Hay portales que no escriben la resolución en la tabla del correo pero la
+    dejan en otro sitio:
+
+    · **Document Space** la trae en el transmittal que va adjunto, con su
+      leyenda impresa; se lee del propio correo, sin descargar nada.
+    · **SACYR** la pone en el nombre de los ficheros del paquete (`…_R0_A`),
+      así que hace falta tener la carpeta sincronizada a mano.
+
+    Solo se rellena lo que está vacío: lo que se edite en la preview manda."""
+    if df is None or getattr(df, "empty", True) or "Estado" not in df.columns:
+        return df
+    docs = df.to_dict("records")
+    try:
+        if parser is docspace_parser and msg is not None:
+            from core.services import docspace
+            adjunto = docspace.cover_adjunto(msg.as_bytes())
+            if adjunto is None:
+                return df
+            docs = docspace.docs_con_estado(docs, adjunto[1])
+        elif parser is sacyr_parser:
+            from core.services import sacyr
+            if not sacyr.is_configured():
+                return df
+            docs = sacyr.docs_con_estado(sacyr.parse_subject(subject)["code"], docs)
+        else:
+            return df
+    except Exception as exc:  # noqa: BLE001 — sin estado se pone a mano, como antes
+        logger.info("No se pudo deducir el Estado de «%s»: %s", subject[:60], exc)
+        return df
+    df = df.copy()
+    df["Estado"] = [d.get("Estado", "") for d in docs]
+    return df
+
+
 def preview_email(uid: str, folder: str = "INBOX") -> dict:
     msg = imap_service.fetch_email(uid, folder)
     sender = imap_service._decode_header_value(msg.get("From", ""))
@@ -224,6 +261,10 @@ def preview_email(uid: str, folder: str = "INBOX") -> dict:
     # Red de seguridad común: si el parser no resolvió pedido/cliente/material/PO
     # /Doc. EIPSA, se intenta por Nº Doc. Cliente contra el ERP (rellena huecos).
     df = enrich_missing_from_erp(df)
+
+    # El Estado que el correo no trae escrito pero se puede averiguar, para no
+    # tener que ponerlo a mano antes de mandar el aviso.
+    df = rellenar_estado(df, parser, subject, msg)
 
     suggested_to, suggested_cc = compute_recipients(df)
 

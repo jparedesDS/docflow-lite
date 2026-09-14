@@ -246,6 +246,23 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
 
 
+def _ya_archivado(dev_dir: Path, fichero: str) -> Path | None:
+    """Subcarpeta de revisión donde ya está ese fichero, si se archivó antes.
+
+    Es lo que hace que volver a darle a descargar no duplique nada: ahora que el
+    número de la carpeta es un correlativo, calcularlo otra vez daría el
+    siguiente («rev2 COM» al lado del «rev1 COM» que ya tiene el PDF). También
+    aguanta que la carpeta se haya renombrado a mano después.
+    """
+    try:
+        for sub in dev_dir.iterdir():
+            if sub.is_dir() and (sub / fichero).is_file():
+                return sub
+    except OSError:
+        pass
+    return None
+
+
 def _subcarpeta(padre: Path, nombre: str) -> tuple[Path, bool]:
     """(ruta, existe_ya) de una subcarpeta, respetando cómo esté ya escrita.
 
@@ -321,6 +338,15 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
     for sub, num, rev, found in subs:
         if num == n and mismo_sufijo(found) and (not letter or rev == letter):
             return sub, True
+
+    # Aunque no lleven guion, el número de estas carpetas también cuenta las
+    # devoluciones de ESA carpeta, no la revisión: en P-24/070 la primera
+    # devolución (que el cliente numeró «rev A») está en «rev0 com» y la
+    # segunda («rev 0» para él) va a «rev1 COM». Si se usara su revisión, la
+    # segunda se llamaría «rev0» otra vez y quedarían dos carpetas rev0.
+    if subs:
+        siguiente = max(num for _, num, _, _ in subs) + 1
+        return dev_dir / f"rev{siguiente} {suffix}", False
 
     if envio is not None:
         m = _REV_DIR_RE.match(envio.name)
@@ -468,7 +494,10 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if grupo:
                 dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
                 envio = None            # ya no dice nada de la revisión
-            rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
+            rev_dir = _ya_archivado(dev_dir, fname)
+            rev_exists = rev_dir is not None
+            if rev_dir is None:
+                rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
             if dry_run:
