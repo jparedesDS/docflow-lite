@@ -2,11 +2,10 @@
 
 Tres pasos, y los dos primeros solo la primera vez de cada cliente:
 
-  1. Se eligen las plantillas que manda el cliente (uno o varios .docx, que se
+  1. Se eligen las plantillas que manda el cliente (Word o Excel; varias se
      encadenan en un solo PDF).
-  2. Se empareja cada hueco de la plantilla con lo que va dentro: campos del
-     ERP entre llaves mezclados con el texto fijo que haga falta
-     («{Tag} ALL ITEMS»).
+  2. Se arrastra cada campo del ERP hasta el hueco de la plantilla donde va,
+     mezclándolo con el texto fijo que haga falta («{Tag} ALL ITEMS»).
   3. Se marcan los documentos y se genera: cada portada va a la carpeta `env.`
      de su documento, como `PORTADA <nº del cliente>.pdf`.
 
@@ -244,39 +243,45 @@ class PortadasView(ctk.CTkFrame):
 
 
 class VentanaCampos(ctk.CTkToplevel):
-    """Emparejar cada hueco de la plantilla con lo que va dentro.
+    """Emparejar cada hueco de la plantilla con lo que va dentro, arrastrando.
 
-    Una vez por cliente: los huecos salen de la propia plantilla y el valor es
-    texto normal con campos del ERP entre llaves, que se ven al lado con lo que
-    valdrían para el primer documento del pedido.
+    Una vez por cliente. Arriba están los campos del ERP y abajo los huecos que
+    trae la plantilla: se coge un campo con el ratón y se suelta en su hueco.
+    El hueco se queda con el campo entre llaves —que es lo que luego se cambia
+    por el dato de cada documento— y al lado se ve cómo quedaría con el primer
+    documento del pedido.
+
+    Se puede escribir a mano igual que antes, que es como se ponen los datos
+    fijos (la planta, el número de contrato) y como se mezclan con un campo:
+    «{Tag} ALL ITEMS».
     """
 
     def __init__(self, master, cliente: str, perfil: dict, ejemplo: dict, al_guardar):
         super().__init__(master)
         self.title(f"Campos de la portada · {cliente}")
-        self.geometry("860x620")
+        self.geometry("900x640")
         self.configure(fg_color=theme.BG_PAGE)
         self.transient(master.winfo_toplevel())
         self._al_guardar = al_guardar
         self._valores = portadas_lote.valores_documento(ejemplo) if ejemplo else {}
         self._entradas: dict[str, ctk.CTkEntry] = {}
         self._previas: dict[str, ctk.CTkLabel] = {}
+        self._zonas: dict[str, str] = {}      # widget (str) → hueco al que pertenece
+        self._arrastre = None                 # etiqueta que sigue al ratón
+        self._resaltado = ""
         self._build(perfil)
         self.after(120, self.lift)
+
+    # ── Montaje ───────────────────────────────────────────────────────────────
 
     def _build(self, perfil: dict) -> None:
         cab = ui.page_header(
             self, "Campos de la portada",
-            "Escribe lo que va en cada hueco. Los campos del ERP van entre llaves.",
+            "Arrastra cada campo hasta el hueco donde va. También puedes escribir.",
             icon="🖹", pad_bottom=theme.SPACE_2)
         ui.button(cab.actions, "Guardar", "primary", command=self._guardar).pack(side="right")
 
-        ayuda = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD)
-        ayuda.pack(fill="x", padx=theme.SPACE_6, pady=(0, theme.SPACE_3))
-        texto = "  ·  ".join(f"{{{k}}}" for k, _ in portadas_lote.CAMPOS)
-        ctk.CTkLabel(ayuda, text="Campos disponibles: " + texto, font=theme.FONT_SMALL,
-                     text_color=theme.TEXT_SUB, wraplength=780, justify="left"
-                     ).pack(anchor="w", padx=theme.SPACE_3, pady=theme.SPACE_2)
+        self._paleta(perfil)
 
         cuerpo = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD,
                                         corner_radius=theme.RADIUS_MD)
@@ -286,11 +291,35 @@ class VentanaCampos(ctk.CTkToplevel):
         if not huecos:
             ui.empty_state(cuerpo, "La plantilla no tiene huecos que rellenar",
                            "Si no es una tabla «ETIQUETA : valor», escribe {{MARCADORES}} "
-                           "en el Word donde vaya cada dato.", icon="○")
+                           "en el Word o el Excel donde vaya cada dato.", icon="○")
             return
         mapa = perfil.get("mapa") or {}
         for h in huecos:
             self._fila(cuerpo, h, mapa.get(h["clave"], ""))
+
+    def _paleta(self, perfil: dict) -> None:
+        """Los campos del ERP, en fichas que se arrastran."""
+        caja = ctk.CTkFrame(self, fg_color=theme.BG_CARD, corner_radius=theme.RADIUS_MD)
+        caja.pack(fill="x", padx=theme.SPACE_6, pady=(0, theme.SPACE_3))
+        ctk.CTkLabel(caja, text="CAMPOS DEL ERP", font=theme.FONT_SMALL_BOLD,
+                     text_color=theme.TEXT_MUTED).pack(anchor="w", padx=theme.SPACE_3,
+                                                       pady=(theme.SPACE_2, 0))
+        rejilla = ctk.CTkFrame(caja, fg_color="transparent")
+        rejilla.pack(fill="x", padx=theme.SPACE_3, pady=(theme.SPACE_1, theme.SPACE_2))
+        for i, (campo, explica) in enumerate(portadas_lote.CAMPOS):
+            self._ficha(rejilla, campo, explica, i)
+
+    def _ficha(self, padre, campo: str, explica: str, i: int) -> None:
+        ficha = ctk.CTkLabel(padre, text=campo, font=theme.FONT_SMALL,
+                             fg_color=theme.BG_INPUT, corner_radius=theme.RADIUS_SM,
+                             text_color=theme.TEXT_MAIN, cursor="hand2",
+                             padx=theme.SPACE_2, pady=3)
+        ficha.grid(row=i // 5, column=i % 5, padx=3, pady=3, sticky="w")
+        valor = self._valores.get(campo, "")
+        ui.tooltip(ficha, f"{explica}\nEn este pedido: {valor}" if valor else explica)
+        ficha.bind("<Button-1>", lambda e, c=campo: self._empieza(e, c))
+        ficha.bind("<B1-Motion>", self._mueve)
+        ficha.bind("<ButtonRelease-1>", lambda e, c=campo: self._suelta(e, c))
 
     def _fila(self, padre, hueco: dict, patron: str) -> None:
         fila = ctk.CTkFrame(padre, fg_color="transparent")
@@ -298,23 +327,97 @@ class VentanaCampos(ctk.CTkToplevel):
 
         marca = "{{ }}" if hueco["tipo"] == "marca" else ""
         etiqueta = ctk.CTkLabel(fila, text=f"{hueco['clave']} {marca}".strip(),
-                                font=theme.FONT_SMALL_BOLD, width=230, anchor="w",
+                                font=theme.FONT_SMALL_BOLD, width=220, anchor="w",
                                 text_color=theme.TEXT_MAIN)
         etiqueta.pack(side="left", padx=(0, theme.SPACE_2))
         if hueco.get("ejemplo"):
             ui.tooltip(etiqueta, f"En la plantilla pone: {hueco['ejemplo']}")
 
-        entrada = ctk.CTkEntry(fila, width=300, height=theme.HEIGHT_INPUT)
+        entrada = ctk.CTkEntry(fila, width=290, height=theme.HEIGHT_INPUT,
+                               placeholder_text="suelta aquí un campo")
         entrada.insert(0, patron)
-        entrada.pack(side="left", padx=(0, theme.SPACE_2))
+        entrada.pack(side="left", padx=(0, theme.SPACE_1))
         self._entradas[hueco["clave"]] = entrada
 
+        ui.icon_button(fila, "✕", command=lambda c=hueco["clave"]: self._vaciar(c),
+                       ).pack(side="left", padx=(0, theme.SPACE_2))
+
         previa = ctk.CTkLabel(fila, text="", font=theme.FONT_SMALL, anchor="w",
-                              text_color=theme.TEXT_MUTED, width=240)
+                              text_color=theme.TEXT_MUTED, width=230)
         previa.pack(side="left", fill="x", expand=True)
         self._previas[hueco["clave"]] = previa
+
+        # Toda la fila vale como zona de suelta, no solo la casilla: acertar en
+        # una caja de 290 px con el ratón a medio camino es pedir puntería.
+        for w in (fila, etiqueta, entrada, previa):
+            self._zonas[str(w)] = hueco["clave"]
+
         entrada.bind("<KeyRelease>", lambda _e, c=hueco["clave"]: self._previsualiza(c))
         self._previsualiza(hueco["clave"])
+
+    # ── Arrastrar y soltar ────────────────────────────────────────────────────
+
+    def _empieza(self, event, campo: str) -> None:
+        self._arrastre = ctk.CTkLabel(self, text=f"{{{campo}}}", font=theme.FONT_SMALL,
+                                      fg_color=theme.ACCENT, text_color="#FFFFFF",
+                                      corner_radius=theme.RADIUS_SM, padx=theme.SPACE_2, pady=3)
+        self._mueve(event)
+
+    def _mueve(self, event) -> None:
+        if self._arrastre is None:
+            return
+        self._arrastre.place(x=event.x_root - self.winfo_rootx() + 12,
+                             y=event.y_root - self.winfo_rooty() + 12)
+        self._arrastre.lift()
+        self._resalta(self._hueco_bajo(event))
+
+    def _suelta(self, event, campo: str) -> None:
+        if self._arrastre is not None:
+            self._arrastre.destroy()
+            self._arrastre = None
+        clave = self._hueco_bajo(event)
+        self._resalta("")
+        if clave:
+            self._insertar(clave, f"{{{campo}}}")
+
+    def _hueco_bajo(self, event) -> str:
+        """A qué hueco pertenece lo que hay debajo del ratón ('' si a ninguno)."""
+        try:
+            w = self.winfo_containing(event.x_root, event.y_root)
+        except Exception:  # noqa: BLE001 — fuera de la ventana no hay nada debajo
+            return ""
+        while w is not None:
+            clave = self._zonas.get(str(w))
+            if clave:
+                return clave
+            w = getattr(w, "master", None)
+        return ""
+
+    def _resalta(self, clave: str) -> None:
+        if clave == self._resaltado:
+            return
+        for c, color in ((self._resaltado, theme.BORDER), (clave, theme.ACCENT)):
+            entrada = self._entradas.get(c)
+            if entrada is not None:
+                entrada.configure(border_color=color)
+        self._resaltado = clave
+
+    # ── Contenido de cada hueco ───────────────────────────────────────────────
+
+    def _insertar(self, clave: str, texto: str) -> None:
+        """Pone el campo donde esté el cursor, o al final si no se ha tocado."""
+        entrada = self._entradas[clave]
+        actual = entrada.get()
+        try:
+            pos = entrada.index("insert") if entrada.focus_get() is entrada else len(actual)
+        except Exception:  # noqa: BLE001 — sin cursor conocido, al final
+            pos = len(actual)
+        entrada.insert(pos, texto)
+        self._previsualiza(clave)
+
+    def _vaciar(self, clave: str) -> None:
+        self._entradas[clave].delete(0, "end")
+        self._previsualiza(clave)
 
     def _previsualiza(self, clave: str) -> None:
         patron = self._entradas[clave].get()

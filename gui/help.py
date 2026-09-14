@@ -119,9 +119,9 @@ HELP: dict[str, dict] = {
             "Elige el pedido: salen sus documentos con la carpeta env. donde irá cada portada.",
             "«Plantillas…» (solo la primera vez de cada cliente): elige el Word o el Excel del cliente. "
             "Si la portada son varias hojas, marca todas: se encadenan en un solo PDF.",
-            "«Campos…»: escribe qué va en cada hueco. Los datos del ERP van entre llaves y se pueden "
-            "mezclar con texto fijo — «{Tag} ALL ITEMS», «{Nº Doc. Cliente}», «{Fecha}». Al lado se ve "
-            "cómo quedaría con el primer documento del pedido.",
+            "«Campos…»: arrastra cada campo del ERP hasta el hueco donde va. Se pueden encadenar "
+            "varios y escribir texto fijo detrás — «{Tag} ALL ITEMS»— y la ✕ vacía el hueco. Al lado "
+            "se ve cómo quedaría con el primer documento del pedido.",
             "Marca los documentos y pulsa «Generar portadas».",
             "Cada portada se guarda en la carpeta env. de su documento como «PORTADA <nº del cliente>.pdf».",
         ],
