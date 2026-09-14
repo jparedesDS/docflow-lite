@@ -47,6 +47,7 @@ from core.parsers import (ayesa_parser, docspace_parser, prodoc_parser, sacyr_pa
                           tr_parser)
 from core.services import ayesa, docspace, egesdoc, prodoc, sacyr
 from core.services import imap as imap_service
+from core.utils import files
 from core.utils.json_store import read_json, write_json
 
 logger = logging.getLogger(__name__)
@@ -402,7 +403,7 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             # cómo ha quedado cada documento: se guarda al lado del paquete.
             if adjunto is not None:
                 try:
-                    (dest / safe_filename(adjunto[0])).write_bytes(adjunto[1])
+                    files.escribir(dest / safe_filename(adjunto[0]), adjunto[1])
                 except OSError as exc:
                     logger.warning("No se pudo guardar el transmittal de %s: %s", code, exc)
             return zip_path
@@ -478,8 +479,7 @@ def download(code: str, pedido: str, fetch: Callable[[Path], Path], *, subject: 
         eml_path = None
         if raw_email:
             try:
-                eml_path = eml_path_de(dest, subject, code)
-                eml_path.write_bytes(raw_email)
+                eml_path = files.escribir(eml_path_de(dest, subject, code), raw_email)
             except Exception as exc:  # noqa: BLE001 — el zip ya está; el correo es un extra
                 logger.warning("No se pudo guardar el correo junto a %s: %s", code, exc)
     except Exception:
@@ -517,8 +517,7 @@ def save_email_only(code: str, pedido: str, *, subject: str = "", raw_email: byt
     eml_path = None
     try:
         if raw_email:
-            eml_path = eml_path_de(dest, subject, code)
-            eml_path.write_bytes(raw_email)
+            eml_path = files.escribir(eml_path_de(dest, subject, code), raw_email)
     except Exception:
         _remove_if_empty(dest)     # no dejar un «NNN (fecha)» vacío
         raise

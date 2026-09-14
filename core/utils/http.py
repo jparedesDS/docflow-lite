@@ -7,7 +7,8 @@
   `truststore` no está instalado se usa la validación estándar (nunca se
   desactiva la verificación).
 · `filename_from_headers()` — nombre de fichero del Content-Disposition.
-· `save_response()` — vuelca una respuesta a disco de forma atómica (tmp+replace).
+· `save_response()` — vuelca una respuesta a disco de forma atómica (tmp+replace),
+  sin pisar nunca un fichero que ya estuviera ahí.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from urllib.parse import unquote
 
 import requests
 from requests.adapters import HTTPAdapter
+
+from core.utils import files
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DocFlowLite/1.0"
 _BAD_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -66,17 +69,17 @@ def filename_from_headers(headers) -> str:
 
 def save_response(response: requests.Response, dest_dir: Path | str, default_name: str) -> Path:
     """Guarda el cuerpo de `response` (en streaming) en `dest_dir`, con el nombre
-    del Content-Disposition o `default_name`. Escritura atómica."""
+    del Content-Disposition o `default_name`. Escritura atómica y **sin pisar**:
+    si ahí ya hay otro fichero con ese nombre, este se guarda al lado."""
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
     target = dest / (filename_from_headers(response.headers) or default_name)
-    tmp = target.with_suffix(target.suffix + ".part")
-    with open(tmp, "wb") as fh:
+    tmp = files.libre(target.with_suffix(target.suffix + ".part"))
+    with open(tmp, "xb") as fh:
         for chunk in response.iter_content(1 << 16):
             if chunk:
                 fh.write(chunk)
-    os.replace(tmp, target)
-    return target
+    return files.mover(tmp, target)
 
 
 def _magic(path: Path | str, n: int) -> bytes:

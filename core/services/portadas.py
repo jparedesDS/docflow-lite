@@ -21,6 +21,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from core.utils import files
+
 logger = logging.getLogger(__name__)
 
 # Word tarda ~5 s en arrancar; si hay que generar cincuenta portadas conviene
@@ -92,10 +94,10 @@ def unir(pdfs: list[Path | str], destino: Path | str) -> Path:
     try:
         for p in pdfs:
             escritor.append(str(p))
-        tmp = destino.with_suffix(destino.suffix + ".part")
-        with open(tmp, "wb") as fh:
+        tmp = files.libre(destino.with_suffix(destino.suffix + ".part"))
+        with open(tmp, "xb") as fh:
             escritor.write(fh)
-        tmp.replace(destino)
+        destino = files.mover(tmp, destino)
     finally:
         escritor.close()
     return destino
@@ -123,6 +125,7 @@ def generar(plantillas: list[Path | str], destino: Path | str,
             pdfs.append((word.a_pdf(relleno) if word is not None else a_pdf(relleno)))
         if not pdfs:
             raise ValueError("No hay ninguna plantilla con la que hacer la portada")
+        destino = files.libre(destino)      # una portada ya hecha no se pisa
         if len(pdfs) == 1:
             destino.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(pdfs[0], destino)

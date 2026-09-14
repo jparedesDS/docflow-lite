@@ -26,7 +26,7 @@ import zipfile
 from html import unescape
 from pathlib import Path
 
-from core.utils import http
+from core.utils import files, http
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +140,8 @@ def _as_code_zip(path: Path, code: str) -> Path:
     devolvió un zip con otro nombre, se renombra."""
     final = path.with_name(f"{code}.zip")
     if http.is_zip(path):
-        if path != final:
-            path.replace(final)
-        return final
+        return files.mover(path, final)          # nunca pisa lo que ya hubiera
+    final = files.libre(final)
     with zipfile.ZipFile(final, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.write(path, arcname=path.name)
     path.unlink(missing_ok=True)

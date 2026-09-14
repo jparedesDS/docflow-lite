@@ -33,6 +33,7 @@ import zipfile
 from pathlib import Path
 
 from core import preferences
+from core.utils import files
 
 logger = logging.getLogger(__name__)
 
@@ -262,9 +263,10 @@ def collect(code: str, dest_dir: Path | str,
 
     destino = dest_dir / (folder_name(code) + ".zip")
     if paquete.is_file():
-        destino.write_bytes(paquete.read_bytes())
+        destino = files.escribir(destino, paquete.read_bytes())
         logger.info("SACYR: %s copiado de %s", destino.name, paquete)
         return destino
+    destino = files.libre(destino)
 
     ficheros = package_files(paquete)
     if not ficheros:

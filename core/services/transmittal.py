@@ -32,6 +32,7 @@ from core.parsers.base_parser import (
 )
 from core.services import imap as imap_service
 from core.services import smtp as smtp_service
+from core.utils import files
 from core.utils.json_store import read_json, write_json
 
 logger = logging.getLogger(__name__)
@@ -412,10 +413,8 @@ def send_manual_notification(
                 filename = f"{ts}_{pedido_norm}_DEV_MANUAL.eml"
                 dest = target / filename
                 raw = send_result.get("raw")
-                if raw:
-                    dest.write_bytes(raw)
-                else:
-                    dest.write_text(_build_eml(subject, to, cc, html), encoding="utf-8")
+                dest = files.escribir(dest, raw if raw else
+                                      _build_eml(subject, to, cc, html).encode("utf-8"))
                 saved_path = str(dest)
                 logger.info("Devolución manual archivada en %s", saved_path)
     except Exception as exc:
@@ -559,10 +558,8 @@ def process_and_notify(
                 filename = f"{ts}_{pedido_norm}_DEV.eml"
                 dest = target / filename
                 raw = send_result.get("raw")
-                if raw:
-                    dest.write_bytes(raw)
-                else:
-                    dest.write_text(_build_eml(subject, to, cc, html_body), encoding="utf-8")
+                dest = files.escribir(dest, raw if raw else
+                                      _build_eml(subject, to, cc, html_body).encode("utf-8"))
                 saved_path = str(dest)
                 logger.info("Devolución archivada en %s", saved_path)
     except Exception as exc:

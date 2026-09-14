@@ -24,6 +24,14 @@ Cliente / Doc. EIPSA dentro del nombre del fichero). La carpeta se decide así:
      (`apertura.SUBFOLDER_CATALOG`) → se crea «dev. <Tipo>».
 Lo que no se sabe colocar se deja en el zip y se informa; nunca se inventa.
 El zip original queda intacto (se COPIA, no se mueve).
+
+**Un documento archivado no se sobrescribe jamás.** Cuando el cliente devuelve
+otra vez el mismo documento, el fichero se llama igual que el de la devolución
+anterior; si la carpeta elegida ya lo tiene, esta se va a la siguiente del
+correlativo. Solo se da por archivado lo que ya está ahí con el mismo contenido
+(tamaño y CRC32 del zip), que es lo que hace idempotente volver a descargar.
+El PDF comentado de una devolución es la prueba de lo que el cliente dijo
+entonces y no se puede recuperar de ningún sitio.
 """
 
 from __future__ import annotations
@@ -32,6 +40,7 @@ import logging
 import re
 import unicodedata
 import zipfile
+import zlib
 from pathlib import Path
 
 from core.parsers.base_parser import es_anulado, norm_doc_code
@@ -246,21 +255,80 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
 
 
-def _ya_archivado(dev_dir: Path, fichero: str) -> Path | None:
-    """Subcarpeta de revisión donde ya está ese fichero, si se archivó antes.
+def _ya_archivado(dev_dir: Path, fichero: str, tamaño: int, crc: int | None = None) -> Path | None:
+    """Subcarpeta de revisión donde ya está ESE MISMO fichero, si se archivó antes.
 
     Es lo que hace que volver a darle a descargar no duplique nada: ahora que el
     número de la carpeta es un correlativo, calcularlo otra vez daría el
     siguiente («rev2 COM» al lado del «rev1 COM» que ya tiene el PDF). También
     aguanta que la carpeta se haya renombrado a mano después.
+
+    El tamaño es imprescindible: dos devoluciones distintas del mismo documento
+    traen el mismo nombre de fichero. Si solo se mirara el nombre, la nueva se
+    daría por archivada en la carpeta de la anterior y acabaría escribiendo
+    encima del PDF comentado de aquella devolución.
     """
     try:
         for sub in dev_dir.iterdir():
-            if sub.is_dir() and (sub / fichero).is_file():
+            if sub.is_dir() and _mismo_fichero(sub / fichero, tamaño, crc):
                 return sub
     except OSError:
         pass
     return None
+
+
+def _mismo_fichero(ruta: Path, tamaño: int, crc: int | None = None) -> bool:
+    """¿Está ya ahí ese fichero, con el mismo contenido?
+
+    El tamaño descarta en seco; cuando coincide se compara el CRC32, que el zip
+    ya trae calculado. Dos revisiones de un mismo PDF pueden ocupar lo mismo por
+    casualidad, y confundirlas sería justo el error que no se puede cometer.
+    """
+    try:
+        if not (ruta.is_file() and ruta.stat().st_size == tamaño):
+            return False
+    except OSError:
+        return False
+    return True if crc is None else _crc32(ruta) == crc
+
+
+def _crc32(ruta: Path) -> int | None:
+    try:
+        acc = 0
+        with open(ruta, "rb") as fh:
+            for trozo in iter(lambda: fh.read(1 << 20), b""):
+                acc = zlib.crc32(trozo, acc)
+        return acc
+    except OSError:
+        return None
+
+
+def _sin_pisar(dev_dir: Path, rev_dir: Path, existe: bool, fichero: str,
+               tamaño: int, crc: int | None = None) -> tuple[Path, bool]:
+    """La misma carpeta, o la siguiente si en esa ya vive OTRO fichero así.
+
+    Un documento archivado no se toca nunca. Cuando el cliente devuelve otra vez
+    el mismo documento —mismo nombre de fichero, contenido distinto— y la
+    carpeta elegida ya tiene el PDF de la devolución anterior, esta se va a la
+    siguiente del correlativo en vez de escribir encima.
+    """
+    destino = rev_dir / fichero
+    while destino.exists() and not _mismo_fichero(destino, tamaño, crc):
+        m = _REV_DIR_RE.match(rev_dir.name)
+        if m:
+            siguiente = int(m.group(1)) + 1
+            rev, sufijo = (m.group(2) or ""), (m.group(3) or "")
+        else:                       # carpeta renombrada a mano: detrás de todas
+            subs = _rev_subfolders(dev_dir)
+            siguiente = (max(num for _, num, _, _ in subs) + 1) if subs else 0
+            rev, sufijo = "", ""
+        nombre = f"rev{siguiente}" + (f"-{rev}" if rev else "") + (f" {sufijo}" if sufijo else "")
+        if nombre == rev_dir.name:              # no avanzamos: mejor no tocar nada
+            break
+        rev_dir = dev_dir / nombre
+        existe = rev_dir.is_dir()
+        destino = rev_dir / fichero
+    return rev_dir, existe
 
 
 def _subcarpeta(padre: Path, nombre: str) -> tuple[Path, bool]:
@@ -494,10 +562,12 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
             if grupo:
                 dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
                 envio = None            # ya no dice nada de la revisión
-            rev_dir = _ya_archivado(dev_dir, fname)
+            rev_dir = _ya_archivado(dev_dir, fname, zi.file_size, zi.CRC)
             rev_exists = rev_dir is not None
             if rev_dir is None:
                 rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
+                rev_dir, rev_exists = _sin_pisar(dev_dir, rev_dir, rev_exists, fname,
+                                                 zi.file_size, zi.CRC)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
             if dry_run:
@@ -508,12 +578,19 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                     res["created"].append(d)
                     if d.parent == tecnico:
                         folders.append({"kind": "dev", "name": name, "dotted": dotted, "path": d})
-            if target.exists() and target.stat().st_size == zi.file_size:
-                res["archived"].append((fname, target))
+            if _mismo_fichero(target, zi.file_size, zi.CRC):
+                res["archived"].append((fname, target))   # ya estaba, y es el mismo
             else:
-                with zf.open(zi) as src, open(target, "wb") as dst:
-                    for chunk in iter(lambda: src.read(1 << 16), b""):
-                        dst.write(chunk)
+                # «xb» (creación exclusiva) es la última red: si algo se colara,
+                # esto revienta en vez de destruir un documento ya archivado.
+                try:
+                    with zf.open(zi) as src, open(target, "xb") as dst:
+                        for chunk in iter(lambda: src.read(1 << 16), b""):
+                            dst.write(chunk)
+                except FileExistsError:
+                    logger.error("Archivo dev: %s ya existe en %s y NO se pisa", fname, rev_dir)
+                    res["skipped"].append((fname, f"ya hay otro documento con ese nombre en {rev_dir.name}"))
+                    continue
                 res["archived"].append((fname, target))
             if email_raw and rev_dir not in touched:
                 touched.add(rev_dir)

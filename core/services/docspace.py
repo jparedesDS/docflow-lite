@@ -46,7 +46,7 @@ import secrets
 from html import unescape
 from pathlib import Path
 
-from core.utils import http
+from core.utils import files, http
 
 logger = logging.getLogger(__name__)
 
@@ -152,10 +152,8 @@ def download(url: str, password: str, dest_dir: Path | str, code: str) -> Path:
     if not (http.is_zip(destino) or http.is_pdf(destino)):
         destino.unlink(missing_ok=True)
         raise RuntimeError("Document Space no devolvió un zip ni un PDF")
-    final = destino.with_name(f"{code}.zip")
-    if http.is_zip(destino) and destino != final:
-        destino.replace(final)
-        destino = final
+    if http.is_zip(destino):
+        destino = files.mover(destino, destino.with_name(f"{code}.zip"))
     logger.info("Document Space: %s descargado en %s", code, destino)
     return destino
 
