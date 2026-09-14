@@ -135,10 +135,24 @@ def _decode_header_value(value):
     return "".join(result)
 
 
+def _nombre_carpeta(folder) -> str:
+    """Nombre de carpeta entrecomillado para IMAP.
+
+    Sin comillas, una carpeta con espacios —«INBOX/P. 2026/P-26-059», que es
+    como está organizado el buzón por pedidos— no se puede abrir: el servidor
+    lee el espacio como separador de argumentos y contesta que no existe."""
+    nombre = str(folder or "INBOX")
+    return nombre if nombre.startswith('"') else f'"{nombre}"'
+
+
 def _connect(folder="INBOX", imap_user=None, imap_pass=None):
     conn = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     conn.login(imap_user or IMAP_USER, imap_pass or IMAP_PASS)
-    conn.select(folder)
+    typ, data = conn.select(_nombre_carpeta(folder))
+    if typ != "OK":
+        detalle = (data[0].decode("utf-8", "replace") if data and data[0] else "")
+        conn.logout()
+        raise RuntimeError(f"No se pudo abrir la carpeta «{folder}» del buzón: {detalle}")
     return conn
 
 
@@ -367,7 +381,7 @@ def list_sent_index(days=30, imap_user=None, imap_pass=None, limit=1200):
             if len(out) >= limit:
                 break
             try:
-                conn.select(f'"{fname}"' if " " in fname else fname, readonly=True)
+                conn.select(_nombre_carpeta(fname), readonly=True)
             except Exception:
                 continue
             try:
@@ -437,7 +451,7 @@ def fetch_by_msgid(folder, msgid, imap_user=None, imap_pass=None):
     conn = _connect("INBOX", imap_user, imap_pass)
     try:
         try:
-            conn.select(f'"{folder}"' if " " in (folder or "") else (folder or "INBOX"),
+            conn.select(_nombre_carpeta(folder),
                         readonly=True)
         except Exception:
             return None

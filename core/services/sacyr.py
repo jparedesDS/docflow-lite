@@ -76,6 +76,19 @@ def _clave(texto: str) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", str(texto or "")).upper()
 
 
+_REV_FICHERO = re.compile(r"[-_]R(\d+)(?=[-_.]|$)", re.I)
+
+
+def revision_fichero(nombre: str) -> str:
+    """Revisión que lleva el nombre del fichero («…-003-R1_B» → «1»), o ''.
+
+    Nada de `Path(...).stem` aquí: estos códigos llevan puntos («…-J-C.181752»)
+    y, si el nombre viene ya sin extensión, `stem` se come todo lo que va
+    detrás del último punto y se lleva por delante la revisión."""
+    m = _REV_FICHERO.search(str(nombre or ""))
+    return str(int(m.group(1))) if m else ""
+
+
 def _partes(codigo: str) -> tuple[str, int | None]:
     """Código de documento partido en (tramo común normalizado, nº de orden)."""
     texto = str(codigo or "").strip()
@@ -86,7 +99,7 @@ def _partes(codigo: str) -> tuple[str, int | None]:
     return (_clave(base), int(m.group(1))) if m else ("", None)
 
 
-def casa_documento(codigo: str, nombre: str) -> bool:
+def casa_documento(codigo: str, nombre: str, rev=None) -> bool:
     """¿Este fichero es ese documento?
 
     Los PDF que publica SACYR llevan el código **del ERP**, no el del correo:
@@ -109,7 +122,14 @@ def casa_documento(codigo: str, nombre: str) -> bool:
     if desde < 0:
         return False
     m = re.match(r"0*(\d+)", fichero[desde + len(base):])
-    return bool(m) and int(m.group(1)) == orden
+    if not (m and int(m.group(1)) == orden):
+        return False
+    # Y la revisión, si las dos partes la dicen: dos devoluciones seguidas
+    # traen el mismo documento en revisiones distintas («…-003-R0_B» y
+    # «…-003-R1_B»), y sin mirarla el paquete de una pasa por el de la otra.
+    suya = revision_fichero(nombre)
+    pedida = re.sub(r"\D", "", str(rev)) if rev not in (None, "") else ""
+    return not (suya and pedida) or suya == pedida
 
 
 # ── Dónde buscar ──────────────────────────────────────────────────────────────
@@ -195,15 +215,19 @@ def find_package(code: str, docs: list[dict] | None = None,
 
     if not docs:
         return None
-    codigos = [str(d.get("Doc. Cliente", "")) for d in docs]
-    codigos = [c for c in codigos if _partes(c)[1] is not None]
+    codigos = [(str(d.get("Doc. Cliente", "")), d.get("Rev.")) for d in docs]
+    codigos = [(c, r) for c, r in codigos if _partes(c)[1] is not None]
     if not codigos:
         return None
+    # Tienen que estar TODOS los documentos del correo, no vale con uno: dos
+    # devoluciones seguidas del mismo pedido comparten documentos (el mismo
+    # plano en revisiones sucesivas), y con «alguno» el paquete de una se
+    # tomaba por el de la otra y se archivaba un zip que no era.
     for candidato in _candidatos(root):
         ficheros = [Path(f).stem for f in _contenido(candidato)]
-        if any(casa_documento(c, f) for c in codigos for f in ficheros):
-            logger.info("SACYR: %s reconocido por su contenido como %s",
-                        candidato.name, code)
+        if all(any(casa_documento(c, f, r) for f in ficheros) for c, r in codigos):
+            logger.info("SACYR: %s reconocido por su contenido como %s (están sus %d documento(s))",
+                        candidato.name, code, len(codigos))
             return candidato
     return None
 
@@ -271,7 +295,8 @@ def file_map(code: str, docs: list[dict] | None = None) -> dict[str, dict]:
     for entrada in _contenido(paquete):
         nombre = Path(entrada).name
         doc = next((d for d in docs
-                    if casa_documento(str(d.get("Doc. Cliente", "")), Path(nombre).stem)), None)
+                    if casa_documento(str(d.get("Doc. Cliente", "")), Path(nombre).stem,
+                                      d.get("Rev."))), None)
         if doc is not None:
             out[nombre] = {
                 "vendor_number": str(doc.get("Doc. Cliente", "")),
@@ -308,7 +333,7 @@ ESTADO_POR_CODIGO = {
 
 def codigo_revision(nombre: str) -> str:
     """Letra del código de revisión del nombre del fichero ('' si no la lleva)."""
-    m = _REV_RE.search(Path(str(nombre or "")).stem + " ")
+    m = _REV_RE.search(str(nombre or "") + " ")
     return m.group(1).upper() if m else ""
 
 
@@ -324,7 +349,8 @@ def docs_con_estado(code: str, docs: list[dict]) -> list[dict]:
         copia = dict(d)
         if not str(copia.get("Estado", "") or "").strip():
             codigo = str(copia.get("Doc. Cliente", ""))
-            fichero = next((f for f in ficheros if casa_documento(codigo, Path(f).stem)), "")
+            fichero = next((f for f in ficheros
+                            if casa_documento(codigo, Path(f).stem, copia.get("Rev."))), "")
             letra = codigo_revision(fichero)
             estado = ESTADO_POR_CODIGO.get(letra, "")
             if estado:
