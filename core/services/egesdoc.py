@@ -34,9 +34,19 @@ from core.utils import http
 logger = logging.getLogger(__name__)
 
 BASE = "https://egesdoc.tecnicasreunidas.es"
-TIMEOUT = 25
+# El portal de TR tiene días malos: el 2026-09-14 el login tardaba 22 s, con lo
+# que 25 s se quedaban cortos y las descargas se caían por timeout a media
+# mañana. Con 60 hay margen sin que un portal caído deje la app colgada.
+TIMEOUT = 60
 DOWNLOAD_TIMEOUT = 180
 EXPORT_RETRIES = 3
+OPEN_RETRIES = 3
+
+
+class PortalOcupado(RuntimeError):
+    """El portal no está pudiendo atender ahora: ni es culpa nuestra ni se
+    arregla mirando las credenciales. Se distingue para que estos fallos no
+    gasten los intentos del job, que están para los errores de verdad."""
 _AJAX = {"X-Requested-With": "XMLHttpRequest"}
 
 # Asunto típico: "eGesdoc - New transmittal registered (10571-TRSEI-V-13174) - PO(1057410920)"
@@ -95,7 +105,17 @@ def login(session: requests.Session | None = None) -> requests.Session:
     if not user or not pwd:
         raise RuntimeError("Faltan usuario o contraseña de eGesDoc (Ajustes ▸ Portales).")
     s = session or _new_session()
-    r = s.get(f"{BASE}/Login/Index", timeout=TIMEOUT)
+    try:
+        r = s.get(f"{BASE}/Login/Index", timeout=TIMEOUT)
+    except (requests.Timeout, requests.ConnectionError) as exc:
+        raise PortalOcupado("No se llega a eGesDoc: el portal está caído o sin red. "
+                            "Se reintenta en la siguiente pasada.") from exc
+    if r.status_code >= 500:
+        # El 2026-09-14 el portal pasó de ir lento a devolver 503 en su propia
+        # página de entrada: no hay nada que revisar por nuestra parte.
+        raise PortalOcupado(
+            f"eGesDoc está caído (HTTP {r.status_code} en la página de entrada). "
+            "Se reintenta en la siguiente pasada.")
     r.raise_for_status()
     token = _hidden(r.text, "__RequestVerificationToken")
     version = _hidden(r.text, "Version")
@@ -103,10 +123,17 @@ def login(session: requests.Session | None = None) -> requests.Session:
             "RememberMe": "false"}
     if version:
         data["Version"] = version
-    r = s.post(f"{BASE}/Login/Login", data=data, timeout=TIMEOUT, allow_redirects=True,
-               headers={"Referer": f"{BASE}/Login/Index"})
-    # Verificación robusta: la raíz ya no redirige al login
-    chk = s.get(f"{BASE}/", timeout=TIMEOUT, allow_redirects=True)
+    try:
+        r = s.post(f"{BASE}/Login/Login", data=data, timeout=TIMEOUT, allow_redirects=True,
+                   headers={"Referer": f"{BASE}/Login/Index"})
+        # Verificación robusta: la raíz ya no redirige al login
+        chk = s.get(f"{BASE}/", timeout=TIMEOUT, allow_redirects=True)
+    except requests.Timeout as exc:
+        # Que el portal no conteste a tiempo no es una contraseña mal puesta, y
+        # decirlo así manda a buscar el fallo donde no está.
+        raise PortalOcupado(
+            f"eGesDoc no contesta (más de {TIMEOUT} s). El portal va lento o está "
+            "caído; se reintenta en la siguiente pasada.") from exc
     if "/Login" in chk.url or 'id="loginForm"' in chk.text:
         hint = ""
         try:
@@ -177,10 +204,37 @@ def find_project_for_po(s: requests.Session, po: str, hint: str | None = None) -
 
 
 def enter_po(s: requests.Session, project: str, po: str) -> None:
-    """Equivale a pulsar «Open» en la tarjeta del PO: deja el PO activo en sesión."""
+    """Equivale a pulsar «Open» en la tarjeta del PO: deja el PO activo en sesión.
+
+    Igual que al preparar el zip, el portal contesta 500 de forma transitoria
+    cuando va cargado (el 2026-09-14 lo hacía toda la mañana, tardando 30 s en
+    contestarlo), así que se reintenta antes de darlo por perdido."""
     select_project(s, project)
-    r = s.get(f"{BASE}/Main/SelectPurchaseOrder", params={"project": project, "purchaseOrder": po},
-              timeout=TIMEOUT, allow_redirects=True)
+    r = None
+    for intento in range(1, OPEN_RETRIES + 1):
+        try:
+            r = s.get(f"{BASE}/Main/SelectPurchaseOrder",
+                      params={"project": project, "purchaseOrder": po},
+                      timeout=TIMEOUT, allow_redirects=True)
+        except requests.Timeout:
+            logger.info("eGesDoc: el PO %s no contesta (intento %d/%d)", po, intento, OPEN_RETRIES)
+            if intento == OPEN_RETRIES:
+                raise PortalOcupado(
+                    f"eGesDoc no contesta al abrir el PO {po} (más de {TIMEOUT} s por "
+                    "intento). El portal está saturado; se reintenta en la siguiente "
+                    "pasada.") from None
+            time.sleep(3 * intento)
+            continue
+        if r.status_code < 500:
+            break
+        logger.info("eGesDoc: abrir el PO %s devolvió %s (intento %d/%d)",
+                    po, r.status_code, intento, OPEN_RETRIES)
+        if intento < OPEN_RETRIES:
+            time.sleep(3 * intento)
+    if r is not None and r.status_code >= 500:
+        raise PortalOcupado(
+            f"eGesDoc da error {r.status_code} al abrir el PO {po}. Es cosa del portal, "
+            "no del acceso; se reintenta en la siguiente pasada.")
     r.raise_for_status()
     if "/Supplier/" not in r.url:
         raise RuntimeError(f"eGesDoc no abrió el PO {po} (respuesta: {r.url})")

@@ -184,10 +184,35 @@ def _update_done(code: str, extra: dict) -> None:
         write_json(PORTAL_DOWNLOADS_FILE, reg)
 
 
-def _mark_error(code: str, msg: str) -> None:
+def _es_transitorio(exc: BaseException) -> bool:
+    """¿El fallo es del portal y no de la devolución?
+
+    Un portal saturado —timeouts, 500, la red que se cae— no tiene arreglo por
+    nuestra parte y se pasa solo. Si esos fallos gastaran los seis intentos, el
+    job dejaría de mirar esa devolución justo cuando el portal se recupera, y
+    habría que bajarla a mano. Los errores de verdad (credenciales, un
+    transmittal que no existe) sí los gastan."""
+    import requests
+
+    vistos = set()
+    while exc is not None and id(exc) not in vistos:
+        vistos.add(id(exc))
+        if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+            return True
+        if isinstance(exc, egesdoc.PortalOcupado):
+            return True
+        respuesta = getattr(exc, "response", None)
+        if respuesta is not None and getattr(respuesta, "status_code", 0) >= 500:
+            return True
+        exc = exc.__cause__ or exc.__context__
+    return False
+
+
+def _mark_error(code: str, msg: str, *, transitorio: bool = False) -> None:
     reg = _registry()
     entry = reg.setdefault("errors", {}).setdefault(code, {"count": 0})
-    entry["count"] = int(entry.get("count", 0)) + 1
+    if not transitorio:
+        entry["count"] = int(entry.get("count", 0)) + 1
     entry["last"] = datetime.now().isoformat(timespec="seconds")
     entry["msg"] = msg[:300]
     write_json(PORTAL_DOWNLOADS_FILE, reg)
@@ -570,8 +595,10 @@ def auto_download(days: int = 7, *, force: bool = False) -> list[dict]:
                 # Ya queda apuntado en el registro; aquí solo se deja constancia.
                 logger.info("Descarga automática: %s no trae descarga (%s)", e["code"], exc)
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Descarga automática: %s → %s", e["code"], exc)
-                _mark_error(e["code"], str(exc))
+                pasajero = _es_transitorio(exc)
+                logger.warning("Descarga automática: %s → %s%s", e["code"], exc,
+                               " (cosa del portal: no cuenta como intento)" if pasajero else "")
+                _mark_error(e["code"], str(exc), transitorio=pasajero)
     finally:
         if session is not None:
             session.close()
