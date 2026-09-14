@@ -578,6 +578,11 @@ def _load_logo_b64(bg_color: str | None = None) -> str | None:
     return None
 
 
+# Datos del pedido que ocupan la fila entera en el correo, en vez de una
+# tarjeta de un tercio: las rutas de las carpetas no caben en 33%.
+ANCHO_COMPLETO = {"Guardado en"}
+
+
 def build_notification_html(df_info_dict, df_docs, deadline_date):
     """Genera el HTML del email de notificación — diseño corporativo EIPSA."""
     from collections import Counter
@@ -615,26 +620,31 @@ def build_notification_html(df_info_dict, df_docs, deadline_date):
         )
 
     # ── Info del pedido: tarjetas en grid 3 columnas ──
-    items = [(k, v) for k, v in df_info_dict.items() if v]
+    def _tarjeta(k, v, ancho="33%", colspan=1):
+        return (
+            f'<td colspan="{colspan}" style="padding:0 6px 12px;width:{ancho};">'
+            f'<table cellpadding="0" cellspacing="0" style="width:100%;background:#F8FAFF;'
+            f'border:1px solid #DDE3F5;border-radius:6px;">'
+            f'<tr><td style="padding:10px 14px;border-left:3px solid {CYAN};">'
+            f'<p style="margin:0;font-size:10px;font-weight:700;color:{CYAN};text-transform:uppercase;'
+            f'letter-spacing:0.06em;">{k}</p>'
+            f'<p style="margin:3px 0 0;font-size:13px;font-weight:700;color:{NAVY};">{v}</p>'
+            f'</td></tr></table></td>'
+        )
+
+    # «Guardado en» lleva rutas largas (y a veces varias): ocupa la fila entera,
+    # debajo de las seis tarjetas de datos del pedido.
+    items = [(k, v) for k, v in df_info_dict.items() if v and k not in ANCHO_COMPLETO]
+    anchos = [(k, v) for k, v in df_info_dict.items() if v and k in ANCHO_COMPLETO]
     info_rows_html = ""
     for i in range(0, len(items), 3):
         chunk = items[i:i+3]
-        cells = ""
-        for k, v in chunk:
-            cells += (
-                f'<td style="padding:0 6px 12px;width:33%;">'
-                f'<table cellpadding="0" cellspacing="0" style="width:100%;background:#F8FAFF;'
-                f'border:1px solid #DDE3F5;border-radius:6px;">'
-                f'<tr><td style="padding:10px 14px;border-left:3px solid {CYAN};">'
-                f'<p style="margin:0;font-size:10px;font-weight:700;color:{CYAN};text-transform:uppercase;'
-                f'letter-spacing:0.06em;">{k}</p>'
-                f'<p style="margin:3px 0 0;font-size:13px;font-weight:700;color:{NAVY};">{v}</p>'
-                f'</td></tr></table></td>'
-            )
+        cells = "".join(_tarjeta(k, v) for k, v in chunk)
         # Rellenar celdas vacías si el chunk es < 3
-        for _ in range(3 - len(chunk)):
-            cells += '<td style="padding:0 6px 12px;width:33%;"></td>'
+        cells += '<td style="padding:0 6px 12px;width:33%;"></td>' * (3 - len(chunk))
         info_rows_html += f'<tr>{cells}</tr>'
+    for k, v in anchos:
+        info_rows_html += f'<tr>{_tarjeta(k, v, ancho="100%", colspan=3)}</tr>'
 
     # ── Tabla de documentos ──
     cols = ["Doc. Cliente", "Título", "Rev.", "Estado"]

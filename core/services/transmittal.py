@@ -180,18 +180,26 @@ def saved_dev_folders_for(preview: dict) -> list[str]:
 
 
 def folder_link_html(folder: str, depth: int = 1) -> str:
-    """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» apuntando a la carpeta
-    (file://). `depth` = cuántos tramos finales de la ruta se muestran; la ruta
-    completa va en el tooltip para no llenar el email de texto."""
+    """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» apuntando a la carpeta.
+
+    El enlace va a la **ruta de red** (`\\\\SRV…\\base de datos de pedidos\\…`), no a
+    la local: la app corre en el propio servidor, donde los pedidos cuelgan de
+    «M:», y esa letra no existe en el PC de quien recibe el correo — un
+    `file:///M:/…` no le lleva a ninguna parte. `depth` = cuántos tramos finales
+    se muestran; la ruta completa va en el tooltip, lista para copiar.
+    """
     from html import escape
+
+    from core.utils import files
 
     p = Path(folder)
     label = "\\".join(p.parts[-depth:]) if len(p.parts) >= depth else p.name
+    red = files.ruta_red(p)
     try:
-        href = p.as_uri()
+        href = red.as_uri()
     except ValueError:           # ruta relativa o rara: mejor sin enlace que un enlace roto
         return escape(str(folder))
-    return (f'<a href="{escape(href)}" title="{escape(str(folder))}" '
+    return (f'<a href="{escape(href)}" title="{escape(str(red))}" '
             f'style="color:inherit;text-decoration:underline;">📂 {escape(label)}</a>')
 
 
