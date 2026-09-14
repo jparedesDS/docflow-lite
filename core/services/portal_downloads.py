@@ -43,8 +43,9 @@ from typing import Callable
 
 from core import preferences
 from core.config import PEDIDOS_BASE_PATH, PORTAL_DOWNLOADS_FILE
-from core.parsers import ayesa_parser, prodoc_parser, sacyr_parser, tr_parser
-from core.services import ayesa, egesdoc, prodoc, sacyr
+from core.parsers import (ayesa_parser, docspace_parser, prodoc_parser, sacyr_parser,
+                          tr_parser)
+from core.services import ayesa, docspace, egesdoc, prodoc, sacyr
 from core.services import imap as imap_service
 from core.utils.json_store import read_json, write_json
 
@@ -53,7 +54,8 @@ logger = logging.getLogger(__name__)
 TRANS_FOLDER = "00 TRANS Y RES"
 MAX_AUTO_ATTEMPTS = 6          # tras 6 fallos seguidos el job deja de insistir (el botón sigue funcionando)
 PORTAL_NAMES = {"egesdoc": "eGesDoc (Técnicas Reunidas)", "ayesa": "AYESA",
-                "sacyr": "SACYR (Proarc)", "prodoc": "PRODOC (Wood)"}
+                "sacyr": "SACYR (Proarc)", "prodoc": "PRODOC (Wood)",
+                "docspace": "Document Space (Hyundai)"}
 
 
 class NothingToDownload(Exception):
@@ -114,6 +116,13 @@ def describe_email(sender: str, subject: str) -> dict | None:
         info = prodoc.parse_subject(subject)
         if info["code"]:
             return {"portal": "prodoc", "code": info["code"], "po": info["po"]}
+    elif docspace_parser.can_parse(sender or ""):
+        # Del mismo dominio llegan avisos del sistema y correos de personas;
+        # `matches_subject` es quien sabe cuáles son transmittals de verdad.
+        if docspace_parser.matches_subject(subject or ""):
+            info = docspace.parse_subject(subject)
+            if info["code"]:
+                return {"portal": "docspace", "code": info["code"], "po": info["po"]}
     return None
 
 
@@ -349,6 +358,33 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
             docs = sacyr.docs_con_estado(code, docs)
         except Exception as exc:  # noqa: BLE001
             logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
+    elif info["portal"] == "docspace":
+        html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
+        url = docspace.download_link(html)
+        clave = docspace.download_password(html)
+        if not url:
+            motivo = ("Este correo de Document Space no trae el botón «Download»: "
+                      "no hay paquete que bajar")
+            vacia = save_email_only(code, pedido, subject=subject, raw_email=raw,
+                                    portal="docspace", po=info["po"], motivo=motivo)
+            raise NothingToDownload(motivo, folder=vacia["folder"], eml=vacia["eml"])
+
+        adjunto = docspace.cover_adjunto(raw)
+
+        def fetch(dest: Path) -> Path:
+            zip_path = docspace.download(url, clave, dest, code)
+            # El transmittal firmado viene adjunto al correo y es el que dice
+            # cómo ha quedado cada documento: se guarda al lado del paquete.
+            if adjunto is not None:
+                try:
+                    (dest / safe_filename(adjunto[0])).write_bytes(adjunto[1])
+                except OSError as exc:
+                    logger.warning("No se pudo guardar el transmittal de %s: %s", code, exc)
+            return zip_path
+
+        # El estado sale del transmittal adjunto; de la tabla del correo, no.
+        docs = docspace.docs_con_estado(docs, adjunto[1] if adjunto else None)
+
     elif info["portal"] == "prodoc":
         html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
         url = prodoc.download_link(html)

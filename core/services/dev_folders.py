@@ -246,6 +246,20 @@ def _dev_folder_for(folders: list[dict], name: str, style_dotted: bool) -> tuple
     return tecnico / (("dev. " if style_dotted else "dev ") + name), False
 
 
+def _subcarpeta(padre: Path, nombre: str) -> tuple[Path, bool]:
+    """(ruta, existe_ya) de una subcarpeta, respetando cómo esté ya escrita.
+
+    Si la carpeta existe como «RO» no se crea otra «ro» al lado.
+    """
+    try:
+        for d in padre.iterdir():
+            if d.is_dir() and _fold(d.name) == _fold(nombre):
+                return d, True
+    except OSError:
+        pass
+    return padre / nombre, False
+
+
 def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int, str, str]]:
     """Subcarpetas de revisión de una carpeta dev: (ruta, nº, revisión, sufijo)."""
     out = []
@@ -446,6 +460,14 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 continue
 
             dev_dir, dev_exists = _dev_folder_for(folders, name, dotted)
+            # Algunos pedidos agrupan dentro de la carpeta: en P-24/070 los
+            # documentos cuelgan de «env Specification Technical Data\FL» y
+            # «…\RO» según sean de placas de caudal o de restricción. Ese nivel
+            # se replica en dev, que es como están archivados a mano.
+            grupo = envio.name if (envio is not None and not _REV_DIR_RE.match(envio.name)) else ""
+            if grupo:
+                dev_dir, dev_exists = _subcarpeta(dev_dir, grupo)
+                envio = None            # ya no dice nada de la revisión
             rev_dir, rev_exists = _rev_folder_for(dev_dir, n, letter, _suffix(estado), envio=envio)
             target = rev_dir / fname
             res["plan"].append({"file": fname, "dest": target, "how": how, "doc": doc.get("Doc. EIPSA") or doc.get("Doc. Cliente")})
