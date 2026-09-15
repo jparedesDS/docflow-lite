@@ -196,6 +196,25 @@ _GENERIC_WORDS = {"PROCEDURE", "PROCEDURES", "PROCEDIMIENTO", "PROCEDIMIENTOS", 
                   "PROJECT", "PROYECTO", "GENERAL", "FINAL", "INDEX", "INDICE", "DATA", "BOOK"}
 
 
+_TIPOS_NORM: dict[str, list] | None = None
+
+
+def _palabras_del_tipo(tipo: str) -> list:
+    """Palabras que debe llevar la carpeta de ese tipo de documento.
+
+    El tipo del ERP no siempre está escrito igual que la clave del catálogo
+    («Certificados» frente a «Certificado»), así que se busca sin acentos, sin
+    mayúsculas y probando el singular y el plural antes de darse por vencido.
+    """
+    global _TIPOS_NORM
+    if _TIPOS_NORM is None:
+        _TIPOS_NORM = {_fold(k): v for k, v in TYPE_KEYWORDS.items()}
+    t = _fold(tipo)
+    if not t:
+        return []
+    return _TIPOS_NORM.get(t) or _TIPOS_NORM.get(t.rstrip("s")) or _TIPOS_NORM.get(t + "s") or []
+
+
 def _folder_score(folder_name: str, title_words: set[str], tipo: str) -> float:
     """Cuánto se parece una carpeta env./dev. al documento: palabras del título
     que aparecen en el nombre de la carpeta (las genéricas valen poco) + un
@@ -203,8 +222,11 @@ def _folder_score(folder_name: str, title_words: set[str], tipo: str) -> float:
     fwords = _title_words(folder_name)
     score = sum(0.3 if w in _GENERIC_WORDS else 1.0 for w in title_words & fwords)
     carpeta = _fold(folder_name)
-    if any(k in carpeta for k in TYPE_KEYWORDS.get(tipo or "", [])):
-        score += 0.5
+    # El tipo pesa más que una palabra suelta del título, que puede coincidir
+    # por casualidad: el «QUALITY CONTROL PLAN» (tipo PPI) comparte QUALITY con
+    # «env. FINAL QUALITY DOSSIER» y su sitio es «env. ITP».
+    if any(k in carpeta for k in _palabras_del_tipo(tipo)):
+        score += 1.5
     # El tipo del ERP a veces ES el nombre de la carpeta («VDDL», «ITP») y no
     # está en TYPE_KEYWORDS ni se parece al título («Lista de documentos»).
     elif tipo and _fold(tipo) == carpeta:

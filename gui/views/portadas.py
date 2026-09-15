@@ -203,6 +203,13 @@ class PortadasView(ctk.CTkFrame):
         if not elegidos:
             ui.toast(self, "Nada que hacer", "No has marcado ningún documento.", kind="warning")
             return
+        # Sin emparejar, la portada sale con los datos de ejemplo que trae la
+        # plantilla: parece buena y es de otro documento.
+        if not {k: v for k, v in (self._perfil.get("mapa") or {}).items() if v}:
+            ui.toast(self, "Faltan los campos",
+                     "Abre «Campos…» y di qué va en cada hueco: si no, la portada "
+                     "sale con los datos de ejemplo de la plantilla.", kind="warning")
+            return
         if not ui.confirm(self, "Generar portadas",
                           f"Se van a generar {len(elegidos)} portada(s) de {self._cliente}.\n"
                           "Cada una se guarda en la carpeta env. de su documento.\n\n"
