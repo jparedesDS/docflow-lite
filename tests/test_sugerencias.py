@@ -44,6 +44,7 @@ HUECOS = [
      "ejemplo": "V-2401HG04A-2206-300-DL-001-R0.PDF"},
     {"clave": "CAD 2 CIFRAS", "tipo": "etiqueta",
      "ejemplo": "V-2401HG04A-2206-300-DL-001-R00.pdf"},
+    {"clave": "ITEM N°", "tipo": "etiqueta", "ejemplo": "ALL TAGS"},
     {"clave": "FIRMA", "tipo": "etiqueta", "ejemplo": ""},
 ]
 
@@ -67,6 +68,9 @@ ok(s["CAD 2 CIFRAS"] == "{Fichero}",
    f"con dos cifras es exactamente el campo «Fichero»: {s['CAD 2 CIFRAS']!r}")
 ok(P.aplicar(s["CAD 2 CIFRAS"], P.valores_documento(DOCS[1])).endswith("-R01.PDF"),
    "y da el nombre con dos cifras")
+
+# «ALL TAGS» es lo que se pone cuando el documento no es de un tag concreto
+ok(s["ITEM N°"] == "{Tag|ALL TAGS}", f"item/tag: {s['ITEM N°']!r}")
 
 # «OG» son dos letras: no se propone campo por una coincidencia tan corta
 ok(s["UNIT"] == "OG", f"unidad: {s['UNIT']!r}")

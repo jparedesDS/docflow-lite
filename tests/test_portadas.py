@@ -44,6 +44,42 @@ ok(cero["Nº Revisión"] == "0", f"la revisión 0 no puede perderse: {cero['Nº 
 ok(cero["Rev. 2 cifras"] == "00", f"la 0 a dos cifras: {cero['Rev. 2 cifras']!r}")
 ok(cero["Fichero"].endswith("-R00.PDF"), f"fichero de la rev 0: {cero['Fichero']}")
 
+# ── El TAG del documento ─────────────────────────────────────────────────────
+# Los tags del pedido se leen del ERP; aquí se ponen a mano para no depender de
+# él. El ERP los escribe con espacio y los clientes de mil maneras.
+P._TAGS_CACHE["P-26/062-S00"] = sorted(
+    [(tag, P._sin_separadores(tag)) for tag in ("OHFE 0014", "OUFO 0018", "TKFE 2017N")],
+    key=lambda x: len(x[1]), reverse=True)
+
+
+def tag_de(numero, titulo="", tipo="Cálculos"):
+    return P.valores_documento({"Nº Pedido": "P-26/062-S00", "Nº Doc. Cliente": numero,
+                                "Título": titulo, "Tipo Doc.": tipo})["Tag"]
+
+
+ok(tag_de("V-2401HG04A-2206-300-OHFE-0014-CAL-001") == "OHFE 0014",
+   f"tag con guion en el número: {tag_de('V-2401HG04A-2206-300-OHFE-0014-CAL-001')!r}")
+ok(tag_de("V-3005785-2206-300-TKFE2017N-CAL-001") == "TKFE 2017N",
+   "tag escrito del tirón por el cliente")
+ok(tag_de("", "EQUIPMENT CALCULATION / DATA SHEET OHFE-0014") == "OHFE 0014",
+   "tag que solo aparece en el título")
+ok(tag_de("V-2401HG04A-2206-300-ITP-001", "QUALITY CONTROL PLAN", "PPI") == "",
+   "un ITP no es de ningún tag")
+ok(tag_de("V-2401HG04A-2206-300-DOS-001", "FINAL QUALITY DOSSIER", "Dossier") == "",
+   "ni el dossier")
+
+# Y la alternativa: el tag si lo hay, «ALL TAGS» si no
+calc = P.valores_documento({"Nº Pedido": "P-26/062-S00", "Título": "",
+                            "Nº Doc. Cliente": "V-2401HG04A-2206-300-OUFO-0018-DWG-001"})
+itp = P.valores_documento({"Nº Pedido": "P-26/062-S00", "Título": "QUALITY CONTROL PLAN",
+                           "Nº Doc. Cliente": "V-2401HG04A-2206-300-ITP-001"})
+ok(P.aplicar("{Tag|ALL TAGS}", calc) == "OUFO 0018", "el plano lleva su tag")
+ok(P.aplicar("{Tag|ALL TAGS}", itp) == "ALL TAGS", "el ITP, todos")
+ok(P.aplicar("{Tag|ALL TAGS} - {Nº Doc. Cliente}", itp).startswith("ALL TAGS - "),
+   "la alternativa convive con el resto del patrón")
+ok(P.aplicar("{Inventado|POR DEFECTO}", itp) == "POR DEFECTO",
+   "un campo que no existe también admite alternativa")
+
 # ── Patrones ─────────────────────────────────────────────────────────────────
 ok(P.aplicar("{Tag} ALL ITEMS", v) == "TKFE 2017N ALL ITEMS", "patrón con texto detrás")
 ok(P.aplicar("3000005785-2206-3000", v) == "3000005785-2206-3000", "texto fijo intacto")

@@ -41,7 +41,7 @@ CAMPOS: list[tuple[str, str]] = [
     ("Nº Doc. Cliente", "El número que le da el cliente al documento"),
     ("Nº Doc. EIPSA",   "El número interno de EIPSA"),
     ("Título",          "Título del documento"),
-    ("Tag",             "El tag del título (lo que va detrás del guion)"),
+    ("Tag",             "El TAG del documento (vacío si no es de un tag concreto)"),
     ("Tipo Doc.",       "Tipo de documento: Cálculos, Planos, ITP…"),
     ("Nº Revisión",     "La revisión: 0, 1, 2… (o la letra, si el cliente usa letras)"),
     ("Rev. 2 cifras",   "La revisión con dos cifras: 00, 01, 02"),
@@ -53,7 +53,10 @@ CAMPOS: list[tuple[str, str]] = [
     ("Fecha",           "La fecha de hoy, dd/mm/aaaa"),
 ]
 
-_CAMPO = re.compile(r"\{\s*([^{}]{1,40}?)\s*\}")
+# `{Campo}` o `{Campo|lo que va si ese campo está vacío}`. La alternativa hace
+# falta a poco que se mire una portada real: en el hueco del TAG va el tag del
+# documento si es de uno —cálculos y planos— y «ALL TAGS» en los demás.
+_CAMPO = re.compile(r"\{\s*([^{}]{1,80}?)\s*\}")
 
 
 def _fold(s) -> str:
@@ -74,10 +77,66 @@ def _texto(valor) -> str:
     return str(valor)
 
 
-def _tag(titulo: str) -> str:
-    """El tag que va detrás del guion del título: «Cálculos - TKFE 2017N»."""
-    partes = _texto(titulo).split(" - ")
-    return partes[-1].strip() if len(partes) > 1 else ""
+def _tag(doc: dict) -> str:
+    """El TAG al que pertenece el documento, o '' si no es de uno concreto.
+
+    Los cálculos y los planos son de un tag; el ITP, el dossier o el manual son
+    del pedido entero. No hace falta decidirlo por el tipo de documento: se
+    mira si el documento **nombra** alguno de los tags del pedido, en su número
+    o en su título, que es lo que hacen todos los clientes:
+
+        V-2401HG04A-2206-300-OHFE-0014-CAL-001   →  OHFE 0014
+        EQUIPMENT CALCULATION / DATA SHEET OHFE-0014
+
+    Se compara sin espacios ni guiones, porque el ERP escribe «OHFE 0014», el
+    cliente «OHFE-0014» y a veces «OHFE0014». El texto que se devuelve es el
+    del ERP, que es como está escrito en las portadas de verdad.
+    """
+    tags = _tags_del_pedido(_texto(doc.get("Nº Pedido")))
+    if not tags:
+        # Sin ERP a mano queda el apaño de siempre: lo que va detrás del guion.
+        partes = _texto(doc.get("Título")).split(" - ")
+        return partes[-1].strip() if len(partes) > 1 else ""
+    donde = _sin_separadores(_texto(doc.get("Nº Doc. Cliente")) + " " +
+                             _texto(doc.get("Nº Doc. EIPSA")) + " " +
+                             _texto(doc.get("Título")))
+    casan = [tag for tag, plano in tags if plano in donde]
+    return ", ".join(dict.fromkeys(casan))
+
+
+def _sin_separadores(s) -> str:
+    return re.sub(r"[^A-Z0-9]", "", _texto(s).upper())
+
+
+# Un tag más corto que esto casaría con cualquier cosa por casualidad.
+MIN_TAG = 5
+
+
+def _tags_del_pedido(pedido: str) -> list:
+    """[(tag, tag sin separadores)] de los tags vigentes del pedido."""
+    if not pedido:
+        return []
+    cache = _TAGS_CACHE.get(pedido)
+    if cache is None:
+        cache = []
+        try:
+            from core.services import erp_tags
+            for t in erp_tags.fetch_tags(pedido):
+                if not t.get("_vigente") or t.get("_eliminado"):
+                    continue
+                tag = _texto(t.get("TAG")).strip()
+                plano = _sin_separadores(tag)
+                if len(plano) >= MIN_TAG:
+                    cache.append((tag, plano))
+        except Exception as exc:  # noqa: BLE001 — sin ERP se tira del título
+            logger.info("Portadas: no se pudieron leer los tags de %s: %s", pedido, exc)
+        # Primero los más largos: «OUFE 00141» antes que «OUFE 0014».
+        cache.sort(key=lambda x: len(x[1]), reverse=True)
+        _TAGS_CACHE[pedido] = cache
+    return cache
+
+
+_TAGS_CACHE: dict = {}
 
 
 def _cifras(rev) -> str:
@@ -102,7 +161,7 @@ def valores_documento(doc: dict) -> dict[str, str]:
         "Nº Doc. Cliente": cliente_doc,
         "Nº Doc. EIPSA": _texto(doc.get("Nº Doc. EIPSA")).strip(),
         "Título": _texto(doc.get("Título")).strip(),
-        "Tag": _tag(doc.get("Título")),
+        "Tag": _tag(doc),
         "Tipo Doc.": _texto(doc.get("Tipo Doc.")).strip(),
         "Nº Revisión": _cifras(doc.get("Nº Revisión")),
         "Rev. 2 cifras": rev2,
@@ -118,16 +177,22 @@ def valores_documento(doc: dict) -> dict[str, str]:
 def aplicar(patron: str, valores: dict) -> str:
     """«{Tag} ALL ITEMS» → «TKFE 2017N ALL ITEMS».
 
+    Detrás de una barra va lo que se pone cuando ese campo está vacío:
+    «{Tag|ALL TAGS}» escribe el tag del documento, y «ALL TAGS» en los que no
+    son de un tag concreto.
+
     Un campo que no exista se queda vacío en vez de reventar: la portada sale
     con un hueco, que se ve, y no se pierde el lote entero por una errata.
     """
     def cambia(m):
-        clave = _fold(m.group(1))
+        nombre, _, alternativa = m.group(1).partition("|")
+        clave = _fold(nombre)
         for k, v in valores.items():
             if _fold(k) == clave:
-                return str(v)
-        logger.info("Portadas: el campo «%s» no existe; se deja vacío", m.group(1))
-        return ""
+                texto = str(v)
+                return texto if texto.strip() else alternativa.strip()
+        logger.info("Portadas: el campo «%s» no existe; se deja vacío", nombre)
+        return alternativa.strip()
     return _CAMPO.sub(cambia, str(patron or ""))
 
 
@@ -191,8 +256,19 @@ def sugerir(huecos: list[dict], docs: list[dict]) -> dict[str, str]:
             out[h["clave"]] = ""
             continue
         campo = indice.get(_fold(ejemplo))
-        out[h["clave"]] = f"{{{campo}}}" if campo else (_nombre_de_fichero(ejemplo, indice) or ejemplo)
+        if campo:
+            out[h["clave"]] = f"{{{campo}}}"
+        elif _fold(ejemplo) in _TODOS_LOS_TAGS:
+            # «ALL TAGS» es lo que se pone cuando el documento no es de un tag
+            # concreto: en los cálculos y los planos va el tag, y en el resto
+            # se queda tal cual.
+            out[h["clave"]] = f"{{Tag|{ejemplo}}}"
+        else:
+            out[h["clave"]] = _nombre_de_fichero(ejemplo, indice) or ejemplo
     return out
+
+
+_TODOS_LOS_TAGS = {"all tags", "all items", "todos los tags", "all tag", "all"}
 
 
 # Casi todos los clientes nombran el PDF igual: el número del documento, la

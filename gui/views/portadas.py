@@ -4,8 +4,9 @@ Tres pasos, y los dos primeros solo la primera vez de cada cliente:
 
   1. Se eligen las plantillas que manda el cliente (Word o Excel; varias se
      encadenan en un solo PDF).
-  2. Se arrastra cada campo del ERP hasta el hueco de la plantilla donde va,
-     mezclándolo con el texto fijo que haga falta («{Tag} ALL ITEMS»).
+  2. Se repasa qué va en cada hueco: la ventana llega con lo que la plantilla
+     trae escrito y con el campo del ERP propuesto donde el dato cambia de un
+     documento a otro. Se arrastra para cambiar cualquiera.
   3. Se marcan los documentos y se genera: cada portada va a la carpeta `env.`
      de su documento, como `PORTADA <nº del cliente>.pdf`.
 
