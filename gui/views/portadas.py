@@ -28,6 +28,15 @@ from gui.widgets import ui
 
 logger = logging.getLogger(__name__)
 
+# Un texto largo con letras y cifras («BR10S 0001», «V-2201BI01A0BG-2206-740»)
+# suele ser el dato de UN documento. Escrito a pelo saldría igual en todas las
+# portadas, que es justo el error de dejar el ejemplo de la plantilla.
+def _parece_dato(texto: str) -> bool:
+    limpio = texto.strip()
+    return (len(limpio) >= 8
+            and any(c.isdigit() for c in limpio)
+            and any(c.isalpha() for c in limpio))
+
 
 class PortadasView(ctk.CTkFrame):
     def __init__(self, master, **kwargs):
@@ -156,14 +165,22 @@ class PortadasView(ctk.CTkFrame):
     def _refresca_perfil(self) -> None:
         n_plantillas = len(self._perfil.get("plantillas") or [])
         n_mapa = len([v for v in (self._perfil.get("mapa") or {}).values() if v])
+        faltan = [Path(p).name for p in (self._perfil.get("plantillas") or [])
+                  if not Path(p).is_file()]
+        color = theme.TEXT_MUTED
         if not self._cliente:
             texto = ""
         elif not n_plantillas:
             texto = f"{self._cliente}: sin plantilla — empieza por «Plantillas…»"
+        elif faltan:
+            # Pasa al renombrar o mover una plantilla: mejor decirlo aquí que
+            # fallar cuando ya se ha dado a generar.
+            texto = f"{self._cliente}: no encuentro «{', '.join(faltan)}» — vuelve a elegirla"
+            color = theme.AMBER
         else:
             nombres = ", ".join(Path(p).name for p in self._perfil["plantillas"])
             texto = f"{self._cliente}: {nombres} · {n_mapa} campo(s) emparejado(s)"
-        self.lbl_perfil.configure(text=texto)
+        self.lbl_perfil.configure(text=texto, text_color=color)
         self._refresca_generar()
 
     def _refresca_generar(self) -> None:
@@ -443,7 +460,14 @@ class VentanaCampos(ctk.CTkToplevel):
     def _previsualiza(self, clave: str) -> None:
         patron = self._entradas[clave].get()
         texto = portadas_lote.aplicar(patron, self._valores) if patron else ""
-        self._previas[clave].configure(text=f"→ {texto}" if texto else "")
+        # Un código escrito a pelo saldrá IGUAL en todas las portadas del
+        # pedido. A veces es lo que se quiere (el nº de contrato) y a veces es
+        # el dato del documento de ejemplo que trae la plantilla, que es el
+        # error que deja una portada con datos de otro. Se avisa, no se decide.
+        fijo = bool(patron) and "{" not in patron and _parece_dato(patron)
+        self._previas[clave].configure(
+            text=(f"→ {texto}  (igual en todas)" if fijo else (f"→ {texto}" if texto else "")),
+            text_color=theme.AMBER if fijo else theme.TEXT_MUTED)
 
     def _guardar(self) -> None:
         mapa = {k: e.get().strip() for k, e in self._entradas.items()}

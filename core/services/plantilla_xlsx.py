@@ -160,27 +160,56 @@ def _filas(raiz, tabla: list):
             yield sorted(celdas, key=lambda x: _celda_pos(x[0]))
 
 
-def _pares(raiz, tabla: list):
-    """(etiqueta, celda del valor, texto del valor) de cada fila de la hoja.
+# La otra forma de escribir una portada en Excel: la etiqueta y el valor en la
+# MISMA celda, separados por un salto de línea. Así está la de MOEVE:
+#
+#     A3   «Nº DOCUMENTO:\nV-2201BI01A0BG-2206-740-DL-001»
+#     E3   «ITEM-TAG:\nBR10S 0001»
+#
+# Se reconoce igual que la otra y al escribir se conserva la primera línea.
+_ETIQUETA_EN_CELDA = re.compile(r"^([^\n]{1,60}?)\s*:[ \t]*\n(.*)$", re.S)
 
-    La etiqueta es la primera celda con texto de la fila y el valor la
-    siguiente que haya: en «CLIENT : | MOEVE» los dos puntos van pegados a la
-    etiqueta, no en una celda de en medio.
+
+def _pares(raiz, tabla: list):
+    """(etiqueta, celda del valor, valor, lo que va delante) de la hoja.
+
+    Dos formas, las dos de portadas reales:
+
+    · La etiqueta en una celda y el valor en la de al lado («CLIENT : | MOEVE»).
+      La etiqueta es la primera celda con texto de la fila y el valor la
+      siguiente que haya: los dos puntos van pegados a la etiqueta, no en una
+      celda de en medio.
+    · Las dos cosas en la misma celda, separadas por un salto de línea. Ahí
+      puede haber varias por fila, así que se miran todas.
     """
     for celdas in _filas(raiz, tabla):
+        juntas = False
+        for _r, txt, el in celdas:
+            m = _ETIQUETA_EN_CELDA.match(txt)
+            if not m:
+                continue
+            etiqueta = m.group(1).strip()
+            if etiqueta and len(etiqueta) <= MAX_ETIQUETA:
+                juntas = True
+                yield etiqueta, el, m.group(2).strip(), f"{etiqueta}:\n"
+        if juntas:
+            continue
+
         con_texto = [(r, txt, el) for r, txt, el in celdas if txt.strip()]
         if not con_texto:
             continue
         ref, etiqueta, _ = con_texto[0]
         etiqueta = etiqueta.strip().rstrip(":").strip()
-        if not etiqueta or len(etiqueta) > MAX_ETIQUETA:
+        # Un texto de varias líneas es el rótulo de una caja («A RELLENAR / POR
+        # EL / VENDEDOR»), no una etiqueta con su valor al lado.
+        if not etiqueta or len(etiqueta) > MAX_ETIQUETA or "\n" in etiqueta:
             continue
         posteriores = [(r, txt, el) for r, txt, el in celdas
                        if _celda_pos(r) > _celda_pos(ref)]
         if not posteriores:
             continue
         _r, texto, celda = posteriores[0]
-        yield etiqueta, celda, texto
+        yield etiqueta, celda, texto, ""
 
 
 def etiquetas(plantilla: Path | str) -> list:
@@ -192,7 +221,7 @@ def etiquetas(plantilla: Path | str) -> list:
     vistas = set()
     for nombre in [n for n in partes if _HOJA.match(n)]:
         raiz = ET.fromstring(partes[nombre])
-        for etiqueta, _celda, valor in _pares(raiz, tabla):
+        for etiqueta, _celda, valor, _delante in _pares(raiz, tabla):
             clave = etiqueta.lower()
             if clave in vistas:
                 continue
@@ -239,10 +268,10 @@ def rellenar(plantilla: Path | str, destino: Path | str,
         raiz = ET.fromstring(crudo)
         tocado = False
         if quiere and _HOJA.match(nombre):
-            for etiqueta, celda, _valor in _pares(raiz, tabla):
+            for etiqueta, celda, _valor, delante in _pares(raiz, tabla):
                 texto = quiere.get(etiqueta.lower())
                 if texto is not None:
-                    _escribir(celda, texto)
+                    _escribir(celda, delante + texto)
                     tocado = True
         if quiere_marcas and b"{{" in crudo and _sustituir(raiz, quiere_marcas):
             tocado = True

@@ -178,4 +178,44 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Etiqueta y valor en la misma celda (la portada nueva de MOEVE) ──────────
+tmp = Path(tempfile.mkdtemp())
+try:
+    plantilla = tmp / "junta.xlsx"
+    shared = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+              '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="3">'
+              '<si><t>PLANTA:\nBIOS</t></si>'
+              '<si><t>Nº DOCUMENTO:\nV-2201BI01A0BG-2206-740-DL-001</t></si>'
+              '<si><t>ITEM-TAG:\nBR10S 0001</t></si>'
+              '</sst>')
+    hoja = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<sheetData>'
+            '<row r="2"><c r="A2" t="s" s="4"><v>0</v></c></row>'
+            '<row r="3"><c r="A3" t="s" s="4"><v>1</v></c>'
+            '<c r="E3" t="s" s="4"><v>2</v></c></row>'
+            '</sheetData></worksheet>')
+    with zipfile.ZipFile(plantilla, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("xl/sharedStrings.xml", shared)
+        z.writestr("xl/worksheets/sheet1.xml", hoja)
+
+    leidas = {e["etiqueta"]: e["valor"] for e in plantilla_xlsx.etiquetas(plantilla)}
+    ok(set(leidas) == {"PLANTA", "Nº DOCUMENTO", "ITEM-TAG"}, f"etiquetas: {list(leidas)}")
+    ok(leidas["ITEM-TAG"] == "BR10S 0001", f"valor tras el salto de línea: {leidas['ITEM-TAG']!r}")
+    ok(leidas["Nº DOCUMENTO"] == "V-2201BI01A0BG-2206-740-DL-001", "dos etiquetas en la misma fila")
+
+    destino = plantilla_xlsx.rellenar(plantilla, tmp / "relleno.xlsx", valores={
+        "Nº DOCUMENTO": "V-2201BI01A0BG-2206-740-CAL-001", "ITEM-TAG": "ALL TAGS"})
+    quedan = {e["etiqueta"]: e["valor"] for e in plantilla_xlsx.etiquetas(destino)}
+    ok(quedan["Nº DOCUMENTO"] == "V-2201BI01A0BG-2206-740-CAL-001", f"escrito: {quedan}")
+    ok(quedan["ITEM-TAG"] == "ALL TAGS", "y el otro de la misma fila")
+    ok(quedan["PLANTA"] == "BIOS", "lo que no se mapea no se toca")
+    with zipfile.ZipFile(destino) as z:
+        hoja_rell = z.read("xl/worksheets/sheet1.xml").decode("utf-8")
+    ok("Nº DOCUMENTO:" in hoja_rell, "la etiqueta sigue delante del valor, en su celda")
+    ok('s="4"' in hoja_rell, "y la celda conserva su formato")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("FALLOS:", fallos)
