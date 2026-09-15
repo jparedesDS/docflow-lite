@@ -49,6 +49,8 @@ class Sidebar(ctk.CTkFrame):
         self._key_group: dict[str, str] = {}    # key → gid
         self._active_key: str | None = None
         self._collapsed = self._load_collapsed()
+        self._barra_visible = True          # CTk la monta visible de salida
+        self._tarea_scroll = None
 
         # ── Brand header ──────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -81,15 +83,27 @@ class Sidebar(ctk.CTkFrame):
             for w in (search, lbl, hint):
                 w.bind("<Button-1>", lambda _e: self._on_search())
 
-        # ── Navegación (ítems sueltos + grupos) ───────────────────────────
+        # ── Footer ─────────────────────────────────────────────────────────
+        # Se monta antes que la navegación a propósito: con `pack`, el primero
+        # en pedir sitio se lo queda. Así el pie no se lo come la lista cuando
+        # hay muchos grupos abiertos, y lo que sobra es para el scroll.
+        self._build_footer(current_user_label)
+
+        # ── Navegación (ítems sueltos + grupos), con scroll ────────────────
+        self._nav = ctk.CTkScrollableFrame(
+            self, fg_color="transparent", corner_radius=0,
+            scrollbar_button_color=theme.BORDER_STRONG,
+            scrollbar_button_hover_color=theme.TEXT_MUTED,
+        )
+        self._nav.pack(fill="both", expand=True, padx=0, pady=0)
+
         for entry in layout:
             if entry.get("type") == "group":
                 self._build_group(entry)
             else:
-                self._build_nav_item(self, entry)
-
-        # ── Footer ─────────────────────────────────────────────────────────
-        self._build_footer(current_user_label)
+                self._build_nav_item(self._nav, entry)
+        self.after(120, self._ajusta_scroll)
+        self.bind("<Configure>", self._al_redimensionar)
 
     # ── Persistencia del estado plegado ──────────────────────────────────────
 
@@ -115,7 +129,7 @@ class Sidebar(ctk.CTkFrame):
         gid = entry["id"]
         collapsed = gid in self._collapsed
 
-        wrap = ctk.CTkFrame(self, fg_color="transparent")
+        wrap = ctk.CTkFrame(self._nav, fg_color="transparent")
         wrap.pack(fill="x", pady=(theme.SPACE_2, 0))
 
         chevron = _CHEVRON_CLOSED if collapsed else _CHEVRON_OPEN
@@ -216,6 +230,60 @@ class Sidebar(ctk.CTkFrame):
         link.bind("<Enter>", lambda _e: link.configure(text_color=theme.ACCENT_HOVER))
         link.bind("<Leave>", lambda _e: link.configure(text_color=theme.ACCENT))
 
+    # ── Scroll de la navegación ───────────────────────────────────────────────
+
+    def _ajusta_scroll(self) -> None:
+        """La barra de scroll solo se ve cuando hace falta.
+
+        Con dos o tres grupos abiertos todo cabe y una barra permanente es ruido
+        en un menú que ya es estrecho; con todos abiertos no cabe y sin barra no
+        se sabe que hay más abajo.
+        """
+        canvas = getattr(self._nav, "_parent_canvas", None)
+        barra = getattr(self._nav, "_scrollbar", None)
+        if canvas is None or barra is None:
+            return
+        try:
+            self.update_idletasks()
+            caja = canvas.bbox("all")
+            sobra = bool(caja) and (caja[3] - caja[1]) > canvas.winfo_height() + 2
+            if sobra == self._barra_visible:
+                return          # sin cambio: tocar el grid dispararía otro Configure
+            self._barra_visible = sobra
+            (barra.grid if sobra else barra.grid_remove)()
+        except Exception:      # noqa: BLE001 — sin barra se sigue navegando igual
+            pass
+
+    def _al_redimensionar(self, _evento=None) -> None:
+        """Al cambiar el tamaño de la ventana puede dejar de caber (o sobrar)."""
+        if self._tarea_scroll is not None:
+            try:
+                self.after_cancel(self._tarea_scroll)
+            except Exception:  # noqa: BLE001 — la tarea ya había saltado
+                pass
+        self._tarea_scroll = self.after(150, self._ajusta_scroll)
+
+    def _asegura_visible(self, key: str) -> None:
+        """Lleva a la vista el ítem activo si se quedó fuera de la ventana."""
+        item = self._items.get(key)
+        canvas = getattr(self._nav, "_parent_canvas", None)
+        if item is None or canvas is None:
+            return
+        try:
+            self.update_idletasks()
+            fila = item["row"]
+            alto_visible = canvas.winfo_height()
+            arriba = fila.winfo_rooty() - canvas.winfo_rooty()
+            if 0 <= arriba and arriba + fila.winfo_height() <= alto_visible:
+                return                                  # ya se ve entero
+            caja = canvas.bbox("all")
+            total = (caja[3] - caja[1]) if caja else 0
+            if total <= 0:
+                return
+            canvas.yview_moveto(max(0.0, (canvas.canvasy(0) + arriba - 8) / total))
+        except Exception:      # noqa: BLE001 — no poder desplazar no rompe nada
+            pass
+
     # ── Plegado de grupos ─────────────────────────────────────────────────────
 
     def _toggle_group(self, gid: str, expand: bool | None = None) -> None:
@@ -231,6 +299,7 @@ class Sidebar(ctk.CTkFrame):
         else:
             g["body"].pack(fill="x")  # único hijo tras la cabecera → conserva el orden
         self._persist_collapsed()
+        self.after_idle(self._ajusta_scroll)
 
     # ── Selección ──────────────────────────────────────────────────────────────
 
@@ -245,8 +314,10 @@ class Sidebar(ctk.CTkFrame):
             self._toggle_group(gid, expand=True)
 
         if self._active_key == key:
+            self.after_idle(lambda: self._asegura_visible(key))
             return
         self._active_key = key
+        self.after_idle(lambda: self._asegura_visible(key))
         for k, item in self._items.items():
             if k == key:
                 item["bar"].configure(fg_color=theme.ACCENT)
