@@ -179,27 +179,46 @@ def saved_dev_folders_for(preview: dict) -> list[str]:
     return list(_download_status(preview).get("dev_folders") or [])
 
 
+# Caracteres que hay que escapar en un enlace `file:` para que no se rompa la
+# URL. Los acentos NO están: ver `uri_carpeta`.
+_ESCAPAR_URI = {"%": "%25", " ": "%20", "#": "%23", "?": "%3F"}
+
+
+def uri_carpeta(ruta: Path | str) -> str:
+    """`file:` de una carpeta de Windows, sin escapar los acentos.
+
+    Aquí está el motivo, que costó verlo: el correo sale en UTF-8 y bien, pero
+    **Windows descodifica los `%XX` de un enlace `file:` con la página de
+    códigos ANSI**, no con UTF-8. Así, un «Año 2026» escapado en condiciones
+    (`A%C3%B1o`) llega al explorador como «AÃ±o 2026», que no existe, y el
+    enlace no abre nada. Con la eñe escrita tal cual —el correo va en UTF-8 y
+    Outlook lo lee bien— llega entera.
+
+    Se escapa solo lo que rompería la URL: el espacio, la almohadilla y el
+    interrogante, que esos sí los entiende bien.
+    """
+    texto = str(ruta)
+    for malo, bueno in _ESCAPAR_URI.items():
+        texto = texto.replace(malo, bueno)
+    texto = texto.replace("\\", "/")
+    # \\SERVIDOR\recurso → file://SERVIDOR/recurso  ·  M:\… → file:///M:/…
+    return "file:" + texto if texto.startswith("//") else "file:///" + texto
+
+
 def folder_link_html(folder: str, depth: int = 1) -> str:
     """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» apuntando a la carpeta.
 
-    El enlace va a la **ruta de red** (`\\\\SRV…\\base de datos de pedidos\\…`), no a
-    la local: la app corre en el propio servidor, donde los pedidos cuelgan de
-    «M:», y esa letra no existe en el PC de quien recibe el correo — un
-    `file:///M:/…` no le lleva a ninguna parte. `depth` = cuántos tramos finales
-    se muestran; la ruta completa va en el tooltip, lista para copiar.
+    Se enlaza la ruta tal y como la ve el departamento —la unidad M:, que es la
+    que todos tienen mapeada—, y la completa va en el tooltip para copiarla.
+    `depth` = cuántos tramos finales se muestran.
     """
     from html import escape
 
-    from core.utils import files
-
     p = Path(folder)
     label = "\\".join(p.parts[-depth:]) if len(p.parts) >= depth else p.name
-    red = files.ruta_red(p)
-    try:
-        href = red.as_uri()
-    except ValueError:           # ruta relativa o rara: mejor sin enlace que un enlace roto
+    if not p.is_absolute():      # ruta relativa o rara: mejor sin enlace que uno roto
         return escape(str(folder))
-    return (f'<a href="{escape(href)}" title="{escape(str(red))}" '
+    return (f'<a href="{escape(uri_carpeta(p))}" title="{escape(str(p))}" '
             f'style="color:inherit;text-decoration:underline;">📂 {escape(label)}</a>')
 
 
