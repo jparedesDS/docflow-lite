@@ -43,7 +43,7 @@ CAMPOS: list[tuple[str, str]] = [
     ("Título",          "Título del documento"),
     ("Tag",             "El tag del título (lo que va detrás del guion)"),
     ("Tipo Doc.",       "Tipo de documento: Cálculos, Planos, ITP…"),
-    ("Nº Revisión",     "Revisión, tal cual está en el ERP (0, 1, A…)"),
+    ("Nº Revisión",     "La revisión: 0, 1, 2… (o la letra, si el cliente usa letras)"),
     ("Rev. 2 cifras",   "La revisión con dos cifras: 00, 01, 02"),
     ("Fichero",         "Nombre del PDF que se envía: «<nº cliente>-R00.PDF»"),
     ("Nº Pedido",       "Pedido de EIPSA (P-26/048)"),
@@ -57,39 +57,60 @@ _CAMPO = re.compile(r"\{\s*([^{}]{1,40}?)\s*\}")
 
 
 def _fold(s) -> str:
-    return re.sub(r"\s+", " ", str(s or "")).strip().lower()
+    return re.sub(r"\s+", " ", _texto(s)).strip().lower()
+
+
+def _texto(valor) -> str:
+    """El valor como texto, contando el 0 como valor y no como hueco.
+
+    El ERP devuelve la revisión como número: la 0 llega como `0.0`, que es
+    falso para Python, y un `str(v or "")` la convertía en una casilla vacía.
+    De paso, «0.0» se queda en «0», que es lo que se escribe en una portada.
+    """
+    if valor is None:
+        return ""
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor)
 
 
 def _tag(titulo: str) -> str:
     """El tag que va detrás del guion del título: «Cálculos - TKFE 2017N»."""
-    partes = str(titulo or "").split(" - ")
+    partes = _texto(titulo).split(" - ")
     return partes[-1].strip() if len(partes) > 1 else ""
+
+
+def _cifras(rev) -> str:
+    """«1.0» → «1». Si la revisión es una letra se deja como está."""
+    texto = _texto(rev).strip()
+    m = re.match(r"^\s*(\d+)", texto)
+    return str(int(m.group(1))) if m else texto.upper()
 
 
 def _dos_cifras(rev) -> str:
     """«1.0» → «01». Si la revisión es una letra se deja como está."""
-    texto = str(rev or "").strip()
+    texto = _texto(rev).strip()
     m = re.match(r"^\s*(\d+)", texto)
     return f"{int(m.group(1)):02d}" if m else texto.upper()
 
 
 def valores_documento(doc: dict) -> dict[str, str]:
     """Lo que vale cada campo para ESE documento."""
-    cliente_doc = str(doc.get("Nº Doc. Cliente", "") or "").strip()
+    cliente_doc = _texto(doc.get("Nº Doc. Cliente")).strip()
     rev2 = _dos_cifras(doc.get("Nº Revisión"))
     return {
         "Nº Doc. Cliente": cliente_doc,
-        "Nº Doc. EIPSA": str(doc.get("Nº Doc. EIPSA", "") or "").strip(),
-        "Título": str(doc.get("Título", "") or "").strip(),
-        "Tag": _tag(doc.get("Título", "")),
-        "Tipo Doc.": str(doc.get("Tipo Doc.", "") or "").strip(),
-        "Nº Revisión": str(doc.get("Nº Revisión", "") or "").strip(),
+        "Nº Doc. EIPSA": _texto(doc.get("Nº Doc. EIPSA")).strip(),
+        "Título": _texto(doc.get("Título")).strip(),
+        "Tag": _tag(doc.get("Título")),
+        "Tipo Doc.": _texto(doc.get("Tipo Doc.")).strip(),
+        "Nº Revisión": _cifras(doc.get("Nº Revisión")),
         "Rev. 2 cifras": rev2,
         "Fichero": f"{cliente_doc}-R{rev2}.PDF" if cliente_doc else "",
-        "Nº Pedido": str(doc.get("Nº Pedido", "") or "").strip(),
-        "Nº PO": str(doc.get("Nº PO", "") or "").strip(),
-        "Cliente": str(doc.get("Cliente", "") or "").strip(),
-        "Material": str(doc.get("Material", "") or "").strip(),
+        "Nº Pedido": _texto(doc.get("Nº Pedido")).strip(),
+        "Nº PO": _texto(doc.get("Nº PO")).strip(),
+        "Cliente": _texto(doc.get("Cliente")).strip(),
+        "Material": _texto(doc.get("Material")).strip(),
         "Fecha": datetime.now().strftime("%d/%m/%Y"),
     }
 
@@ -125,23 +146,15 @@ def huecos(plantillas: list[Path | str]) -> list[dict]:
     for p in plantillas:
         p = Path(p)
         try:
-            # Una hoja de cálculo solo trae marcadores: ver `plantilla_xlsx`.
-            if p.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
-                for m in plantilla_xlsx.marcadores(p):
-                    clave = (m, "marca")
-                    if clave in vistos:
-                        continue
-                    vistos.add(clave)
-                    out.append({"clave": m, "tipo": "marca", "ejemplo": "", "plantilla": p.name})
-                continue
-            for e in plantilla_docx.etiquetas(p):
+            lector = plantilla_xlsx if p.suffix.lower() in (".xlsx", ".xlsm", ".xls") else plantilla_docx
+            for e in lector.etiquetas(p):
                 clave = (e["etiqueta"], "etiqueta")
                 if clave in vistos:
                     continue
                 vistos.add(clave)
                 out.append({"clave": e["etiqueta"], "tipo": "etiqueta",
                             "ejemplo": e.get("valor", ""), "plantilla": p.name})
-            for m in plantilla_docx.marcadores(p):
+            for m in lector.marcadores(p):
                 clave = (m, "marca")
                 if clave in vistos:
                     continue

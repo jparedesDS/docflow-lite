@@ -201,7 +201,7 @@ def generar(plantillas: list[Path | str], destino: Path | str,
             plantilla = Path(plantilla)
             copia = tmp / f"{i:02d}_{plantilla.stem}{plantilla.suffix}"
             if plantilla.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
-                relleno = plantilla_xlsx.rellenar(plantilla, copia, marcas)
+                relleno = plantilla_xlsx.rellenar(plantilla, copia, valores, marcas)
             else:
                 relleno = plantilla_docx.rellenar(plantilla, copia, valores, marcas)
             pdfs.append(oficina.a_pdf(relleno) if oficina is not None else a_pdf(relleno))

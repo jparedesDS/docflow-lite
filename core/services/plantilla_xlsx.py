@@ -4,13 +4,20 @@ Es el hermano de `plantilla_docx`, para los clientes cuya portada es una hoja de
 cálculo. La de MOEVE lo es: las que hay archivadas a mano llevan escrito
 «Acrobat PDFMaker for Excel» en sus propiedades.
 
-Aquí solo se trabaja con **marcadores** `{{…}}`, no con etiquetas. En un Word la
-tabla «ETIQUETA : valor» se lee sola porque las celdas están una al lado de la
-otra; en Excel la portada es un dibujo de celdas combinadas donde el valor tan
-pronto está a la derecha como dos filas más abajo, y adivinarlo sería
-adivinarlo. Se escribe una vez en la plantilla dónde va cada dato:
+Se rellena de las dos maneras, como en Word:
 
-    N° DOCUMENTO:  {{DOC CLIENTE}}        ITEM-TAG:  {{TAG}}
+· **Etiquetas**, cuando la portada es una tabla de «ETIQUETA : valor» repartida
+  en celdas —la de MOEVE lo es: `A2 CLIENT :` y al lado `B2 MOEVE - ONUBA…`—.
+  Se leen solas y no hay que tocar la plantilla.
+· **Marcadores** `{{…}}` para las que no lo son: portadas que son un dibujo de
+  celdas combinadas donde el valor tan pronto está a la derecha como dos filas
+  más abajo. Ahí se escribe una vez en la plantilla dónde va cada dato:
+
+      N° DOCUMENTO:  {{DOC CLIENTE}}        ITEM-TAG:  {{TAG}}
+
+El valor se escribe **dentro de la celda** (`inlineStr`) y no en la tabla común
+de cadenas, que la comparten todas las hojas: cambiar ahí una entrada usada en
+dos sitios cambiaría los dos.
 
 **Se edita como ZIP**, igual que la plantilla de Planning y por el mismo motivo:
 `openpyxl` reescribe el libro entero y por el camino se deja logos, formatos
@@ -36,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 _S = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _PARTES = re.compile(r"^xl/(sharedStrings\.xml|worksheets/sheet\d+\.xml)$")
+_HOJA = re.compile(r"^xl/worksheets/sheet\d+\.xml$")
 _MARCA = re.compile(r"\{\{\s*([^{}]{1,60}?)\s*\}\}")
 
 
@@ -96,21 +104,149 @@ def _sustituir(raiz, valores: dict) -> bool:
     return tocado
 
 
-def rellenar(plantilla: Path | str, destino: Path | str, marcas: dict | None = None) -> Path:
-    """Copia la plantilla a `destino` con los marcadores sustituidos."""
-    quiere = {_clave_marca(k): str(v) for k, v in (marcas or {}).items()}
+# -- Etiquetas «ETIQUETA : valor» ---------------------------------------------
+#
+# Muchas portadas de Excel son la misma tabla que las de Word, solo que en
+# celdas: la etiqueta en una columna y el valor en la de al lado.
+#
+#     A2  CLIENT          :     B2  MOEVE - ONUBA SUSTAINABLE FUEL
+#     A12 VENDOR DOC. N.  :     B12 26-062-DL-0001
+#
+# Cuando la plantilla está así se leen solas y no hay que escribir marcadores.
+
+_REF = re.compile(r"^([A-Z]+)(\d+)$")
+MAX_ETIQUETA = 60
+
+
+def _celda_pos(ref: str) -> tuple[int, int]:
+    """(fila, columna) de una referencia «B12», para poder ordenar."""
+    m = _REF.match(str(ref or "").upper())
+    if not m:
+        return (0, 0)
+    col = 0
+    for letra in m.group(1):
+        col = col * 26 + (ord(letra) - 64)
+    return (int(m.group(2)), col)
+
+
+def _texto_celda(celda, tabla: list) -> str:
+    """Lo que se lee en la celda, venga de la tabla común o de dentro."""
+    if celda.get("t") == "s":
+        v = celda.find(_s("v"))
+        try:
+            return tabla[int(v.text)] if v is not None and v.text else ""
+        except (ValueError, IndexError):
+            return ""
+    dentro = celda.find(_s("is"))
+    if dentro is not None:
+        return "".join(t.text or "" for t in dentro.iter(_s("t")))
+    v = celda.find(_s("v"))
+    return (v.text or "") if v is not None and celda.get("t") != "e" else ""
+
+
+def _tabla_comun(partes: dict) -> list:
+    crudo = partes.get("xl/sharedStrings.xml")
+    if not crudo:
+        return []
+    raiz = ET.fromstring(crudo)
+    return ["".join(t.text or "" for t in si.iter(_s("t"))) for si in raiz.iter(_s("si"))]
+
+
+def _filas(raiz, tabla: list):
+    """Por cada fila, sus celdas ordenadas: [(ref, texto, elemento)]."""
+    for fila in raiz.iter(_s("row")):
+        celdas = [(c.get("r") or "", _texto_celda(c, tabla), c) for c in fila.iter(_s("c"))]
+        if celdas:
+            yield sorted(celdas, key=lambda x: _celda_pos(x[0]))
+
+
+def _pares(raiz, tabla: list):
+    """(etiqueta, celda del valor, texto del valor) de cada fila de la hoja.
+
+    La etiqueta es la primera celda con texto de la fila y el valor la
+    siguiente que haya: en «CLIENT : | MOEVE» los dos puntos van pegados a la
+    etiqueta, no en una celda de en medio.
+    """
+    for celdas in _filas(raiz, tabla):
+        con_texto = [(r, txt, el) for r, txt, el in celdas if txt.strip()]
+        if not con_texto:
+            continue
+        ref, etiqueta, _ = con_texto[0]
+        etiqueta = etiqueta.strip().rstrip(":").strip()
+        if not etiqueta or len(etiqueta) > MAX_ETIQUETA:
+            continue
+        posteriores = [(r, txt, el) for r, txt, el in celdas
+                       if _celda_pos(r) > _celda_pos(ref)]
+        if not posteriores:
+            continue
+        _r, texto, celda = posteriores[0]
+        yield etiqueta, celda, texto
+
+
+def etiquetas(plantilla: Path | str) -> list:
+    """Etiquetas de la plantilla: [{etiqueta, valor}], sin repetir."""
+    with zipfile.ZipFile(plantilla) as z:
+        partes = {n: z.read(n) for n in z.namelist()}
+    tabla = _tabla_comun(partes)
+    out = []
+    vistas = set()
+    for nombre in [n for n in partes if _HOJA.match(n)]:
+        raiz = ET.fromstring(partes[nombre])
+        for etiqueta, _celda, valor in _pares(raiz, tabla):
+            clave = etiqueta.lower()
+            if clave in vistas:
+                continue
+            vistas.add(clave)
+            out.append({"etiqueta": etiqueta, "valor": valor})
+    return out
+
+
+def _escribir(celda, texto: str) -> None:
+    """Deja `texto` en la celda sin tocar su formato.
+
+    Se escribe **dentro** de la celda (`inlineStr`) en vez de en la tabla común
+    de cadenas: esa tabla la comparten todas las hojas, y cambiar una entrada
+    usada en dos sitios cambiaría los dos.
+    """
+    for hijo in list(celda):
+        celda.remove(hijo)
+    celda.set("t", "inlineStr")
+    dentro = ET.SubElement(celda, _s("is"))
+    t = ET.SubElement(dentro, _s("t"))
+    t.text = texto
+    t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+
+
+def rellenar(plantilla: Path | str, destino: Path | str,
+             valores: dict | None = None, marcas: dict | None = None) -> Path:
+    """Copia la plantilla a `destino` rellenándola de las dos maneras posibles.
+
+    · `valores` = {etiqueta : texto} — para las portadas que son una tabla.
+    · `marcas`  = {marcador : texto} — para los `{{…}}` escritos a mano.
+    """
+    quiere_marcas = {_clave_marca(k): str(v) for k, v in (marcas or {}).items()}
+    quiere = {str(k).strip().rstrip(":").strip().lower(): str(v)
+              for k, v in (valores or {}).items()}
     destino = Path(destino)
     with zipfile.ZipFile(plantilla) as z:
         orden = z.namelist()
         partes = {n: z.read(n) for n in orden}
 
+    tabla = _tabla_comun(partes)
     for nombre in [n for n in orden if _PARTES.match(n)]:
         crudo = partes[nombre]
-        if b"{{" not in crudo:
-            continue
         _registrar_prefijos(crudo)
         raiz = ET.fromstring(crudo)
-        if _sustituir(raiz, quiere):
+        tocado = False
+        if quiere and _HOJA.match(nombre):
+            for etiqueta, celda, _valor in _pares(raiz, tabla):
+                texto = quiere.get(etiqueta.lower())
+                if texto is not None:
+                    _escribir(celda, texto)
+                    tocado = True
+        if quiere_marcas and b"{{" in crudo and _sustituir(raiz, quiere_marcas):
+            tocado = True
+        if tocado:
             partes[nombre] = _serializar(raiz, crudo)
 
     destino.parent.mkdir(parents=True, exist_ok=True)
