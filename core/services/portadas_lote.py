@@ -165,6 +165,57 @@ def huecos(plantillas: list[Path | str]) -> list[dict]:
     return out
 
 
+def sugerir(huecos: list[dict], docs: list[dict]) -> dict[str, str]:
+    """Qué poner de entrada en cada hueco, sin que haya que adivinar nada.
+
+    La plantilla del cliente viene rellena de un documento suyo, y eso dice más
+    que cualquier instrucción: si lo que trae escrito es exactamente el número
+    de un documento del pedido, ese hueco es de los que cambian y se propone el
+    campo del ERP correspondiente; si no, es un dato fijo del pedido —el
+    proyecto, la planta, el contrato— y se deja **tal cual estaba**.
+
+    Así no hay que saber qué se completa y qué no: lo que está bien, se queda.
+    """
+    indice: dict[str, str] = {}
+    for doc in docs or []:
+        valores = valores_documento(doc)
+        for campo, _ in CAMPOS:                   # en orden: gana el más concreto
+            valor = _fold(valores.get(campo, ""))
+            # Menos de cuatro letras no distingue nada («OG», «0», «R1»).
+            if len(valor) >= 4:
+                indice.setdefault(valor, campo)
+    out: dict[str, str] = {}
+    for h in huecos:
+        ejemplo = str(h.get("ejemplo", "") or "").strip()
+        if not ejemplo:
+            out[h["clave"]] = ""
+            continue
+        campo = indice.get(_fold(ejemplo))
+        out[h["clave"]] = f"{{{campo}}}" if campo else (_nombre_de_fichero(ejemplo, indice) or ejemplo)
+    return out
+
+
+# Casi todos los clientes nombran el PDF igual: el número del documento, la
+# revisión detrás de una R y la extensión («…-DL-001-R0.PDF»). Es el hueco que
+# más fácil se queda a medias, porque el número casa con un campo pero la
+# revisión va pegada y no.
+_NOMBRE_FICHERO = re.compile(r"^(?P<doc>.+?)-R(?P<rev>\d+)\.(?P<ext>pdf)$", re.I)
+
+
+def _nombre_de_fichero(ejemplo: str, indice: dict) -> str:
+    """«V-…-DL-001-R0.PDF» → «{Nº Doc. Cliente}-R{Nº Revisión}.PDF» ('' si no lo es)."""
+    m = _NOMBRE_FICHERO.match(ejemplo)
+    if not m:
+        return ""
+    campo = indice.get(_fold(m.group("doc")))
+    if not campo:
+        return ""
+    # Una cifra o dos: cada cliente escribe la revisión a su manera y hay que
+    # respetar la suya, que es la que espera ver en el fichero.
+    rev = "Nº Revisión" if len(m.group("rev")) == 1 else "Rev. 2 cifras"
+    return f"{{{campo}}}-R{{{rev}}}.{m.group('ext')}"
+
+
 # ── Perfil por cliente ────────────────────────────────────────────────────────
 
 def _perfiles() -> dict:
@@ -219,7 +270,7 @@ def destino_portada(doc: dict) -> Path | None:
 
 def generar_lote(docs: list[dict], plantillas: list, mapa: dict,
                  progreso=None) -> list[dict]:
-    """Una portada por documento. Devuelve [{doc, destino, error}].
+    """Una portada por documento. Devuelve [{doc, destino, error, vacios}].
 
     Word (o Excel, según la plantilla) se abre UNA vez para todo el lote:
     arrancarlo por cada documento son cinco segundos por portada, y un lote de
@@ -242,10 +293,17 @@ def generar_lote(docs: list[dict], plantillas: list, mapa: dict,
                 continue
             valores = valores_documento(doc)
             textos = {h: aplicar(patron, valores) for h, patron in mapa.items() if patron}
+            # Un hueco que pedía un dato del ERP y se queda en blanco no es un
+            # fallo de la plantilla: es que el documento no tiene ese dato. La
+            # portada sale igual —con el hueco a la vista— pero hay que decirlo.
+            vacios = [h for h, patron in mapa.items()
+                      if patron and "{" in patron and not textos.get(h, "").strip()]
             try:
                 final = portadas.generar(plantillas, destino, valores=textos,
                                          marcas=textos, oficina=oficina)
-                resultados.append({"doc": doc, "destino": final, "error": ""})
+                if vacios:
+                    logger.warning("Portada de %s: sin datos para %s", codigo, ", ".join(vacios))
+                resultados.append({"doc": doc, "destino": final, "error": "", "vacios": vacios})
             except Exception as exc:  # noqa: BLE001 — un fallo no corta el lote
                 logger.exception("Portada de %s", codigo)
                 resultados.append({"doc": doc, "destino": None, "error": str(exc)})

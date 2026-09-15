@@ -188,8 +188,7 @@ class PortadasView(ctk.CTkFrame):
             ui.toast(self, "Falta la plantilla",
                      "Elige primero el Word que manda el cliente.", kind="warning")
             return
-        ejemplo = self._docs[0] if self._docs else {}
-        VentanaCampos(self, self._cliente, self._perfil, ejemplo, self._tras_campos)
+        VentanaCampos(self, self._cliente, self._perfil, self._docs, self._tras_campos)
 
     def _tras_campos(self, mapa: dict) -> None:
         self._perfil["mapa"] = mapa
@@ -238,12 +237,24 @@ class PortadasView(ctk.CTkFrame):
             return
         bien = [r for r in resultados if not r["error"]]
         mal = [r for r in resultados if r["error"]]
+        huecos = [r for r in bien if r.get("vacios")]
+
+        avisos = []
         if mal:
             detalle = "\n".join(
                 f"· {r['doc'].get('Nº Doc. Cliente', '?')}: {r['error']}" for r in mal[:6])
             logger.warning("Portadas sin generar:\n%s", detalle)
+            avisos.append(f"{len(mal)} se han quedado fuera")
+        if huecos:
+            # Un hueco en blanco no es un fallo de la plantilla: es que el ERP
+            # no tiene ese dato. Se dice, porque la portada sale igual.
+            campos = sorted({c for r in huecos for c in r["vacios"]})
+            logger.warning("Portadas con huecos sin dato (%d): %s", len(huecos), ", ".join(campos))
+            avisos.append(f"{len(huecos)} con huecos en blanco ({', '.join(campos[:2])})")
+
+        if avisos:
             ui.toast(self, f"{len(bien)} portada(s) generada(s)",
-                     f"{len(mal)} se han quedado fuera (mira el registro).", kind="warning")
+                     " · ".join(avisos) + ". Mira el registro.", kind="warning")
         else:
             ui.toast(self, "Portadas generadas",
                      f"{len(bien)} en las carpetas env. de sus documentos.", kind="success")
@@ -263,14 +274,15 @@ class VentanaCampos(ctk.CTkToplevel):
     «{Tag} ALL ITEMS».
     """
 
-    def __init__(self, master, cliente: str, perfil: dict, ejemplo: dict, al_guardar):
+    def __init__(self, master, cliente: str, perfil: dict, docs: list, al_guardar):
         super().__init__(master)
         self.title(f"Campos de la portada · {cliente}")
         self.geometry("900x640")
         self.configure(fg_color=theme.BG_PAGE)
         self.transient(master.winfo_toplevel())
         self._al_guardar = al_guardar
-        self._valores = portadas_lote.valores_documento(ejemplo) if ejemplo else {}
+        self._docs = list(docs or [])
+        self._valores = portadas_lote.valores_documento(self._docs[0]) if self._docs else {}
         self._entradas: dict[str, ctk.CTkEntry] = {}
         self._previas: dict[str, ctk.CTkLabel] = {}
         self._zonas: dict[str, str] = {}      # widget (str) → hueco al que pertenece
@@ -301,8 +313,9 @@ class VentanaCampos(ctk.CTkToplevel):
                            "en el Word o el Excel donde vaya cada dato.", icon="○")
             return
         mapa = perfil.get("mapa") or {}
+        propuesto = portadas_lote.sugerir(huecos, self._docs)
         for h in huecos:
-            self._fila(cuerpo, h, mapa.get(h["clave"], ""))
+            self._fila(cuerpo, h, mapa.get(h["clave"]) or propuesto.get(h["clave"], ""))
 
     def _paleta(self, perfil: dict) -> None:
         """Los campos del ERP, en fichas que se arrastran."""
