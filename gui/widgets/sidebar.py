@@ -17,6 +17,7 @@ import webbrowser
 import customtkinter as ctk
 
 from gui import theme
+from gui.widgets import ui
 
 PORTFOLIO_URL = "https://jparedesds.github.io/"
 
@@ -104,6 +105,7 @@ class Sidebar(ctk.CTkFrame):
                 self._build_nav_item(self._nav, entry)
         self.after(120, self._ajusta_scroll)
         self.bind("<Configure>", self._al_redimensionar)
+        self._rueda = ui.rueda_por_puntero(self._nav)
 
     # ── Persistencia del estado plegado ──────────────────────────────────────
 

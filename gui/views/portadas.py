@@ -28,10 +28,12 @@ from gui.widgets import ui
 
 logger = logging.getLogger(__name__)
 
-# Un texto largo con letras y cifras («BR10S 0001», «V-2201BI01A0BG-2206-740»)
-# suele ser el dato de UN documento. Escrito a pelo saldría igual en todas las
-# portadas, que es justo el error de dejar el ejemplo de la plantilla.
 def _parece_dato(texto: str) -> bool:
+    """¿Parece el dato de UN documento («BR10S 0001», «V-2201BI01A0BG-2206-740»)?
+
+    Escrito a pelo saldría igual en todas las portadas, que es justo el error
+    de dejar el ejemplo que traía la plantilla.
+    """
     limpio = texto.strip()
     return (len(limpio) >= 8
             and any(c.isdigit() for c in limpio)
@@ -80,6 +82,7 @@ class PortadasView(ctk.CTkFrame):
         self.cuerpo = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD,
                                              corner_radius=theme.RADIUS_MD)
         self.cuerpo.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(0, theme.SPACE_5))
+        ui.rueda_por_puntero(self.cuerpo)
 
     # ── Datos ─────────────────────────────────────────────────────────────────
 
@@ -323,6 +326,7 @@ class VentanaCampos(ctk.CTkToplevel):
         cuerpo = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD,
                                         corner_radius=theme.RADIUS_MD)
         cuerpo.pack(fill="both", expand=True, padx=theme.SPACE_6, pady=(0, theme.SPACE_5))
+        ui.rueda_por_puntero(cuerpo)
 
         huecos = portadas_lote.huecos(perfil.get("plantillas") or [])
         if not huecos:

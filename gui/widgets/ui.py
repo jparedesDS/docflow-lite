@@ -435,3 +435,52 @@ def kpi_tile(parent, label: str, color: str, variant: str = "dashboard",
     widgets = [w for w in (card, inner, head, lbl_label, lbl_icon, lbl_value) if w is not None]
     return {"card": card, "value": lbl_value, "label": lbl_label, "icon": lbl_icon,
             "accent": accent, "widgets": widgets}
+
+
+# ── Rueda del ratón en las zonas con scroll ───────────────────────────────────
+
+# Lo que sube o baja por cada muesca de la rueda: tres filas. El manejador de
+# CustomTkinter mueve 20 px —media fila— y se hace eterno.
+RUEDA_PX = 3 * theme.HEIGHT_ROW
+
+
+def rueda_por_puntero(scrollable, paso: int = RUEDA_PX):
+    """Que la rueda mueva ESE `CTkScrollableFrame` cuando el ratón está encima.
+
+    Windows entrega la rueda al widget **con el foco**, no al que está debajo
+    del ratón, y CustomTkinter se fía de eso: hasta pinchar dentro, la rueda se
+    iba a otra parte de la ventana. Aquí se decide por dónde está el puntero,
+    que es lo que uno espera, y de paso se mueve un paso razonable.
+
+    Se engancha a la ventana, no con `bind_all`: las bindtags van (widget,
+    clase, ventana, all), así que esto se atiende ANTES que el manejador global
+    de CustomTkinter y se le puede cortar el paso con «break».
+
+    Devuelve el manejador, que además se puede llamar a mano (las pruebas lo
+    hacen para no depender de un ratón de verdad).
+    """
+    canvas = getattr(scrollable, "_parent_canvas", None)
+    marco = getattr(scrollable, "_parent_frame", None)
+    if canvas is None or marco is None:
+        return None
+
+    def encima(event) -> bool:
+        try:
+            w = scrollable.winfo_containing(event.x_root, event.y_root)
+        except Exception:      # noqa: BLE001 — fuera de la ventana no hay nada debajo
+            return False
+        while w is not None:
+            if w is marco:
+                return True
+            w = getattr(w, "master", None)
+        return False
+
+    def mover(event):
+        if not encima(event) or canvas.yview() == (0.0, 1.0):
+            return None                  # ni es para nosotros ni hay qué mover
+        muescas = int(-event.delta / 120) or (-1 if event.delta > 0 else 1)
+        canvas.yview_scroll(muescas * paso, "units")     # el canvas va en píxeles
+        return "break"
+
+    scrollable.winfo_toplevel().bind("<MouseWheel>", mover, add="+")
+    return mover
