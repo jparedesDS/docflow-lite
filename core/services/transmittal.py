@@ -189,36 +189,21 @@ def saved_dev_folders_for(preview: dict) -> list[str]:
 
 # Caracteres que hay que escapar en un enlace `file:` para que no se rompa la
 # URL. Los acentos NO están: ver `uri_carpeta`.
-_ESCAPAR_URI = {"%": "%25", " ": "%20", "#": "%23", "?": "%3F"}
-
-
-def uri_carpeta(ruta: Path | str) -> str:
-    """`file:` de una carpeta de Windows, sin escapar los acentos.
-
-    Aquí está el motivo, que costó verlo: el correo sale en UTF-8 y bien, pero
-    **Windows descodifica los `%XX` de un enlace `file:` con la página de
-    códigos ANSI**, no con UTF-8. Así, un «Año 2026» escapado en condiciones
-    (`A%C3%B1o`) llega al explorador como «AÃ±o 2026», que no existe, y el
-    enlace no abre nada. Con la eñe escrita tal cual —el correo va en UTF-8 y
-    Outlook lo lee bien— llega entera.
-
-    Se escapa solo lo que rompería la URL: el espacio, la almohadilla y el
-    interrogante, que esos sí los entiende bien.
-    """
-    texto = str(ruta)
-    for malo, bueno in _ESCAPAR_URI.items():
-        texto = texto.replace(malo, bueno)
-    texto = texto.replace("\\", "/")
-    # \\SERVIDOR\recurso → file://SERVIDOR/recurso  ·  M:\… → file:///M:/…
-    return "file:" + texto if texto.startswith("//") else "file:///" + texto
-
-
 def folder_link_html(folder: str, depth: int = 1) -> str:
-    """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» apuntando a la carpeta.
+    """Enlace corto para el correo: «📂 dev NDE\\rev2 COM» que abre el Explorador.
 
-    Se enlaza la ruta tal y como la ve el departamento —la unidad M:, que es la
-    que todos tienen mapeada—, y la completa va en el tooltip para copiarla.
-    `depth` = cuántos tramos finales se muestran.
+    El enlace es **la ruta a secas**, sin `file:` delante. Con `file:` el clic
+    se lo lleva el navegador por defecto —Chrome, que además bloquea las rutas
+    locales que le llegan de fuera— y se abría una pestaña en blanco en vez de
+    la carpeta. Una ruta sin esquema no la reconoce como URL: se la pasa al
+    sistema, y el sistema abre el Explorador, que es lo que se quiere.
+
+    Por lo mismo no se escapa nada dentro de la ruta: los `%20` de una URL, en
+    una ruta de Windows, son `%20` literales y la carpeta no existiría.
+
+    Se enlaza la unidad M:, que es la que el departamento tiene mapeada, y la
+    ruta completa va también en el tooltip para poder copiarla. `depth` =
+    cuántos tramos finales se muestran.
     """
     from html import escape
 
@@ -226,7 +211,7 @@ def folder_link_html(folder: str, depth: int = 1) -> str:
     label = "\\".join(p.parts[-depth:]) if len(p.parts) >= depth else p.name
     if not p.is_absolute():      # ruta relativa o rara: mejor sin enlace que uno roto
         return escape(str(folder))
-    return (f'<a href="{escape(uri_carpeta(p))}" title="{escape(str(p))}" '
+    return (f'<a href="{escape(str(p))}" title="{escape(str(p))}" '
             f'style="color:inherit;text-decoration:underline;">📂 {escape(label)}</a>')
 
 

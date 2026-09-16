@@ -3,12 +3,15 @@
 
     docflow_env\\Scripts\\python.exe tests\\test_enlace_carpeta.py
 """
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.services.transmittal import folder_link_html, uri_carpeta
+from core.services.dev_folders import carpeta_vigente
+from core.services.transmittal import folder_link_html
 
 fallos = 0
 
@@ -23,45 +26,30 @@ def ok(cond, msg):
 RUTA = (r"M:\base de datos de pedidos\Año 2026\2026 Pedidos"
         r"\P-26-030-S00 - TR-SILLENO - VENTURIS 10\2-Tecnico\dev CÁLCULOS\rev2-C com")
 
-uri = uri_carpeta(RUTA)
-
-# Lo importante: los acentos van tal cual. Windows descodifica los %XX de un
-# enlace file: con la página de códigos ANSI, así que «A%C3%B1o» le llega como
-# «AÃ±o» y no encuentra la carpeta.
-ok("Año" in uri, f"la eñe va sin escapar: {uri}")
-ok("CÁLCULOS" in uri, "y la tilde también")
-ok("%C3" not in uri and "%C1" not in uri, f"nada de acentos escapados: {uri}")
-
-# Lo que sí rompería la URL, escapado
-ok("%20" in uri and " " not in uri, "los espacios sí se escapan")
-ok(uri.startswith("file:///M:/"), f"empieza como toca: {uri[:24]}")
-ok("\\" not in uri, "barras hacia delante en la URL")
-
-# Una ruta de red mantiene sus dos barras iniciales
-red = uri_carpeta(r"\\SRV\recurso\Año 2026")
-ok(red == "file://SRV/recurso/Año%202026", f"ruta de red: {red}")
-
-# Y lo que se ve en el correo
 html = folder_link_html(RUTA, depth=2)
-ok('title="M:\\base de datos' in html, f"el tooltip lleva la ruta de siempre: {html[:120]}")
-ok(">📂 dev CÁLCULOS\\rev2-C com<" in html, "la etiqueta enseña los dos últimos tramos")
+href = html.split('href="', 1)[1].split('"', 1)[0]
+
+# El enlace es la ruta a secas: con «file:» el clic se lo lleva el navegador
+# —y Chrome bloquea las rutas locales que le llegan de fuera—, y sin esquema lo
+# atiende el sistema, que abre el Explorador.
+ok(not href.lower().startswith("file:"), f"nada de file:: {href[:40]}")
+ok(href == RUTA, f"la ruta, tal cual: {href}")
+ok("%20" not in href and "%C3" not in href,
+   "ni escapes: en una ruta de Windows «%20» sería literal y la carpeta no existiría")
+ok("Año" in href and "CÁLCULOS" in href, "los acentos, enteros")
 ok(html.count("<a ") == 1 and html.rstrip().endswith("</a>"), "un solo enlace, bien cerrado")
+ok(f'title="{RUTA}"' in html, "el tooltip lleva la ruta completa, para copiarla")
+ok(">📂 dev CÁLCULOS\\rev2-C com<" in html, "la etiqueta enseña los dos últimos tramos")
+
+# Lo que en HTML hay que escapar, escapado (una carpeta puede llamarse así)
+raro = folder_link_html(r"M:\pedidos\rev1 <pendiente> & dudas", depth=1)
+ok("&lt;pendiente&gt;" in raro and "&amp;" in raro, f"HTML escapado: {raro[:130]}")
 
 # Una ruta relativa no genera enlace: mejor texto suelto que un enlace roto
 suelto = folder_link_html("dev CÁLCULOS")
 ok("<a " not in suelto, f"ruta relativa sin enlace: {suelto}")
 
-# Los caracteres que rompen una URL, escapados (una carpeta puede llamarse así)
-raro = uri_carpeta(r"M:\pedidos\rev#1 ¿dudas? 50%")
-ok("%23" in raro and "%3F" in raro and "%25" in raro, f"almohadilla, interrogante y %: {raro}")
-ok("¿" in raro, "pero la interrogación de apertura no molesta y se queda")
-
 # ── La carpeta apuntada puede haberse renombrado a mano ─────────────────────
-import shutil
-import tempfile
-
-from core.services.dev_folders import carpeta_vigente
-
 tmp = Path(tempfile.mkdtemp())
 try:
     dev = tmp / "dev NDE"
