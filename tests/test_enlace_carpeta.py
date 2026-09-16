@@ -56,4 +56,27 @@ raro = uri_carpeta(r"M:\pedidos\rev#1 ¿dudas? 50%")
 ok("%23" in raro and "%3F" in raro and "%25" in raro, f"almohadilla, interrogante y %: {raro}")
 ok("¿" in raro, "pero la interrogación de apertura no molesta y se queda")
 
+# ── La carpeta apuntada puede haberse renombrado a mano ─────────────────────
+import shutil
+import tempfile
+
+from core.services.dev_folders import carpeta_vigente
+
+tmp = Path(tempfile.mkdtemp())
+try:
+    dev = tmp / "dev NDE"
+    (dev / "rev2-50 REJ").mkdir(parents=True)     # se renombró desde «rev2-50 COM»
+    (dev / "rev1-2 AP").mkdir()
+    ok(carpeta_vigente(dev / "rev2-50 COM") == str(dev / "rev2-50 REJ"),
+       f"encuentra la carpeta renombrada: {carpeta_vigente(dev / 'rev2-50 COM')}")
+    ok(carpeta_vigente(dev / "rev1-2 AP") == str(dev / "rev1-2 AP"),
+       "la que sigue ahí se devuelve tal cual")
+    ok(carpeta_vigente(dev / "rev9-99 COM") == "", "una que no existe no enlaza a nada")
+    ok(carpeta_vigente("") == "", "y sin ruta, tampoco")
+    # No se confunde con otra revisión que casualmente tenga el mismo sufijo
+    ok(carpeta_vigente(dev / "rev2-49 REJ") == "",
+       "el número de revisión tiene que cuadrar, no vale cualquier REJ")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("FALLOS:", fallos)

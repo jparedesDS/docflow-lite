@@ -1261,7 +1261,9 @@ def _friendly_error(msg: str) -> str:
 def _open_return_folders(folder, dev_folders=()) -> None:
     """Abre en el Explorador la carpeta 00 TRANS Y RES\\NNN de la devolución y
     también cada carpeta dev. donde se archivaron los PDF."""
-    for p in [folder, *dev_folders]:
+    from core.services import dev_folders as dv
+
+    for p in [folder, *[dv.carpeta_vigente(d) for d in dev_folders]]:
         if p:
             try:
                 os.startfile(str(p))

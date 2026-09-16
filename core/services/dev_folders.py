@@ -381,6 +381,32 @@ def _subcarpeta(padre: Path, nombre: str) -> tuple[Path, bool]:
     return padre / nombre, False
 
 
+def carpeta_vigente(ruta: Path | str) -> str:
+    """La carpeta de revisión, aunque se le haya cambiado el nombre a mano.
+
+    Lo que quedó apuntado al descargar es el nombre que tenía entonces, y aquí
+    se renombra a menudo: se corrige un sufijo, se anota algo al final. Si ya no
+    está, se busca en su carpeta dev la que lleve el mismo número de revisión
+    —«rev2-50 COM» → «rev2-50 REJ»—, que es lo que un renombrado conserva.
+
+    Devuelve '' si no hay nada a lo que apuntar: mejor sin enlace que con uno
+    roto.
+    """
+    p = Path(ruta)
+    if not str(ruta):
+        return ""
+    if p.is_dir():
+        return str(p)
+    m = _REV_DIR_RE.match(p.name)
+    if m:
+        num, rev = int(m.group(1)), (m.group(2) or "").upper()
+        for sub, n, r, _suf in _rev_subfolders(p.parent):
+            if n == num and r == rev:
+                logger.info("La carpeta «%s» ahora se llama «%s»", p.name, sub.name)
+                return str(sub)
+    return ""
+
+
 def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int, str, str]]:
     """Subcarpetas de revisión de una carpeta dev: (ruta, nº, revisión, sufijo)."""
     out = []

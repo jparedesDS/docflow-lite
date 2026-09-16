@@ -175,8 +175,16 @@ def saved_folder_for(preview: dict) -> str:
 
 
 def saved_dev_folders_for(preview: dict) -> list[str]:
-    """Carpetas dev. de 2-Tecnico donde se archivaron los PDF de esta devolución."""
-    return list(_download_status(preview).get("dev_folders") or [])
+    """Carpetas dev. de 2-Tecnico donde se archivaron los PDF de esta devolución.
+
+    Se comprueba que sigan ahí y, si se renombraron a mano, se enlaza el nombre
+    de ahora: el correo tiene que llevar a una carpeta que exista.
+    """
+    from core.services import dev_folders
+
+    vigentes = [dev_folders.carpeta_vigente(d)
+                for d in (_download_status(preview).get("dev_folders") or [])]
+    return [d for d in vigentes if d]
 
 
 # Caracteres que hay que escapar en un enlace `file:` para que no se rompa la
