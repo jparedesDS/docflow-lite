@@ -9,8 +9,9 @@ Patrón de carpetas de los pedidos (se conserva el que ya tenga cada pedido):
   · Pedidos antiguos usan «dev X» / «env X» sin punto: si existe se respeta; si
     hay que crear, se imita el estilo de la carpeta «env» hermana (y «dev. X»
     si no hay referencia).
-  · Sufijo: AP (aprobado / informativo), COM (comentarios MAYORES o rechazado)
-    y com en minúsculas (comentarios menores) — como «rev0 COM» / «rev1 com».
+  · Sufijo: AP (aprobado / informativo), REJ (rechazado), COM (comentarios
+    MAYORES) y com en minúsculas (comentarios menores) — «rev0 COM», «rev1 com»,
+    «rev0-1 REJ».
   · Letra de revisión del cliente («rev0-A COM»): solo si el pedido ya la usa
     en sus carpetas «dev» o el cliente la manda en el correo (TR: «TR Rev»).
 
@@ -73,7 +74,8 @@ TYPE_KEYWORDS = {
     "Catalogo": ["catalog"],
 }
 _APPROVED = ("aprob", "certific", "informativ")
-_MAJOR = ("mayor", "rechaz")
+_MAJOR = ("mayor",)
+_REJECTED = ("rechaz", "reject")
 _STOP_WORDS = {"THE", "AND", "FOR", "WITH", "DE", "DEL", "LOS", "LAS", "PARA", "CON"}
 
 
@@ -93,8 +95,15 @@ def _rev_letter(value) -> str:
 
 
 def _suffix(estado: str) -> str:
-    """AP = aprobado · COM = comentarios mayores / rechazado · com = comentarios menores."""
+    """AP = aprobado · REJ = rechazado · COM = com. mayores · com = com. menores.
+
+    Un documento rechazado tiene su propia carpeta y no se mezcla con los de
+    comentarios mayores: son dos cosas distintas —uno hay que rehacerlo y el
+    otro corregirlo— y en los pedidos ya se archivaban así a mano («rev0-1 REJ»).
+    """
     e = _fold(estado)
+    if any(k in e for k in _REJECTED):
+        return "REJ"
     if any(k in e for k in _APPROVED):
         return "AP"
     return "COM" if any(k in e for k in _MAJOR) else "com"

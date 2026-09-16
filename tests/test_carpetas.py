@@ -5,7 +5,9 @@ Se ejecuta a mano, sin pytest, con el intérprete de la app:
 
     docflow_env\\Scripts\\python.exe tests\\test_carpetas.py
 """
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -64,5 +66,38 @@ ok(elegida("Programa", "MANUFACTURING PLANNING") == "Manufacturing Program", "pr
 ok(elegida("Repuestos", "LIST OF RECOMMENDED SPARE PARTS") is None,
    f"sin carpeta de repuestos no se inventa: {elegida('Repuestos', 'LIST OF RECOMMENDED SPARE PARTS')}")
 ok(elegida("Procedimientos", "PMI PROCEDURE") is None, "sin carpeta de procedimientos tampoco")
+
+# ── El sufijo de la carpeta, según cómo vuelva el documento ─────────────────
+for estado, espera in (
+    ("Rechazado", "REJ"),          # rehacerlo: carpeta propia, como se archiva a mano
+    ("1R - WITH COMMENTS - REJECTED", "REJ"),
+    ("Com. Mayores", "COM"),       # corregirlo
+    ("Com. Menores", "com"),
+    ("Comentado", "com"),
+    ("Aprobado", "AP"),
+    ("Informativo", "AP"),
+    ("Certificado", "AP"),
+    ("", "com"),                   # sin estado, lo prudente es «con comentarios»
+):
+    ok(D._suffix(estado) == espera,
+       f"«{estado}» debería ir a rev<N> {espera}, no {D._suffix(estado)}")
+
+# Y que la carpeta se llame así de verdad, no solo el sufijo suelto
+tmp = Path(tempfile.mkdtemp())
+try:
+    dev = tmp / "dev NDE"
+    (dev / "rev1-49 com").mkdir(parents=True)          # la devolución anterior
+    ruta, existe = D._rev_folder_for(dev, 50, "", D._suffix("Rechazado"))
+    ok(not existe and ruta.name == "rev2-50 REJ",
+       f"la nueva carpeta lleva REJ y el correlativo siguiente: {ruta.name}")
+    # una carpeta REJ que ya exista se reutiliza en vez de duplicarse
+    (dev / ruta.name).mkdir()
+    otra, existe = D._rev_folder_for(dev, 50, "", "REJ")
+    ok(existe and otra.name == ruta.name, f"se reutiliza la REJ existente: {otra.name} ({existe})")
+    # y no se confunde con la de comentarios mayores
+    com, _ = D._rev_folder_for(dev, 50, "", "COM")
+    ok(com.name != ruta.name, f"REJ y COM son carpetas distintas: {com.name} vs {ruta.name}")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
 
 print("FALLOS:", fallos)
