@@ -510,6 +510,17 @@ class PreviewWindow(ctk.CTkToplevel):
             self.btn_transmittal.pack_forget()
             return
         done = portal_downloads.downloaded_info(info["code"])
+        if done and done.get("zip") and not done.get("dev_folders"):
+            # Descargada pero sin repartir: los documentos no llegaron a sus
+            # carpetas dev. (una revisión rara, M: caída…). Se puede reintentar
+            # sin volver a pedirle el paquete al portal.
+            self.btn_transmittal.configure(
+                state="normal", text="🗂  Archivar en 2-Tecnico",
+                command=self._archive_pending)
+            self.lbl_status.configure(
+                text=f"⚠  Devolución {info['code']} descargada, pero sus documentos no se "
+                     f"archivaron en las carpetas dev. · pulsa «Archivar en 2-Tecnico».")
+            return
         if done and done.get("folder"):
             # Ya descargada y archivada: el botón lleva directamente a la carpeta
             # para comprobarlo antes de avisar a los compañeros.
@@ -548,6 +559,24 @@ class PreviewWindow(ctk.CTkToplevel):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _archive_pending(self) -> None:
+        """Reparte una devolución ya descargada que se quedó sin archivar."""
+        self.btn_transmittal.configure(state="disabled", text="🗂  Archivando…")
+        self.lbl_status.configure(text="⏳  Repartiendo los documentos por sus carpetas dev.…")
+        uid = self._uid
+
+        def worker():
+            from core.services import portal_downloads
+            try:
+                res = portal_downloads.archive_pending(uid)
+                self.after(0, lambda: self._transmittal_done(res))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Archivo en dev. de una devolución ya descargada")
+                msg = str(exc)
+                self.after(0, lambda: self._transmittal_failed(msg, archivando=True))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _transmittal_done(self, res: dict) -> None:
         folder, devs = res["folder"], list(res.get("dev_folders") or [])
         self.btn_transmittal.configure(
@@ -564,7 +593,7 @@ class PreviewWindow(ctk.CTkToplevel):
         detalle = "\n".join(f"· {f}: {why}" for f, why in archive.get("skipped", [])[:4])
         if self._on_sent:
             self._on_sent()          # refresca la lista: la fila pasa a «✓ guardada»
-        ui.toast(self, "Devolución descargada",
+        ui.toast(self, "Devolución archivada" if res.get("already") else "Devolución descargada",
                  f"{res['zip'].name} → {folder.name}\nArchivo en 2-Tecnico: {resumen}" + (f"\n{detalle}" if detalle else ""),
                  kind="success" if not archive.get("skipped") else "warn")
 
@@ -586,10 +615,13 @@ class PreviewWindow(ctk.CTkToplevel):
         if self._on_sent:
             self._on_sent()          # la columna Descarga deja de pedirlo
 
-    def _transmittal_failed(self, msg: str) -> None:
-        self.btn_transmittal.configure(state="normal", text="⤓  Reintentar descarga")
-        self.lbl_status.configure(text=f"✗  No se pudo descargar la devolución: {msg}")
-        ui.toast(self, "Descarga · error", msg, kind="error")
+    def _transmittal_failed(self, msg: str, archivando: bool = False) -> None:
+        self.btn_transmittal.configure(
+            state="normal",
+            text="🗂  Reintentar archivado" if archivando else "⤓  Reintentar descarga")
+        verbo = "archivar" if archivando else "descargar"
+        self.lbl_status.configure(text=f"✗  No se pudo {verbo} la devolución: {msg}")
+        ui.toast(self, f"{'Archivado' if archivando else 'Descarga'} · error", msg, kind="error")
 
     def _fit_docs_table(self) -> None:
         if self.docs_table is not None:

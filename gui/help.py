@@ -147,6 +147,9 @@ HELP: dict[str, dict] = {
             "La columna «Descarga» marca «✓ guardada» cuando la devolución ya está en su carpeta; en la preview el botón "
             "pasa a «📂 Abrir carpetas» (abre 00 TRANS Y RES \\ NNN y las dev. donde quedaron los PDF) para comprobarla "
             "antes de enviar la notificación (que indica dónde está guardada).",
+            "Si la descarga dejó los documentos sin colocar en sus carpetas dev., el botón pasa a "
+            "«🗂 Archivar en 2-Tecnico»: reparte el zip que ya está guardado sin volver a pedírselo al portal "
+            "(nunca pisa nada de lo ya archivado) y apunta las carpetas para que la notificación las enlace.",
             "La columna «Enviado» marca «✓ enviado» cuando ya se mandó la notificación al responsable, "
             "y «✉ pendiente» mientras no se haya hecho.",
             "SACYR (Proarc) no dice en el correo si el documento va aprobado o con comentarios: eso está en el "

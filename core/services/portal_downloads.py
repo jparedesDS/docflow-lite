@@ -335,6 +335,101 @@ def _remove_if_empty(folder: Path) -> None:
 
 # ── Descarga ──────────────────────────────────────────────────────────────────
 
+def _docs_y_ficheros(info: dict, docs: list[dict], subject: str, raw: bytes,
+                     *, session=None) -> tuple[list[dict], dict[str, dict]]:
+    """Los documentos de la devolución y el mapa {fichero del zip → documento}.
+
+    Lo que hace falta para repartir el paquete, y que según el portal no viene
+    en el correo. Nunca falla: sin mapa se archiva lo que se pueda.
+    """
+    code = info["code"]
+    if info["portal"] == "egesdoc":
+        # Los ficheros del zip de TR van con id interno: se pide al portal el
+        # nombre de cada documento para poder archivarlos en su carpeta dev.
+        hint = egesdoc.parse_subject(subject)["project"] or None
+        try:
+            return docs, egesdoc.transmittal_file_map(info["po"], code, project_hint=hint,
+                                                      session=session)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("eGesDoc: no se pudo obtener el mapa de ficheros de %s: %s", code, exc)
+    elif info["portal"] == "sacyr":
+        # Los ficheros de SACYR llevan el código del ERP, no el del correo, así
+        # que hace falta el mapa para archivarlos. Y su nombre acaba con el
+        # código de revisión del cliente (…_R0_A), que es la resolución que el
+        # correo no trae: de ahí sale si la carpeta va «AP» o «com».
+        try:
+            return sacyr.docs_con_estado(code, docs), sacyr.file_map(code, docs)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
+    elif info["portal"] == "docspace":
+        # El estado sale del transmittal adjunto; de la tabla del correo, no.
+        adjunto = docspace.cover_adjunto(raw)
+        return docspace.docs_con_estado(docs, adjunto[1] if adjunto else None), {}
+    return docs, {}
+
+
+def _archivar(code: str, zip_path: Path, docs: list[dict], pedido: str, *,
+              raw: bytes | None = None, fecha: str = "",
+              file_docs: dict[str, dict] | None = None) -> dict:
+    """Reparte los PDF del paquete por sus carpetas dev. y apunta dónde cayeron.
+
+    Devuelve {archive, dev_folders}. Nunca lanza: que el reparto falle no puede
+    tirar la descarga —el paquete ya está guardado en «00 TRANS Y RES»—.
+    """
+    from core.services import dev_folders
+
+    try:
+        archive = dev_folders.archive_return(zip_path, docs, pedido, email_raw=raw,
+                                             email_date=fecha, file_docs=file_docs)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Archivo en dev. de %s falló: %s", code, exc)
+        archive = {"archived": [], "skipped": [(zip_path.name, str(exc))], "created": [], "plan": []}
+    devs = sorted({str(Path(dest).parent) for _, dest in archive["archived"]})
+    if devs:
+        # Se apuntan para poder abrirlas luego y para que el correo de aviso las
+        # enlace en «Guardado en».
+        _update_done(code, {"dev_folders": devs})
+    return {"archive": archive, "dev_folders": devs}
+
+
+def archive_pending(uid: str, folder: str = "INBOX", *, session=None) -> dict:
+    """Reparte en 2-Tecnico una devolución que ya está descargada.
+
+    Para cuando la descarga dejó los documentos sin colocar —una revisión que
+    entonces no se entendía, la unidad M: caída, un tipo sin carpeta— y el
+    motivo ya está resuelto. El paquete no se vuelve a pedir al portal: se
+    reparte el zip que hay en «00 TRANS Y RES». Como nunca se pisa un documento
+    archivado, repetirlo no estropea lo que ya estuviera bien.
+
+    Devuelve lo mismo que `download_for_email`, con `already=True`.
+    """
+    from core.services import transmittal
+
+    pv = transmittal.preview_email(uid, folder)
+    info = describe_email(pv.get("from", ""), pv.get("subject", ""))
+    if info is None:
+        raise ValueError("Este correo no es una devolución de un portal")
+    done = downloaded_info(info["code"])
+    if not done or not done.get("zip"):
+        raise LookupError(f"La devolución {info['code']} todavía no está descargada")
+    zip_path = Path(done["zip"])
+    if not zip_path.is_file():
+        raise FileNotFoundError(f"No se encuentra el paquete {zip_path} (¿unidad M: conectada?)")
+
+    docs = pv.get("documents") or []
+    pedido = str(done.get("pedido") or (docs[0].get("Nº Pedido") if docs else "") or "").strip()
+    if not pedido:
+        raise LookupError("No sé a qué pedido pertenece esta devolución (no está en el ERP)")
+    raw = imap_service.fetch_raw(uid, folder)
+    docs, file_docs = _docs_y_ficheros(info, docs, pv.get("subject", ""), raw, session=session)
+    res = {"code": info["code"], "po": info["po"], "pedido": pedido, "portal": info["portal"],
+           "zip": zip_path, "folder": Path(done.get("folder") or zip_path.parent),
+           "eml": done.get("eml"), "already": True}
+    res.update(_archivar(info["code"], zip_path, docs, pedido, raw=raw,
+                         fecha=pv.get("date", ""), file_docs=file_docs))
+    return res
+
+
 def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict:
     """Descarga la devolución del correo `uid` a la carpeta de su pedido y guarda
     también el correo. `session`: sesión de eGesDoc ya abierta (opcional)."""
@@ -356,34 +451,19 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
 
     raw = imap_service.fetch_raw(uid, folder)
     code = info["code"]
-    file_docs: dict[str, dict] = {}
+    docs, file_docs = _docs_y_ficheros(info, docs, subject, raw, session=session)
     if info["portal"] == "egesdoc":
         hint = egesdoc.parse_subject(subject)["project"] or None
 
         def fetch(dest: Path) -> Path:
             return egesdoc.download_transmittal(info["po"], code, dest, project_hint=hint, session=session)
 
-        # Los ficheros del zip de TR van con id interno: se pide al portal el
-        # nombre de cada documento para poder archivarlos en su carpeta dev.
-        try:
-            file_docs = egesdoc.transmittal_file_map(info["po"], code, project_hint=hint, session=session)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("eGesDoc: no se pudo obtener el mapa de ficheros de %s: %s", code, exc)
     elif info["portal"] == "sacyr":
         def fetch(dest: Path) -> Path:
             # Los documentos del correo sirven para reconocer el paquete aunque
             # SharePoint lo haya bautizado «OneDrive_1_<fecha>.zip».
             return sacyr.collect(code, dest, docs)
 
-        # Los ficheros de SACYR llevan el código del ERP, no el del correo, así
-        # que hace falta el mapa para archivarlos. Y su nombre acaba con el
-        # código de revisión del cliente (…_R0_A), que es la resolución que el
-        # correo no trae: de ahí sale si la carpeta va «AP» o «com».
-        try:
-            file_docs = sacyr.file_map(code, docs)
-            docs = sacyr.docs_con_estado(code, docs)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("SACYR: no se pudo emparejar los ficheros de %s: %s", code, exc)
     elif info["portal"] == "docspace":
         html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
         url = docspace.download_link(html)
@@ -407,9 +487,6 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
                 except OSError as exc:
                     logger.warning("No se pudo guardar el transmittal de %s: %s", code, exc)
             return zip_path
-
-        # El estado sale del transmittal adjunto; de la tabla del correo, no.
-        docs = docspace.docs_con_estado(docs, adjunto[1] if adjunto else None)
 
     elif info["portal"] == "prodoc":
         html = imap_service.get_html_body(email.message_from_bytes(raw)) or ""
@@ -439,18 +516,9 @@ def download_for_email(uid: str, folder: str = "INBOX", *, session=None) -> dict
     res = download(code, pedido, fetch, subject=subject, raw_email=raw,
                    portal=info["portal"], po=info["po"])
     # Segundo paso: archivar los PDF devueltos en 2-Tecnico\dev. <Tipo>\rev<N> AP|COM
-    # (copia; el zip de 00 TRANS Y RES queda intacto). Nunca hace fallar la descarga.
-    try:
-        from core.services import dev_folders
-        res["archive"] = dev_folders.archive_return(res["zip"], docs, pedido, email_raw=raw,
-                                                    email_date=pv.get("date", ""), file_docs=file_docs)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Archivo en dev. de %s falló: %s", code, exc)
-        res["archive"] = {"archived": [], "skipped": [(res["zip"].name, str(exc))], "created": [], "plan": []}
-    # Carpetas dev. donde quedaron los PDF: se apuntan para poder abrirlas luego.
-    res["dev_folders"] = sorted({str(Path(dest).parent) for _, dest in res["archive"]["archived"]})
-    if res["dev_folders"]:
-        _update_done(code, {"dev_folders": res["dev_folders"]})
+    # (copia; el zip de 00 TRANS Y RES queda intacto).
+    res.update(_archivar(code, res["zip"], docs, pedido, raw=raw,
+                         fecha=pv.get("date", ""), file_docs=file_docs))
     return res
 
 
