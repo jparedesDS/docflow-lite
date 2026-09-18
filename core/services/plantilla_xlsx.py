@@ -246,6 +246,122 @@ def _escribir(celda, texto: str) -> None:
     t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
 
 
+# -- Sangrías que parten palabras al imprimir ---------------------------------
+#
+# Hay plantillas que «centran» un rótulo corto alineándolo a la derecha con
+# sangría. La de MOEVE lo hace con FECHA: `horizontal="right" indent="8"` y
+# ajuste de texto. En pantalla cabe, pero al exportar a PDF Excel mide con la
+# impresora, la sangría se come la columna y sale «FECH» arriba y «A» abajo —
+# la plantilla exportada tal cual sale igual—. Para esos rótulos se usa el
+# centrado de verdad, que es lo que se pretendía.
+#
+# Solo se toca lo que no cabe: el resto de sangrías de la misma plantilla
+# («ESTADO DEL DOCUMENTO», «CLAVE DE COLOR») caben y se dejan como estaban.
+# Y solo rótulos de una línea: un párrafo con sangría es una sangría de verdad.
+
+_XFS = re.compile(rb"<cellXfs\b[^>]*>(.*?)</cellXfs>", re.S)
+_XF = re.compile(rb"<xf\b[^>]*?(?:/>|>.*?</xf>)", re.S)
+_ALINEACION = re.compile(rb"<alignment\b[^>]*/>")
+_FUENTE = re.compile(rb"<font\b[^>]*?(?:/>|>.*?</font>)", re.S)
+MAX_ROTULO = 30
+ANCHO_POR_SANGRIA = 3        # cada nivel de sangría ≈ tres caracteres de ancho
+ANCHO_COLUMNA = 8.43         # el de Excel cuando la hoja no dice otro
+LETRA_BASE = 11.0            # el ancho de columna se mide con la letra de 11 pt
+
+
+def _col_num(letras: str) -> int:
+    n = 0
+    for letra in letras:
+        n = n * 26 + (ord(letra) - 64)
+    return n
+
+
+def _medidor_anchos(raiz):
+    """Función ref → ancho de la celda en caracteres (sumando la combinada)."""
+    anchos: dict[int, float] = {}
+    for col in raiz.iter(_s("col")):
+        try:
+            desde, hasta = int(col.get("min")), int(col.get("max"))
+            ancho = float(col.get("width"))
+        except (TypeError, ValueError):
+            continue
+        for c in range(desde, min(hasta, desde + 200) + 1):
+            anchos[c] = ancho
+    formato = raiz.find(_s("sheetFormatPr"))
+    defecto = ANCHO_COLUMNA
+    if formato is not None and formato.get("defaultColWidth"):
+        try:
+            defecto = float(formato.get("defaultColWidth"))
+        except ValueError:
+            pass
+    combinadas: dict[str, tuple[int, int]] = {}
+    for mc in raiz.iter(_s("mergeCell")):
+        partes = str(mc.get("ref") or "").upper().split(":")
+        a, b = _REF.match(partes[0]), _REF.match(partes[-1])
+        if a and b:
+            combinadas[partes[0]] = (_col_num(a.group(1)), _col_num(b.group(1)))
+
+    def ancho(ref: str) -> float:
+        ref = ref.upper()
+        m = _REF.match(ref)
+        if not m:
+            return 0.0
+        desde, hasta = combinadas.get(ref, (_col_num(m.group(1)),) * 2)
+        return sum(anchos.get(c, defecto) for c in range(desde, hasta + 1))
+
+    return ancho
+
+
+def _sin_sangrias_que_parten(estilos: bytes, usos: dict) -> bytes:
+    """`styles.xml` con esos rótulos centrados.
+
+    `usos` = {estilo: [(texto, ancho de la celda en caracteres)]}.
+    """
+    bloque = _XFS.search(estilos)
+    if not bloque:
+        return estilos
+    fuentes = []
+    bloque_fuentes = re.search(rb"<fonts\b[^>]*>(.*?)</fonts>", estilos, re.S)
+    for f in _FUENTE.finditer(bloque_fuentes.group(1) if bloque_fuentes else b""):
+        sz = re.search(rb'<sz\s+val="([\d.]+)"', f.group(0))
+        fuentes.append(float(sz.group(1)) if sz else LETRA_BASE)
+
+    trozos = []
+    ultimo = 0
+    cambios = 0
+    for i, xf in enumerate(_XF.finditer(bloque.group(1))):
+        alin = _ALINEACION.search(xf.group(0))
+        if not alin:
+            continue
+        a = alin.group(0)
+        sangria = re.search(rb'\sindent="(\d+)"', a)
+        if not (sangria and int(sangria.group(1)) > 0 and b'wrapText="1"' in a
+                and re.search(rb'horizontal="(left|right)"', a)):
+            continue
+        fid = re.search(rb'fontId="(\d+)"', xf.group(0))
+        letra = fuentes[int(fid.group(1))] if fid and int(fid.group(1)) < len(fuentes) else LETRA_BASE
+        hueco_sangria = int(sangria.group(1)) * ANCHO_POR_SANGRIA
+
+        usados = [(txt.strip(), ancho) for txt, ancho in usos.get(str(i), []) if txt.strip()]
+        if not usados or any("\n" in txt or len(txt) > MAX_ROTULO for txt, _ in usados):
+            continue
+        # Que el rótulo ocupe dos líneas partiendo entre palabras es normal
+        # («A RELLENAR / POR MOEVE»); lo que se arregla es partir una palabra.
+        if not any(max(len(p) for p in txt.split()) * letra / LETRA_BASE > ancho - hueco_sangria
+                   for txt, ancho in usados):
+            continue                                    # cabe: se deja como está
+        nueva = re.sub(rb'\sindent="\d+"', b"", a)
+        nueva = re.sub(rb'horizontal="(left|right)"', b'horizontal="center"', nueva)
+        ini = bloque.start(1) + xf.start() + alin.start()
+        trozos.append(estilos[ultimo:ini] + nueva)
+        ultimo = ini + len(a)
+        cambios += 1
+    if not cambios:
+        return estilos
+    logger.debug("Portada: %d rótulo(s) con sangría pasados a centrado", cambios)
+    return b"".join(trozos) + estilos[ultimo:]
+
+
 def rellenar(plantilla: Path | str, destino: Path | str,
              valores: dict | None = None, marcas: dict | None = None) -> Path:
     """Copia la plantilla a `destino` rellenándola de las dos maneras posibles.
@@ -262,21 +378,33 @@ def rellenar(plantilla: Path | str, destino: Path | str,
         partes = {n: z.read(n) for n in orden}
 
     tabla = _tabla_comun(partes)
+    usos: dict[str, list[tuple[str, float]]] = {}
     for nombre in [n for n in orden if _PARTES.match(n)]:
         crudo = partes[nombre]
         _registrar_prefijos(crudo)
         raiz = ET.fromstring(crudo)
         tocado = False
         if quiere and _HOJA.match(nombre):
-            for etiqueta, celda, _valor, delante in _pares(raiz, tabla):
+            for etiqueta, celda, valor, delante in _pares(raiz, tabla):
                 texto = quiere.get(etiqueta.lower())
-                if texto is not None:
+                # Lo que ya pone eso no se reescribe: la celda perdería los
+                # trozos en negrita o de otra letra que traiga la plantilla.
+                if texto is not None and texto.strip() != valor.strip():
                     _escribir(celda, delante + texto)
                     tocado = True
         if quiere_marcas and b"{{" in crudo and _sustituir(raiz, quiere_marcas):
             tocado = True
+        if _HOJA.match(nombre):
+            ancho = _medidor_anchos(raiz)
+            for fila in _filas(raiz, tabla):
+                for ref, txt, celda in fila:
+                    if celda.get("s"):
+                        usos.setdefault(celda.get("s"), []).append((txt, ancho(ref)))
         if tocado:
             partes[nombre] = _serializar(raiz, crudo)
+
+    if "xl/styles.xml" in partes:
+        partes["xl/styles.xml"] = _sin_sangrias_que_parten(partes["xl/styles.xml"], usos)
 
     destino.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:

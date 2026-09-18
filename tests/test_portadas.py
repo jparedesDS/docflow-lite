@@ -218,4 +218,65 @@ try:
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
+# ── Rótulos que la sangría parte al exportar a PDF (FECHA en la de MOEVE) ────
+tmp = Path(tempfile.mkdtemp())
+try:
+    plantilla = tmp / "sangrias.xlsx"
+    estilos = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+               '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+               '<fonts count="1"><font><sz val="10"/><name val="Century Gothic"/></font></fonts>'
+               '<cellXfs count="4">'
+               '<xf numFmtId="0" fontId="0"/>'
+               # 1: FECHA, a la derecha con sangría 8 en una columna de 25
+               '<xf numFmtId="0" fontId="0" applyAlignment="1"><alignment horizontal="right" '
+               'vertical="center" wrapText="1" indent="8"/></xf>'
+               # 2: «ESTADO DEL DOCUMENTO», sangría 7 pero en tres columnas combinadas: cabe
+               '<xf numFmtId="0" fontId="0" applyAlignment="1"><alignment horizontal="right" '
+               'vertical="center" wrapText="1" indent="7"/></xf>'
+               # 3: «A RELLENAR POR MOEVE», dos líneas entre palabras: normal
+               '<xf numFmtId="0" fontId="0" applyAlignment="1"><alignment horizontal="left" '
+               'vertical="center" wrapText="1" indent="1"/></xf>'
+               '</cellXfs></styleSheet>')
+    hoja = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<cols><col min="1" max="1" width="15.3"/><col min="2" max="2" width="14.1"/>'
+            '<col min="3" max="3" width="17"/><col min="4" max="4" width="7.4"/>'
+            '<col min="5" max="5" width="24.9"/></cols>'
+            '<sheetData>'
+            '<row r="4"><c r="A4" t="inlineStr" s="2"><is><t>ESTADO DEL DOCUMENTO</t></is></c>'
+            '<c r="E4" t="inlineStr" s="1"><is><t>FECHA</t></is></c></row>'
+            '<row r="9"><c r="A9" t="inlineStr" s="3"><is><t>A RELLENAR POR MOEVE</t></is></c></row>'
+            '</sheetData><mergeCells count="1"><mergeCell ref="A4:C4"/></mergeCells></worksheet>')
+    with zipfile.ZipFile(plantilla, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("xl/styles.xml", estilos)
+        z.writestr("xl/worksheets/sheet1.xml", hoja)
+
+    destino = plantilla_xlsx.rellenar(plantilla, tmp / "relleno.xlsx", valores={})
+    with zipfile.ZipFile(destino) as z:
+        salida = z.read("xl/styles.xml").decode("utf-8")
+    alineaciones = salida.split("<alignment")[1:]
+    ok('horizontal="center"' in alineaciones[0] and "indent" not in alineaciones[0],
+       f"FECHA pasa a centrado sin sangría: {alineaciones[0][:80]}")
+    ok('indent="7"' in alineaciones[1], "la sangría que cabe (celda combinada) se respeta")
+    ok('indent="1"' in alineaciones[2], "partir entre palabras no es romper un rótulo")
+    ok(len(salida) - len(estilos) == len('horizontal="center"') - len('horizontal="right" indent="8"'),
+       "styles.xml sale igual byte a byte salvo esa alineación")
+
+    # Sin nada que arreglar, el fichero de estilos no se toca
+    sin = plantilla_xlsx._sin_sangrias_que_parten(estilos.encode(), {})
+    ok(sin == estilos.encode(), "sin celdas que lo usen, nada cambia")
+
+    # Y el valor que ya pone lo mismo no se reescribe (perdería negritas y demás)
+    with zipfile.ZipFile(plantilla, "a") as z:
+        z.writestr("xl/sharedStrings.xml", '<?xml version="1.0" encoding="UTF-8"?>'
+                   '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>')
+    igual = plantilla_xlsx.rellenar(plantilla, tmp / "igual.xlsx",
+                                    valores={"ESTADO DEL DOCUMENTO": "FECHA"})
+    with zipfile.ZipFile(plantilla) as a, zipfile.ZipFile(igual) as b:
+        ok(a.read("xl/worksheets/sheet1.xml") == b.read("xl/worksheets/sheet1.xml"),
+           "si el valor ya es ese, la hoja sale intacta")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
 print("FALLOS:", fallos)
