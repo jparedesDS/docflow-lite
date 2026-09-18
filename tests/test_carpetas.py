@@ -82,6 +82,43 @@ for estado, espera in (
     ok(D._suffix(estado) == espera,
        f"«{estado}» debería ir a rev<N> {espera}, no {D._suffix(estado)}")
 
+# ── Revisiones en letra: «rev C» sin número por ninguna parte ───────────────
+ok(D._partes_rev("rev2-50 AP") == (2, "50", "AP"), f"correlativo: {D._partes_rev('rev2-50 AP')}")
+ok(D._partes_rev("rev51 COM") == (51, "", "COM"), "el número ES la revisión")
+ok(D._partes_rev("revC com") == (None, "C", "com"), f"en letra: {D._partes_rev('revC com')}")
+ok(D._partes_rev("rev B") == (None, "B", ""), "con espacio, igual")
+ok(D._partes_rev("revisión pendiente") is None, "y lo que no es una carpeta de revisión, no lo es")
+ok(D._env_rev_casa("revC", None, "C"), "la carpeta de envío «revC» es la de la revisión C")
+ok(not D._env_rev_casa("revB", None, "C"), "pero «revB» no")
+ok(not D._env_rev_casa("rev0", None, "C"), "y sin revisión que comparar, tampoco")
+
+tmp = Path(tempfile.mkdtemp())
+try:
+    dev = tmp / "dev NDE"
+    (dev / "revB com").mkdir(parents=True)             # la devolución de la rev B
+    ruta, existe = D._rev_folder_for(dev, None, "C", "AP")
+    ok(not existe and ruta.name == "revC AP",
+       f"la carpeta sigue el estilo en letra del pedido: {ruta.name}")
+    (dev / "revC AP").mkdir()
+    otra, existe = D._rev_folder_for(dev, None, "C", "AP")
+    ok(existe and otra == ruta, f"y si ya está, se reutiliza: {otra.name} ({existe})")
+
+    # Carpeta dev vacía: manda el nombre de la carpeta de envío
+    vacia = tmp / "dev PMI"
+    vacia.mkdir()
+    ruta, _ = D._rev_folder_for(vacia, None, "C", "com", envio=Path("revC"))
+    ok(ruta.name == "revC com", f"lo enviado desde «env PMI\\revC» vuelve a «revC com»: {ruta.name}")
+    ruta, _ = D._rev_folder_for(vacia, None, "C", "com")
+    ok(ruta.name == "revC com", f"y sin carpeta de envío, igual: {ruta.name}")
+
+    # Donde se lleva correlativo, la letra va detrás del guion, como siempre
+    corr = tmp / "dev planos"
+    (corr / "rev0-B com").mkdir(parents=True)
+    ruta, _ = D._rev_folder_for(corr, None, "C", "com")
+    ok(ruta.name == "rev1-C com", f"correlativo con revisión en letra: {ruta.name}")
+finally:
+    shutil.rmtree(tmp, ignore_errors=True)
+
 # Y que la carpeta se llame así de verdad, no solo el sufijo suelto
 tmp = Path(tempfile.mkdtemp())
 try:

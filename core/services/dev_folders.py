@@ -52,7 +52,7 @@ _KIND_RE = re.compile(r"^(env|dev)\.?\s+(.+?)\s*$", re.I)
 # `rev<N>[-<revisión>][ <sufijo>]`. El sufijo se captura libre (AP, com, COM,
 # REJ, «AB - la rechazan»…): si solo se admitieran AP/COM, las carpetas con
 # cualquier otra anotación se ignorarían y no contarían para el correlativo.
-_REV_DIR_RE = re.compile(r"^z?rev\s*(\d+)(?:\s*-\s*([A-Z0-9]+))?(?:\s+(.*?))?\s*$", re.I)
+_REV_DIR_RE = re.compile(r"^z?rev\s*(\d+|[A-Z])(?:\s*-\s*([A-Z0-9]+))?(?:\s+(.*?))?\s*$", re.I)
 _LETTER_STYLE_RE = re.compile(r"^rev\s*\d+\s*-\s*[A-Z]\b", re.I)
 
 # Tipo de documento (parsers) → palabras que debe contener la carpeta env./dev.
@@ -186,17 +186,20 @@ def _find_sent_file(folders: list[dict], codes: list[str],
     return hits
 
 
-def _env_rev_casa(sub_name: str, n: int, letter: str) -> bool:
+def _env_rev_casa(sub_name: str, n: int | None, letter: str) -> bool:
     """¿La subcarpeta de envío «rev0-1» corresponde a esta revisión?
 
     Con el estilo correlativo el número de delante es el orden de envío, no la
-    revisión: la que manda es la de detrás del guion.
+    revisión: la que manda es la de detrás del guion. Si el documento solo
+    tiene revisión en letra, una carpeta sin guion no dice nada.
     """
-    m = _REV_DIR_RE.match(sub_name)
-    if not m:
+    partes = _partes_rev(sub_name)
+    if partes is None:
         return False
-    num, rev = int(m.group(1)), (m.group(2) or "").upper()
-    return rev == (letter or str(n)).upper() if rev else num == n
+    num, rev, _sufijo = partes
+    if rev:
+        return bool(letter or n is not None) and rev == (letter or str(n)).upper()
+    return n is not None and num == n
 
 
 # Palabras que aparecen en casi cualquier título y no distinguen carpetas
@@ -350,14 +353,13 @@ def _sin_pisar(dev_dir: Path, rev_dir: Path, existe: bool, fichero: str,
     """
     destino = rev_dir / fichero
     while destino.exists() and not _mismo_fichero(destino, tamaño, crc):
-        m = _REV_DIR_RE.match(rev_dir.name)
-        if m:
-            siguiente = int(m.group(1)) + 1
-            rev, sufijo = (m.group(2) or ""), (m.group(3) or "")
-        else:                       # carpeta renombrada a mano: detrás de todas
-            subs = _rev_subfolders(dev_dir)
-            siguiente = (max(num for _, num, _, _ in subs) + 1) if subs else 0
-            rev, sufijo = "", ""
+        partes = _partes_rev(rev_dir.name)
+        if partes and partes[0] is not None:
+            siguiente, rev, sufijo = partes[0] + 1, partes[1], partes[2]
+        else:                       # sin correlativo (o renombrada): detrás de todas
+            ultimo = _ultimo_numero(_rev_subfolders(dev_dir))
+            siguiente = (ultimo + 1) if ultimo is not None else 0
+            rev, sufijo = (partes[1] if partes else ""), (partes[2] if partes else "")
         nombre = f"rev{siguiente}" + (f"-{rev}" if rev else "") + (f" {sufijo}" if sufijo else "")
         if nombre == rev_dir.name:              # no avanzamos: mejor no tocar nada
             break
@@ -397,9 +399,9 @@ def carpeta_vigente(ruta: Path | str) -> str:
         return ""
     if p.is_dir():
         return str(p)
-    m = _REV_DIR_RE.match(p.name)
-    if m:
-        num, rev = int(m.group(1)), (m.group(2) or "").upper()
+    partes = _partes_rev(p.name)
+    if partes:
+        num, rev, _sufijo = partes
         for sub, n, r, _suf in _rev_subfolders(p.parent):
             if n == num and r == rev:
                 logger.info("La carpeta «%s» ahora se llama «%s»", p.name, sub.name)
@@ -407,21 +409,45 @@ def carpeta_vigente(ruta: Path | str) -> str:
     return ""
 
 
-def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int, str, str]]:
+def _partes_rev(nombre: str) -> tuple[int | None, str, str] | None:
+    """(orden, revisión, sufijo) del nombre de una carpeta de revisión.
+
+    · «rev2-50 AP» → (2, "50", "AP")   — correlativo y revisión detrás del guion
+    · «rev51 COM»  → (51, "", "COM")   — el número ES la revisión
+    · «revC com»   → (None, "C", "com") — la revisión es una letra y no hay orden
+
+    Devuelve None si el nombre no es una carpeta de revisión.
+    """
+    m = _REV_DIR_RE.match(str(nombre))
+    if not m:
+        return None
+    cabeza, rev, sufijo = m.group(1).upper(), (m.group(2) or "").upper(), m.group(3) or ""
+    if cabeza.isdigit():
+        return int(cabeza), rev, sufijo
+    return None, rev or cabeza, sufijo
+
+
+def _rev_subfolders(dev_dir: Path) -> list[tuple[Path, int | None, str, str]]:
     """Subcarpetas de revisión de una carpeta dev: (ruta, nº, revisión, sufijo)."""
     out = []
     if dev_dir.is_dir():
         try:
             for sub in dev_dir.iterdir():
-                m = _REV_DIR_RE.match(sub.name)
-                if sub.is_dir() and m:
-                    out.append((sub, int(m.group(1)), (m.group(2) or "").upper(), m.group(3) or ""))
+                partes = _partes_rev(sub.name) if sub.is_dir() else None
+                if partes:
+                    out.append((sub, *partes))
         except OSError:
             pass
     return out
 
 
-def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
+def _ultimo_numero(subs: list[tuple]) -> int | None:
+    """El correlativo más alto de esas subcarpetas, si alguna lo lleva."""
+    numeros = [num for _, num, _, _ in subs if num is not None]
+    return max(numeros) if numeros else None
+
+
+def _rev_folder_for(dev_dir: Path, n: int | None, letter: str, suffix: str,
                     envio: Path | None = None) -> tuple[Path, bool]:
     """Subcarpeta de revisión existente, o la que habría que crear.
 
@@ -437,6 +463,10 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
     · Directo — `rev50`, `rev51`…  El número ES la revisión. Se usa cuando la
       carpeta no tiene ninguna subcarpeta con guion.
 
+    · En letra — `revB`, `revC`…  Cuando el cliente numera las primeras
+      emisiones con letras y así están archivadas a mano (P-23/037). La
+      revisión va pegada a «rev» y no hay correlativo que llevar.
+
     El sufijo de comentarios distingue mayúsculas (COM = mayores, com = menores);
     AP se acepta en cualquier caja.
 
@@ -450,20 +480,26 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
     def mismo_sufijo(found: str) -> bool:
         return found.upper() == "AP" if suffix == "AP" else found == suffix
 
-    con_guion = [(sub, num, rev, found) for sub, num, rev, found in subs if rev]
+    rev_text = (letter or (str(n) if n is not None else "")).upper()
+    for sub, _num, rev, found in subs:           # la de esta revisión, si ya está
+        if rev and rev_text and rev == rev_text and mismo_sufijo(found):
+            return sub, True
+
+    con_guion = [(sub, num, rev, found) for sub, num, rev, found in subs
+                 if rev and num is not None]
     if con_guion:                                # la carpeta ya va por correlativo
-        rev_text = letter or str(n)
-        for sub, _, rev, found in con_guion:
-            if rev == rev_text.upper() and mismo_sufijo(found):
-                return sub, True
         # El correlativo sale SOLO de las que llevan guion: una carpeta suelta
         # con la revisión por número (un «rev50» colado) dispararía la cuenta.
         # Pero si ese número ya lo ocupa otra subcarpeta, se va detrás de todas:
         # hay carpetas que mezclan los dos estilos (rev 1, rev 2-C, rev 3).
-        siguiente = max(num for _, num, _, _ in con_guion) + 1
+        siguiente = _ultimo_numero(con_guion) + 1
         if any(num == siguiente for _, num, _, _ in subs):
-            siguiente = max(num for _, num, _, _ in subs) + 1
+            siguiente = _ultimo_numero(subs) + 1
         return dev_dir / f"rev{siguiente}-{rev_text} {suffix}", False
+
+    # La carpeta va por letras («revB com», «revC com»): la nueva es «revD …».
+    if letter and any(num is None and rev for _, num, rev, _ in subs):
+        return dev_dir / f"rev{letter} {suffix}", False
 
     for sub, num, rev, found in subs:
         if num == n and mismo_sufijo(found) and (not letter or rev == letter):
@@ -474,14 +510,19 @@ def _rev_folder_for(dev_dir: Path, n: int, letter: str, suffix: str,
     # devolución (que el cliente numeró «rev A») está en «rev0 com» y la
     # segunda («rev 0» para él) va a «rev1 COM». Si se usara su revisión, la
     # segunda se llamaría «rev0» otra vez y quedarían dos carpetas rev0.
-    if subs:
-        siguiente = max(num for _, num, _, _ in subs) + 1
-        return dev_dir / f"rev{siguiente} {suffix}", False
+    if _ultimo_numero(subs) is not None:
+        return dev_dir / f"rev{_ultimo_numero(subs) + 1} {suffix}", False
 
+    # La carpeta dev está vacía: manda el nombre de la carpeta de envío, que es
+    # la misma revisión en el estilo de este pedido.
     if envio is not None:
-        m = _REV_DIR_RE.match(envio.name)
-        if m and m.group(2):
-            return dev_dir / f"rev{int(m.group(1))}-{m.group(2).upper()} {suffix}", False
+        partes = _partes_rev(envio.name)
+        if partes and partes[1]:
+            num, rev, _sufijo = partes
+            cabeza = f"rev{num}-{rev}" if num is not None else f"rev{rev}"
+            return dev_dir / f"{cabeza} {suffix}", False
+    if n is None:                    # revisión en letra y sin más pistas
+        return dev_dir / f"rev{letter} {suffix}", False
     return dev_dir / f"rev{n}{'-' + letter if letter else ''} {suffix}", False
 
 
@@ -590,11 +631,16 @@ def archive_return(zip_path: Path, docs: list[dict], pedido: str, *, email_raw: 
                 res["skipped"].append((fname, "documento anulado (VOID)"))
                 continue
             n = _rev_number(doc.get("Rev."))
-            if n is None:
+            codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
+            # La revisión puede ser solo una letra: en TR las primeras emisiones
+            # van «rev A», «rev B», «rev C» y no traen número por ninguna parte.
+            # Vale igual —la carpeta se llama «rev<orden>-C»—, que es como están
+            # archivadas a mano; lo que no vale es quedarse sin ninguna de las dos.
+            propia = _rev_letter(doc.get("_rev_cliente")) or _rev_letter(doc.get("Rev."))
+            letter = propia if (uses_letter or propia) else ""
+            if n is None and not letter:
                 res["skipped"].append((fname, f"revisión desconocida ({doc.get('Rev.')!r})"))
                 continue
-            codes = [c for c in (norm_doc_code(doc.get("Doc. Cliente", "")), norm_doc_code(doc.get("Doc. EIPSA", ""))) if len(c) >= 6]
-            letter = _rev_letter(doc.get("_rev_cliente")) if (uses_letter or _rev_letter(doc.get("_rev_cliente"))) else ""
 
             # 1) carpeta env por el fichero enviado
             hits = _find_sent_file(folders, codes, portal_names.get(id(doc)))
